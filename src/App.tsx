@@ -3,6 +3,7 @@ import { Moon, Sun } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { DesignDemo } from "./components/demo";
+import { ExportCard } from "./components/export-card";
 import { Ingest } from "./components/ingest";
 import { ReportForm } from "./components/report-form";
 import type { ParseResult, ReportOptions } from "./lib/parseSp3";
@@ -49,6 +50,7 @@ function App() {
         <TabsContent value="report" className="grid gap-4">
           <Ingest onParsed={setParsed} />
           <ReportForm options={options} onChange={setOptions} />
+          <ExportCard parsed={parsed} options={options} />
         </TabsContent>
         <TabsContent value="design">
           <DesignDemo />
