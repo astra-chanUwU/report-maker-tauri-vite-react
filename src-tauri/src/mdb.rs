@@ -1,10 +1,10 @@
-﻿//! Raw `.sp3` (MS Access Jet DB) support via the `mdb-export` CLI.
+//! Raw `.sp3` (MS Access Jet DB) support via the `mdb-export` CLI.
 //!
 //! The WebView cannot read Jet databases, so the Tauri backend shells out to
 //! `mdb-export` (mdbtools) to dump the `Data` table to CSV, which the existing
 //! Spec-CSV parser (`src/lib/specdata.ts`) understands.
 //!
-//! Tool resolution order: explicit settings override â†’ `MDB_EXPORT_PATH` env â†’ `PATH`.
+//! Tool resolution order: explicit settings override -> `MDB_EXPORT_PATH` env -> `PATH`.
 //! The full CSV streams straight to a temp file (never held in memory); only a
 //! small head (for preview parsing) is returned over IPC.
 
@@ -102,7 +102,11 @@ pub fn mdb_tool_status(override_path: Option<String>) -> MdbToolStatus {
                 },
             }
         }
-        None => MdbToolStatus { found: false, path: None, version: String::new() },
+        None => MdbToolStatus {
+            found: false,
+            path: None,
+            version: String::new(),
+        },
     }
 }
 
@@ -113,7 +117,8 @@ pub fn export_mdb_csv(
     tool: Option<String>,
 ) -> Result<MdbExportResult, String> {
     let bin = resolve_tool(tool).ok_or_else(|| {
-        "mdb-export not found. Install mdbtools (or set MDB_EXPORT_PATH / Settings path).".to_string()
+        "mdb-export not found. Install mdbtools (or set MDB_EXPORT_PATH / Settings path)."
+            .to_string()
     })?;
     let table = table.unwrap_or_else(|| "Data".to_string());
     if (table.trim().is_empty()) {
@@ -144,8 +149,8 @@ pub fn export_mdb_csv(
             .map(|d| d.as_millis())
             .unwrap_or(0)
     ));
-    let mut file = std::fs::File::create(&csv_path)
-        .map_err(|e| format!("cannot write temp csv: {e}"))?;
+    let mut file =
+        std::fs::File::create(&csv_path).map_err(|e| format!("cannot write temp csv: {e}"))?;
 
     let mut rows: usize = 0;
     let mut bytes: u64 = 0;
@@ -154,12 +159,15 @@ pub fn export_mdb_csv(
     if let Some(mut stdout) = child.stdout.take() {
         let mut chunk = [0u8; 65536];
         loop {
-            let n = stdout.read(&mut chunk).map_err(|e| format!("read failed: {e}"))?;
+            let n = stdout
+                .read(&mut chunk)
+                .map_err(|e| format!("read failed: {e}"))?;
             if (n == 0) {
                 break;
             }
             let buf = &chunk[..n];
-            file.write_all(buf).map_err(|e| format!("write failed: {e}"))?;
+            file.write_all(buf)
+                .map_err(|e| format!("write failed: {e}"))?;
             bytes += n as u64;
             if (head.len() < HEAD_CAP) {
                 let take = (HEAD_CAP - head.len()).min(n);
@@ -179,15 +187,23 @@ pub fn export_mdb_csv(
         }
     }
 
-    let output = child.wait_with_output().map_err(|e| format!("wait failed: {e}"))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("wait failed: {e}"))?;
     if (!output.status.success()) {
         let _ = std::fs::remove_file(&csv_path);
-        let err = String::from_utf8_lossy(&output.stderr).trim().chars().take(300).collect::<String>();
+        let err = String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .chars()
+            .take(300)
+            .collect::<String>();
         return Err(format!("mdb-export failed: {err}"));
     }
     if (bytes < 16 || !newline_seen) {
         let _ = std::fs::remove_file(&csv_path);
-        return Err("mdb-export produced no output â€” is this a valid .sp3 with a Data table?".to_string());
+        return Err(
+            "mdb-export produced no output -- is this a valid .sp3 with a Data table?".to_string(),
+        );
     }
 
     Ok(MdbExportResult {
@@ -200,7 +216,13 @@ pub fn export_mdb_csv(
 
 fn sanitize(s: &str) -> String {
     s.chars()
-        .map(|c| if (c.is_ascii_alphanumeric() || c == '-' || c == '_') { c } else { '-' })
+        .map(|c| {
+            if (c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+                c
+            } else {
+                '-'
+            }
+        })
         .take(40)
         .collect()
 }
@@ -286,11 +308,12 @@ fn read_csv_text(path: &str) -> Result<String, String> {
             .collect();
         Ok(String::from_utf16_lossy(&u16s))
     } else {
-        let start = if (bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
-            3
-        } else {
-            0
-        };
+        let start =
+            if (bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+                3
+            } else {
+                0
+            };
         Ok(String::from_utf8_lossy(&bytes[start..]).into_owned())
     }
 }
@@ -350,7 +373,10 @@ pub fn read_csv_row(path: String, index: usize) -> Result<CsvFullRow, String> {
             continue;
         }
         if (seen == index) {
-            return Ok(CsvFullRow { header, cells: split_csv_line(line) });
+            return Ok(CsvFullRow {
+                header,
+                cells: split_csv_line(line),
+            });
         }
         seen += 1;
     }
