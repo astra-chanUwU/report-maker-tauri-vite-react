@@ -4,15 +4,22 @@ import { Button } from "./components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { DesignDemo } from "./components/demo";
 import { Ingest } from "./components/ingest";
-import type { ParseResult } from "./lib/parseSp3";
+import { ReportForm } from "./components/report-form";
+import type { ParseResult, ReportOptions } from "./lib/parseSp3";
+import { loadReportOptions, saveReportOptions } from "./lib/settings";
 
 function App() {
   const [dark, setDark] = useState(false);
   const [parsed, setParsed] = useState<ParseResult | null>(null);
+  const [options, setOptions] = useState<ReportOptions>(() => loadReportOptions());
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  useEffect(() => {
+    saveReportOptions(options);
+  }, [options]);
 
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
@@ -39,8 +46,9 @@ function App() {
           <TabsTrigger value="report">Report</TabsTrigger>
           <TabsTrigger value="design">Design</TabsTrigger>
         </TabsList>
-        <TabsContent value="report">
+        <TabsContent value="report" className="grid gap-4">
           <Ingest onParsed={setParsed} />
+          <ReportForm options={options} onChange={setOptions} />
         </TabsContent>
         <TabsContent value="design">
           <DesignDemo />
