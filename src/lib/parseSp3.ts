@@ -1,12 +1,40 @@
+import {
+  detectJetMdb,
+  parseSpecCsvFirstRow,
+  rowToOverall,
+  rowToSpectrum,
+  sniffSpecCsv,
+} from "./specdata";
+
 export interface SpectraPoint {
   freq: number;
   amp: number;
 }
 
+export interface OverallValues {
+  unit: string;
+  measDate: string;
+  pointId: string;
+  directionId: string;
+  bandWidth: number;
+  noLines: number;
+  freqRange: number;
+  peakV: number;
+  peakFreq: number;
+  rmsD: number;
+  rmsV: number;
+  rmsA: number;
+  peakD: number;
+  peakA: number;
+}
+
 export interface Sp3Meta {
   filename: string;
   size: number;
-  source: "text" | "binary" | "synthetic";
+  source: "text" | "binary" | "synthetic" | "spec-csv" | "mdb";
+  overall?: OverallValues;
+  /** Extra measurements in the file beyond the one shown (Spec CSV exports). */
+  extraRows?: number;
 }
 
 export interface Sp3Stats {
@@ -75,6 +103,9 @@ function syntheticSpectra(n = 80): SpectraPoint[] {
 }
 
 function tryParseText(bytes: Uint8Array): SpectraPoint[] | null {
+  // Guard: giant Spec-CSV exports are handled by the Spec path below; never
+  // decode multi-MB buffers as generic text.
+  if (bytes.byteLength > 2 * 1024 * 1024) return null;
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -120,6 +151,43 @@ function tryParseBinaryFloat32LE(bytes: Uint8Array): SpectraPoint[] | null {
 export function parseSp3(input: Uint8Array | ArrayBuffer, filename: string): ParseResult {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const size = bytes.byteLength;
+
+  if (detectJetMdb(bytes)) {
+    const spectra = syntheticSpectra();
+    return {
+      meta: { filename, size, source: "mdb" },
+      spectra,
+      stats: computeStats(spectra),
+      warning:
+        "Jet MDB database detected (.sp3 is MS Access format) — browsers can't read it directly. Export the Data table to CSV (mdb-export file.sp3 Data > data.csv) and drop the CSV instead. Showing synthetic preview.",
+    };
+  }
+
+  if (sniffSpecCsv(bytes)) {
+    const preview = parseSpecCsvFirstRow(bytes);
+    if (preview) {
+      const spectra = rowToSpectrum(preview.row);
+      const overall = rowToOverall(preview.row);
+      const extra = Math.max(0, preview.rowCount - 1);
+      return {
+        meta: { filename, size, source: "spec-csv", overall, extraRows: extra },
+        spectra,
+        stats: computeStats(spectra),
+        warning:
+          extra > 0
+            ? `${preview.rowCount} measurements in this export — showing first (Point ${overall.pointId || "?"}). Split one row per file for separate reports.`
+            : undefined,
+      };
+    }
+    const spectra = syntheticSpectra();
+    return {
+      meta: { filename, size, source: "synthetic" },
+      spectra,
+      stats: computeStats(spectra),
+      warning:
+        "Specdata column found but the first row failed to parse — using synthetic demo data.",
+    };
+  }
 
   const textPts = tryParseText(bytes);
   if (textPts) {

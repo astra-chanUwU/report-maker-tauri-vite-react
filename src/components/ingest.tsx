@@ -114,6 +114,13 @@ export function Ingest({ onParsed }: { onParsed?: (r: ParseResult | null) => voi
 
 export function IngestPreview({ result }: { result: ParseResult }) {
   const rows = result.spectra.slice(0, 80);
+  const overall = result.meta.overall;
+  const sourceLabel =
+    result.meta.source === "spec-csv"
+      ? "spec csv"
+      : result.meta.source === "mdb"
+        ? "jet mdb (preview only)"
+        : result.meta.source;
   return (
     <div className="grid gap-4">
       {result.warning ? (
@@ -127,9 +134,13 @@ export function IngestPreview({ result }: { result: ParseResult }) {
           <CardTitle className="text-base">{result.meta.filename}</CardTitle>
           <CardDescription>
             {formatBytes(result.meta.size)} · {result.stats.spectra_points} points · source{" "}
-            {result.meta.source} · freq {result.stats.freq_min}–{result.stats.freq_max} · amp{" "}
+            {sourceLabel} · freq {result.stats.freq_min}–{result.stats.freq_max} · amp{" "}
             {result.stats.amp_min}–{result.stats.amp_max} · peak {result.stats.peak.amp} @{" "}
             {result.stats.peak.freq}
+            {overall
+              ? ` · ${overall.unit || "units"} · meas ${overall.measDate || "—"} · RMS-V ${overall.rmsV} · peak-V ${overall.peakV} @ ${overall.peakFreq}`
+              : ""}
+            {result.meta.extraRows ? ` · +${result.meta.extraRows} more measurements in file` : ""}
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -4,6 +4,20 @@
 > Source of truth for logic to port: `../report-generator/src/{parseSp3,generateDocx,ai}.js`
 > Package manager: npm (tauri.conf currently says pnpm — see S00). Node 20+.
 
+## Learned real format (refinement, verified on Elika Tejarat DB)
+
+- `.sp3` = MS Access Jet DB (`Standard Jet DB` magic) — not readable in WebView.
+  Drop the raw file and the app explains the export path instead of silent fallback.
+- Supported ingest: CSV export of the `Data` table (`mdb-export file.sp3 Data`):
+  38 columns, `Specdata` blob = `\ooo` octal escapes of `NoLines` float32-LE amps.
+- Freq axis is derived: `freq(i) = (i+1) * BandWidth` (verified: decoded max ==
+  `ValuePeakMaxV`, `(argmax+1)*BW` == `FreqPeakMaxV` on 5 real rows).
+- `MeasDate` is an OLE Automation date → ISO. Overall RMS/Peak/Unit/Point travel
+  in `meta.overall` into preview + docx. Multi-row exports preview row 1 only.
+- Future: Tauri-side `mdb-export` integration so raw `.sp3` drops work directly
+  (`mdbtools-win` ships the binaries). 76–960 MB files + 296 MB CSVs exist —
+  never full-decode for sniffing; first-row-only parse is intentional.
+
 Each slice is self-contained for one agent. Check the box when done. Respect `Depends on`.
 
 ---

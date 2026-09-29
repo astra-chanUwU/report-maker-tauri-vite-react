@@ -331,6 +331,33 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     new Paragraph(
       d?.summary ?? `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
     ),
+  ];
+
+  const overall = input.meta.overall;
+  if (overall) {
+    const cell = (t: string, bold = false) =>
+      new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: t, bold })] })] });
+    children.push(
+      new Paragraph({ text: "Overall vibration", heading: HeadingLevel.HEADING_1 }),
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({ children: [cell("Metric", true), cell("Value", true)] }),
+          ...[
+            ["Unit", overall.unit || "—"],
+            ["Measured", overall.measDate || "—"],
+            ["Point / Direction", `${overall.pointId || "—"} / ${overall.directionId || "—"}`],
+            ["RMS D / V / A", `${overall.rmsD} / ${overall.rmsV} / ${overall.rmsA}`],
+            ["Peak D / V / A", `${overall.peakD} / ${overall.peakV} / ${overall.peakA}`],
+            ["Peak freq", String(overall.peakFreq)],
+            ["Freq range / lines", `${overall.freqRange} / ${overall.noLines}`],
+          ].map(([k, v]) => new TableRow({ children: [cell(k), cell(v)] })),
+        ],
+      })
+    );
+  }
+
+  children.push(
     new Paragraph({ text: "Spectra chart", heading: HeadingLevel.HEADING_1 }),
     new Paragraph({
       children: [
@@ -339,8 +366,8 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       alignment: AlignmentType.CENTER,
     }),
     new Paragraph({ text: `Data (first ${rows.length})`, heading: HeadingLevel.HEADING_1 }),
-    table,
-  ];
+    table
+  );
 
   if (d) {
     children.push(
