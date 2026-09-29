@@ -12,6 +12,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** none
 **Goal:** deterministic dev/build for every agent.
+
 - Decide `npm` vs `pnpm` (repo currently installed with `npm 10`; `src-tauri/tauri.conf.json` says `pnpm dev/build`). Pick one and fix `tauri.conf.json` + README.
 - Add scripts: `lint`, `format`, `typecheck` (tsc --noEmit). Add `.editorconfig` if missing.
 - Ensure `npm run build` and `cargo check` (if Rust toolchain present) both green.
@@ -25,6 +26,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S00
 **Goal:** app doesn't look like Vite template.
+
 - Init `shadcn/ui` (works with Vite + Tailwind 4): `npx shadcn@latest init`, pick style/new-york, neutral base, CSS variables.
 - Add primitives needed early: `Button`, `Input`, `Label`, `Card`, `Table`, `Dialog`, `Tabs`, `Toast`/`Sonner`.
 - Replace `src/App.css` with Tailwind tokens + `src/index.css` via shadcn. Keep `App.tsx` minimal (shell only).
@@ -38,6 +40,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S00
 **Goal:** port offline logic to `src/lib/` as pure TS, fully tested, no Tauri APIs.
+
 - `src/lib/parseSp3.ts` — port `../report-generator/src/parseSp3.js`:
   - Input: `Uint8Array | ArrayBuffer`, filename. Output: `{ meta, spectra: {freq,amp}[] }`
   - Preserve heuristics: text CSV → binary float32 LE pairs → synthetic demo fallback (keep same behavior for now).
@@ -59,6 +62,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S01, S02
 **Goal:** user can drop a `.sp3` and see data.
+
 - File drop + file picker (accept `.sp3`, `.txt`, `.csv` for dev). Use HTML5 File API; no Tauri fs yet.
 - Call `parseSp3`, show: filename, size, points, range, peak, warning if synthetic fallback.
 - Preview: spectra table (first 80 rows, virtualize if >500) + chart preview (canvas or SVG line chart — live, not just docx PNG).
@@ -72,6 +76,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S01
 **Goal:** predictable defaults, no blank report.
+
 - Fields: `projectName`, `engineer`, `reportDate` (default today), `units` (SI/metric toggle), `norm` (Default/normalization string), `notes` (textarea).
 - Validation (zod or simple): required: projectName, engineer. Date = ISO yyyy-mm-dd.
 - Persist defaults to Tauri store (see S08, but make this slice work with `localStorage` fallback so it doesn't block).
@@ -85,6 +90,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S02, S03, S04
 **Goal:** one click → editable Word file on disk.
+
 - Wire `Generate Report` button: `buildDocx({meta,spectra,options,aiDraft})` → save.
 - Tauri path: use `@tauri-apps/plugin-dialog` `save()` + `@tauri-apps/plugin-fs` (or `writeFile` via Rust) to write Blob. Web fallback: anchor download.
 - Filename: `${projectName}-${date}.docx` sanitized.
@@ -99,6 +105,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S03, S05
 **Goal:** edit before export, not after.
+
 - Chart component with editable data points (drag or table inline edit) — updates preview + `spectra` array.
 - Controls: smoothing, peak highlight toggle, point limit (80/120/400).
 - Edits are in-memory only; export uses edited `spectra`.
@@ -111,6 +118,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S01, S05
 **Goal:** template gallery + custom cover/logo.
+
 - Gallery: 2–3 docx templates (cover layout, color, fonts) selectable before export. Store choice in settings.
 - Branding: upload logo (png/svg) + cover image, preview on cover. Persist via store.
 - `generateDocx` accepts `templateId` + `branding` (logo as base64 ImageRun).
@@ -123,6 +131,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S01, S02
 **Goal:** past reports list, no server.
+
 - Choose Tauri store: `tauri-plugin-store` or `tauri-plugin-sql` (SQLite). Keep `localStorage` adapter for `vite dev`.
 - Store: report history entries `{ id, projectName, engineer, date, filename, meta, options }` (not full spectra Blob beyond threshold — store file path or truncated).
 - UI: `Past Reports` tab — list, search, reopen, delete, `Reveal in Finder`.
@@ -136,6 +145,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S05
 **Goal:** perpetual key + optional subscription check, Tauri-native.
+
 - Decide model: perpetual license key (offline-validated) + optional subscription for updates/AI. Document decision in `docs/licensing.md`.
 - Implement key validation in Rust (`src-tauri/src/license.rs`): HMAC or JWT, stored via `tauri-plugin-store`. Offline grace period.
 - UI: `Settings → License` — enter key, status, `Check for updates` (via `tauri-plugin-updater` or manual GitHub Releases).
@@ -149,6 +159,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S01, S08
 **Goal:** opt-in analytics, no surprise tracking.
+
 - Add PostHog JS (`posthog-js`) or Tauri-compatible proxy. Disabled by default.
 - Settings toggle: `Share anonymous usage & crash reports` (default OFF). When off, zero network calls.
 - Events: `report_generated`, `report_failed`, `app_started`, `license_validated` — no PII, no spectra contents.
@@ -162,6 +173,7 @@ Each slice is self-contained for one agent. Check the box when done. Respect `De
 
 **Depends on:** S02, S04
 **Goal:** `AI Assist` is additive, never required.
+
 - Settings: `OpenAI API key` + `Model` (default `gpt-4o-mini`), stored locally, never committed.
 - UI: `Draft with AI` button on report form — calls `draftReport`, fills `Summary/Methodology/Observations/Recommendations/Conclusion` fields (editable).
 - Offline/failed → fallbackDraft + toast, never block export.
