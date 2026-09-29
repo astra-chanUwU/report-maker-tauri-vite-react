@@ -22,7 +22,9 @@ pub fn run() {
             greet,
             license::validate_license,
             mdb::mdb_tool_status,
-            mdb::export_mdb_csv
+            mdb::export_mdb_csv,
+            mdb::list_csv_rows,
+            mdb::read_csv_row
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

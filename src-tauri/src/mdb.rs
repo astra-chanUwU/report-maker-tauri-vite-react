@@ -204,3 +204,155 @@ fn sanitize(s: &str) -> String {
         .take(40)
         .collect()
 }
+
+// ---------------------------------------------------------------------------
+// Row access for the measurement picker (refinement #2).
+//
+// Converted CSVs can hold thousands of measurements; the frontend previews
+// row 0 first, then lists/loads any row on demand. Summaries omit the huge
+// Specdata blob; single-row reads return full cells for frontend parsing.
+// ---------------------------------------------------------------------------
+
+/// Hard cap to keep IPC payloads sane (largest real export: ~3k rows).
+const ROW_LIST_CAP: usize = 50000;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CsvRowSummary {
+    pub index: usize,
+    pub point_id: String,
+    pub direction_id: String,
+    pub meas_date: String,
+    pub peak_v: String,
+    pub peak_freq: String,
+    pub rms_v: String,
+    pub unit: String,
+    pub no_lines: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CsvRowList {
+    pub header: Vec<String>,
+    pub rows: Vec<CsvRowSummary>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CsvFullRow {
+    pub header: Vec<String>,
+    pub cells: Vec<String>,
+}
+
+/// Quote-aware CSV split (mirrors `splitCsvLine` in `src/lib/specdata.ts`).
+fn split_csv_line(line: &str) -> Vec<String> {
+    let mut cells = Vec::new();
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if (in_quotes) {
+            if (c == '"') {
+                if (chars.peek() == Some(&'"')) {
+                    cur.push('"');
+                    chars.next();
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                cur.push(c);
+            }
+        } else if (c == '"') {
+            in_quotes = true;
+        } else if (c == ',') {
+            cells.push(std::mem::take(&mut cur));
+        } else {
+            cur.push(c);
+        }
+    }
+    cells.push(cur);
+    cells
+}
+
+fn read_csv_text(path: &str) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("cannot read csv: {e}"))?;
+    if (bytes.len() > 1536 * 1024 * 1024) {
+        return Err("CSV larger than 1.5 GiB is not supported.".to_string());
+    }
+    if (bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+        let u16s: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        Ok(String::from_utf16_lossy(&u16s))
+    } else {
+        let start = if (bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+            3
+        } else {
+            0
+        };
+        Ok(String::from_utf8_lossy(&bytes[start..]).into_owned())
+    }
+}
+
+fn col(cells: &[String], header: &[String], name: &str) -> String {
+    header
+        .iter()
+        .position(|h| h == name)
+        .and_then(|i| cells.get(i))
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn list_csv_rows(path: String, limit: Option<usize>) -> Result<CsvRowList, String> {
+    let text = read_csv_text(&path)?;
+    let mut lines = text.lines();
+    let header_line = lines.next().ok_or("CSV is empty.")?.to_string();
+    let header = split_csv_line(&header_line);
+    if (!header.contains(&"Specdata".to_string())) {
+        return Err("Not a Data-table export (no Specdata column).".to_string());
+    }
+    let cap = limit.unwrap_or(ROW_LIST_CAP).min(ROW_LIST_CAP);
+    let mut rows = Vec::new();
+    for (index, line) in lines.enumerate() {
+        if (rows.len() >= cap) {
+            break;
+        }
+        if (line.trim().is_empty()) {
+            continue;
+        }
+        let cells = split_csv_line(line);
+        rows.push(CsvRowSummary {
+            index,
+            point_id: col(&cells, &header, "PointID"),
+            direction_id: col(&cells, &header, "DirectionID"),
+            meas_date: col(&cells, &header, "MeasDate"),
+            peak_v: col(&cells, &header, "ValuePeakMaxV"),
+            peak_freq: col(&cells, &header, "FreqPeakMaxV"),
+            rms_v: col(&cells, &header, "TotalRMSV"),
+            unit: col(&cells, &header, "Unit"),
+            no_lines: col(&cells, &header, "NoLines"),
+        });
+    }
+    Ok(CsvRowList { header, rows })
+}
+
+#[tauri::command]
+pub fn read_csv_row(path: String, index: usize) -> Result<CsvFullRow, String> {
+    let text = read_csv_text(&path)?;
+    let mut lines = text.lines();
+    let header_line = lines.next().ok_or("CSV is empty.")?.to_string();
+    let header = split_csv_line(&header_line);
+    let mut seen = 0usize;
+    for line in lines {
+        if (line.trim().is_empty()) {
+            continue;
+        }
+        if (seen == index) {
+            return Ok(CsvFullRow { header, cells: split_csv_line(line) });
+        }
+        seen += 1;
+    }
+    Err(format!("Row {index} out of range."))
+}

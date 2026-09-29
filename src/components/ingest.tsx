@@ -9,7 +9,10 @@ import { SpectraChart } from "./spectra-chart";
 
 const ACCEPT = ".sp3,.txt,.csv";
 
-export function Ingest({ onParsed }: { onParsed?: (r: ParseResult | null) => void }) {
+/** Head slice for huge files: enough for header + first rows (Spec path needs ~200KB). */
+const HEAD_SLICE = 4 * 1024 * 1024;
+
+export function Ingest({ onParsed }: { onParsed?: (r: ParseResult | null, file?: File) => void }) {
   const [result, setResult] = useState<ParseResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -21,10 +24,28 @@ export function Ingest({ onParsed }: { onParsed?: (r: ParseResult | null) => voi
       setError(null);
       setLoading(true);
       try {
-        const buf = await file.arrayBuffer();
-        const parsed = parseSp3(new Uint8Array(buf), file.name);
+        let parsed: ParseResult;
+        if (file.size > HEAD_SLICE) {
+          // Giant exports (100s of MB): preview-parse the head only. The
+          // measurement picker streams rows on demand, so nothing is lost.
+          const head = parseSp3(
+            new Uint8Array(await file.slice(0, HEAD_SLICE).arrayBuffer()),
+            file.name
+          );
+          parsed =
+            head.meta.source === "spec-csv"
+              ? {
+                  ...head,
+                  meta: { ...head.meta, size: file.size, extraRows: undefined },
+                  warning: undefined,
+                }
+              : parseSp3(new Uint8Array(await file.arrayBuffer()), file.name);
+        } else {
+          const buf = await file.arrayBuffer();
+          parsed = parseSp3(new Uint8Array(buf), file.name);
+        }
         setResult(parsed);
-        onParsed?.(parsed);
+        onParsed?.(parsed, file);
       } catch (e) {
         setResult(null);
         onParsed?.(null);

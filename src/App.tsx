@@ -11,6 +11,7 @@ import { HistoryTab } from "./components/history";
 import { Ingest } from "./components/ingest";
 import { LicenseCard } from "./components/license";
 import { MdbImportCard } from "./components/mdb-import";
+import { MeasurementPicker } from "./components/measurement-picker";
 import { ReportForm } from "./components/report-form";
 import { TelemetryCard } from "./components/telemetry";
 import { addHistoryEntry, makeEntry } from "./lib/history";
@@ -37,6 +38,7 @@ function App() {
   const [edited, setEdited] = useState<SpectraPoint[] | null>(null);
   const [branding, setBranding] = useState<Branding>(() => loadBranding());
   const [aiDraft, setAiDraft] = useState<AiDraftFields | null>(null);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
 
   useEffect(() => {
@@ -56,9 +58,17 @@ function App() {
     saveBranding(branding);
   }, [branding]);
 
-  const handleParsed = (r: ParseResult | null) => {
+  const handleParsed = (r: ParseResult | null, file: File | null = null) => {
     setParsed(r);
     setEdited(r ? r.spectra : null);
+    setAiDraft(null);
+    setCsvFile(r && r.meta.source === "spec-csv" ? file : null);
+  };
+
+  /** Switching measurements keeps the file/CSV source for further picks. */
+  const handlePicked = (r: ParseResult) => {
+    setParsed(r);
+    setEdited(r.spectra);
     setAiDraft(null);
   };
 
@@ -117,6 +127,23 @@ function App() {
         <TabsContent value="report" className="grid gap-4">
           <MdbImportCard onConverted={handleParsed} />
           <Ingest onParsed={handleParsed} />
+          {effective &&
+          (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
+            <MeasurementPicker
+              tauriPath={effective.meta.csvPath ?? null}
+              file={effective.meta.csvPath ? null : csvFile}
+              filename={effective.meta.filename}
+              current={
+                effective.meta.overall
+                  ? {
+                      pointId: effective.meta.overall.pointId,
+                      measDate: effective.meta.overall.measDate,
+                    }
+                  : null
+              }
+              onSelect={handlePicked}
+            />
+          ) : null}
           <ReportForm options={options} onChange={setOptions} />
           <AiDraftCard parsed={effective} options={options} draft={aiDraft} onChange={setAiDraft} />
           {effective ? (
