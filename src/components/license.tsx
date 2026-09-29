@@ -7,6 +7,7 @@ import {
   validateLicense,
   type LicenseRecord,
 } from "../lib/license";
+import { track } from "../lib/telemetry";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -29,8 +30,10 @@ export function LicenseCard() {
     try {
       const rec = await validateLicense(key);
       setRecord(rec);
-      if (rec.valid) toast.success("License valid.");
-      else toast.error(rec.reason);
+      if (rec.valid) {
+        void track("license_validated", {});
+        toast.success("License valid.");
+      } else toast.error(rec.reason);
     } finally {
       setBusy(false);
     }

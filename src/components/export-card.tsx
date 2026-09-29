@@ -4,6 +4,7 @@ import { buildDocx } from "../lib/generateDocx";
 import { fallbackDraft } from "../lib/ai";
 import type { ParseResult, ReportOptions } from "../lib/parseSp3";
 import { base64ToBytes, validateReportOptions, type Branding } from "../lib/settings";
+import { track } from "../lib/telemetry";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { toast } from "./ui/sonner";
@@ -67,8 +68,13 @@ export function ExportCard({
       const savedPath = await saveBlob(blob, filename);
       if (savedPath) setLastPath(savedPath);
       onExported?.({ filename, savedPath });
+      void track("report_generated", {
+        spectra_points: parsed.stats.spectra_points,
+        via: savedPath ? "tauri" : "web",
+      });
       toast.success(savedPath ? `Saved ${filename}` : `Downloaded ${filename}`);
     } catch (e) {
+      void track("report_failed", {});
       toast.error(e instanceof Error ? e.message : "Export failed.");
     } finally {
       setBusy(false);

@@ -10,6 +10,7 @@ import { HistoryTab } from "./components/history";
 import { Ingest } from "./components/ingest";
 import { LicenseCard } from "./components/license";
 import { ReportForm } from "./components/report-form";
+import { TelemetryCard } from "./components/telemetry";
 import { addHistoryEntry, makeEntry } from "./lib/history";
 import {
   computeStats,
@@ -24,6 +25,7 @@ import {
   saveReportOptions,
   type Branding,
 } from "./lib/settings";
+import { initCrashHooks, track } from "./lib/telemetry";
 
 function App() {
   const [dark, setDark] = useState(false);
@@ -37,6 +39,11 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  useEffect(() => {
+    initCrashHooks();
+    void track("app_started", {});
+  }, []);
 
   useEffect(() => {
     saveReportOptions(options);
@@ -141,6 +148,7 @@ function App() {
         </TabsContent>
         <TabsContent value="settings" className="grid gap-4">
           <LicenseCard />
+          <TelemetryCard />
         </TabsContent>
       </Tabs>
     </main>

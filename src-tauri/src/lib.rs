@@ -8,6 +8,10 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // S10: surface Rust panics via stderr (picked up by Tauri logs / crash reporter).
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("app panic: {info}");
+    }));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
