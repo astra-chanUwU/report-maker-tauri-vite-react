@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "./components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { DesignDemo } from "./components/demo";
+import { Ingest } from "./components/ingest";
+import type { ParseResult } from "./lib/parseSp3";
 
 function App() {
   const [dark, setDark] = useState(false);
+  const [parsed, setParsed] = useState<ParseResult | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -16,7 +20,9 @@ function App() {
         <div>
           <h1 className="text-xl font-semibold">Report Maker</h1>
           <p className="text-sm text-muted-foreground">
-            S01 design-system shell — S02+ builds on this.
+            {parsed
+              ? `${parsed.meta.filename} · ${parsed.stats.spectra_points} pts · peak ${parsed.stats.peak.amp} @ ${parsed.stats.peak.freq}`
+              : "Drop a .sp3 to begin."}
           </p>
         </div>
         <Button
@@ -28,7 +34,18 @@ function App() {
           {dark ? <Sun /> : <Moon />}
         </Button>
       </header>
-      <DesignDemo />
+      <Tabs defaultValue="report">
+        <TabsList>
+          <TabsTrigger value="report">Report</TabsTrigger>
+          <TabsTrigger value="design">Design</TabsTrigger>
+        </TabsList>
+        <TabsContent value="report">
+          <Ingest onParsed={setParsed} />
+        </TabsContent>
+        <TabsContent value="design">
+          <DesignDemo />
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
