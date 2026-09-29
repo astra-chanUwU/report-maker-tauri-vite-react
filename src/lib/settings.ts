@@ -74,3 +74,45 @@ export function validateReportOptions(o: ReportOptions): FormErrors {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(o.reportDate)) errors.reportDate = "Use ISO date yyyy-mm-dd.";
   return errors;
 }
+
+const BRANDING_KEY = "report-maker:branding:v1";
+
+export interface Branding {
+  /** PNG bytes as base64 (no data: prefix). Null when no logo. */
+  logoBase64: string | null;
+}
+
+export function loadBranding(): Branding {
+  try {
+    const raw = localStorage.getItem(BRANDING_KEY);
+    if (!raw) return { logoBase64: null };
+    const o = JSON.parse(raw) as Partial<Branding>;
+    return { logoBase64: typeof o.logoBase64 === "string" ? o.logoBase64 : null };
+  } catch {
+    return { logoBase64: null };
+  }
+}
+
+export function saveBranding(b: Branding): void {
+  try {
+    localStorage.setItem(BRANDING_KEY, JSON.stringify(b));
+  } catch {
+    // quota — keep in-memory only
+  }
+}
+
+export function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export function bytesToBase64(bytes: Uint8Array): string {
+  let s = "";
+  const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    s += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(s);
+}

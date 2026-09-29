@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { BrandingCard } from "./components/branding";
 import { ChartEditor } from "./components/chart-editor";
 import { DesignDemo } from "./components/demo";
 import { ExportCard } from "./components/export-card";
@@ -13,13 +14,20 @@ import {
   type ReportOptions,
   type SpectraPoint,
 } from "./lib/parseSp3";
-import { loadReportOptions, saveReportOptions } from "./lib/settings";
+import {
+  loadBranding,
+  loadReportOptions,
+  saveBranding,
+  saveReportOptions,
+  type Branding,
+} from "./lib/settings";
 
 function App() {
   const [dark, setDark] = useState(false);
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [options, setOptions] = useState<ReportOptions>(() => loadReportOptions());
   const [edited, setEdited] = useState<SpectraPoint[] | null>(null);
+  const [branding, setBranding] = useState<Branding>(() => loadBranding());
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -28,6 +36,10 @@ function App() {
   useEffect(() => {
     saveReportOptions(options);
   }, [options]);
+
+  useEffect(() => {
+    saveBranding(branding);
+  }, [branding]);
 
   const handleParsed = (r: ParseResult | null) => {
     setParsed(r);
@@ -78,7 +90,13 @@ function App() {
               onOptions={setOptions}
             />
           ) : null}
-          <ExportCard parsed={effective} options={options} />
+          <BrandingCard
+            options={options}
+            onOptions={setOptions}
+            branding={branding}
+            onBranding={setBranding}
+          />
+          <ExportCard parsed={effective} options={options} branding={branding} />
         </TabsContent>
         <TabsContent value="design">
           <DesignDemo />

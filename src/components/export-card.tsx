@@ -3,7 +3,7 @@ import { Download, FolderOpen } from "lucide-react";
 import { buildDocx } from "../lib/generateDocx";
 import { fallbackDraft } from "../lib/ai";
 import type { ParseResult, ReportOptions } from "../lib/parseSp3";
-import { validateReportOptions } from "../lib/settings";
+import { base64ToBytes, validateReportOptions, type Branding } from "../lib/settings";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { toast } from "./ui/sonner";
@@ -21,9 +21,11 @@ export function sanitizeFilename(name: string): string {
 export function ExportCard({
   parsed,
   options,
+  branding,
 }: {
   parsed: ParseResult | null;
   options: ReportOptions;
+  branding?: Branding;
 }) {
   const [busy, setBusy] = useState(false);
   const [lastPath, setLastPath] = useState<string | null>(null);
@@ -54,6 +56,10 @@ export function ExportCard({
         spectra: parsed.spectra,
         options: { ...options, pointLimit },
         aiDraft: draft,
+        templateId: options.templateId ?? "classic",
+        branding: branding?.logoBase64
+          ? { logoPng: base64ToBytes(branding.logoBase64) }
+          : undefined,
       });
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
       const savedPath = await saveBlob(blob, filename);

@@ -12,6 +12,7 @@ import {
   WidthType,
 } from "docx";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
+import { getTemplate } from "./templates";
 
 export interface BuildDocxInput {
   meta: Sp3Meta;
@@ -230,11 +231,51 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const rows = input.spectra.slice(0, Math.max(1, Math.min(limit, input.spectra.length)));
   const png = renderChartPng(input.spectra);
   const d = input.aiDraft;
+  const templateId = input.templateId ?? input.options.templateId ?? "classic";
+  const template = getTemplate(templateId);
+  const align =
+    template.coverStyle === "modern"
+      ? AlignmentType.LEFT
+      : template.coverStyle === "minimal"
+        ? AlignmentType.LEFT
+        : AlignmentType.CENTER;
 
-  const headerChildren: Paragraph[] = [
+  const headerChildren: Paragraph[] = [];
+  if (input.branding?.logoPng && input.branding.logoPng.length > 0) {
+    headerChildren.push(
+      new Paragraph({
+        children: [
+          new ImageRun({
+            data: input.branding.logoPng,
+            transformation: { width: 120, height: 60 },
+            type: "png",
+          }),
+        ],
+        alignment: align,
+      })
+    );
+  }
+  headerChildren.push(
     new Paragraph({
-      text: input.options.projectName || "Untitled report",
+      children: [
+        new TextRun({
+          text: input.options.projectName || "Untitled report",
+          bold: true,
+          size: 56,
+          color: template.accentHex,
+        }),
+      ],
       heading: HeadingLevel.TITLE,
+      alignment: align,
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `${template.name} template · ${input.options.reportDate || "—"}`,
+          color: template.accentHex,
+        }),
+      ],
+      alignment: align,
     }),
     new Paragraph({
       children: [
@@ -242,6 +283,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
           `Engineer: ${input.options.engineer || "—"}    Date: ${input.options.reportDate || "—"}    Units: ${input.options.units || "SI"}`
         ),
       ],
+      alignment: align,
     }),
     new Paragraph({
       children: [
@@ -249,8 +291,17 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
           `Source: ${input.meta.filename} (${input.meta.source}) · ${stats.spectra_points} points · peak ${stats.peak.amp} @ ${stats.peak.freq}`
         ),
       ],
-    }),
-  ];
+      alignment: align,
+    })
+  );
+  if (template.coverStyle === "minimal") {
+    headerChildren.push(
+      new Paragraph({
+        children: [new TextRun({ text: "—", color: template.accentHex })],
+        alignment: align,
+      })
+    );
+  }
 
   const table = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
