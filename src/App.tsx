@@ -8,6 +8,7 @@ import { DesignDemo } from "./components/demo";
 import { ExportCard } from "./components/export-card";
 import { HistoryTab } from "./components/history";
 import { Ingest } from "./components/ingest";
+import { LicenseCard } from "./components/license";
 import { ReportForm } from "./components/report-form";
 import { addHistoryEntry, makeEntry } from "./lib/history";
 import {
@@ -99,6 +100,7 @@ function App() {
         <TabsList>
           <TabsTrigger value="report">Report</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="design">Design</TabsTrigger>
         </TabsList>
         <TabsContent value="report" className="grid gap-4">
@@ -136,6 +138,9 @@ function App() {
         </TabsContent>
         <TabsContent value="design">
           <DesignDemo />
+        </TabsContent>
+        <TabsContent value="settings" className="grid gap-4">
+          <LicenseCard />
         </TabsContent>
       </Tabs>
     </main>
