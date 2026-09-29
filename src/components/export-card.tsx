@@ -22,10 +22,12 @@ export function ExportCard({
   parsed,
   options,
   branding,
+  onExported,
 }: {
   parsed: ParseResult | null;
   options: ReportOptions;
   branding?: Branding;
+  onExported?: (info: { filename: string; savedPath: string | null }) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [lastPath, setLastPath] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export function ExportCard({
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
       const savedPath = await saveBlob(blob, filename);
       if (savedPath) setLastPath(savedPath);
+      onExported?.({ filename, savedPath });
       toast.success(savedPath ? `Saved ${filename}` : `Downloaded ${filename}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Export failed.");

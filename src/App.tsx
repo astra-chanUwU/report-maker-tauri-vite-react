@@ -6,8 +6,10 @@ import { BrandingCard } from "./components/branding";
 import { ChartEditor } from "./components/chart-editor";
 import { DesignDemo } from "./components/demo";
 import { ExportCard } from "./components/export-card";
+import { HistoryTab } from "./components/history";
 import { Ingest } from "./components/ingest";
 import { ReportForm } from "./components/report-form";
+import { addHistoryEntry, makeEntry } from "./lib/history";
 import {
   computeStats,
   type ParseResult,
@@ -24,10 +26,12 @@ import {
 
 function App() {
   const [dark, setDark] = useState(false);
+  const [tab, setTab] = useState("report");
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [options, setOptions] = useState<ReportOptions>(() => loadReportOptions());
   const [edited, setEdited] = useState<SpectraPoint[] | null>(null);
   const [branding, setBranding] = useState<Branding>(() => loadBranding());
+  const [historyTick, setHistoryTick] = useState(0);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -54,6 +58,23 @@ function App() {
       }
     : null;
 
+  const handleExported = (info: { filename: string; savedPath: string | null }) => {
+    if (!effective) return;
+    const entry = makeEntry({
+      projectName: options.projectName,
+      engineer: options.engineer,
+      date: options.reportDate,
+      filename: info.filename,
+      savedPath: info.savedPath,
+      sourceFile: effective.meta.filename,
+      source: effective.meta.source,
+      spectraPoints: effective.stats.spectra_points,
+      peak: effective.stats.peak,
+      options,
+    });
+    void addHistoryEntry(entry).then(() => setHistoryTick((t) => t + 1));
+  };
+
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
       <header className="flex items-center justify-between">
@@ -74,9 +95,10 @@ function App() {
           {dark ? <Sun /> : <Moon />}
         </Button>
       </header>
-      <Tabs defaultValue="report">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="report">Report</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="design">Design</TabsTrigger>
         </TabsList>
         <TabsContent value="report" className="grid gap-4">
@@ -96,7 +118,21 @@ function App() {
             branding={branding}
             onBranding={setBranding}
           />
-          <ExportCard parsed={effective} options={options} branding={branding} />
+          <ExportCard
+            parsed={effective}
+            options={options}
+            branding={branding}
+            onExported={handleExported}
+          />
+        </TabsContent>
+        <TabsContent value="history">
+          <HistoryTab
+            key={historyTick}
+            onReopen={(o) => {
+              setOptions(o);
+              setTab("report");
+            }}
+          />
         </TabsContent>
         <TabsContent value="design">
           <DesignDemo />
