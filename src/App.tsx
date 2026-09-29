@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "./components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { AiDraftCard, AiSettingsCard, type AiDraftFields } from "./components/ai-draft";
 import { BrandingCard } from "./components/branding";
 import { ChartEditor } from "./components/chart-editor";
 import { DesignDemo } from "./components/demo";
@@ -34,6 +35,7 @@ function App() {
   const [options, setOptions] = useState<ReportOptions>(() => loadReportOptions());
   const [edited, setEdited] = useState<SpectraPoint[] | null>(null);
   const [branding, setBranding] = useState<Branding>(() => loadBranding());
+  const [aiDraft, setAiDraft] = useState<AiDraftFields | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
 
   useEffect(() => {
@@ -56,6 +58,7 @@ function App() {
   const handleParsed = (r: ParseResult | null) => {
     setParsed(r);
     setEdited(r ? r.spectra : null);
+    setAiDraft(null);
   };
 
   const effective = parsed
@@ -113,6 +116,7 @@ function App() {
         <TabsContent value="report" className="grid gap-4">
           <Ingest onParsed={handleParsed} />
           <ReportForm options={options} onChange={setOptions} />
+          <AiDraftCard parsed={effective} options={options} draft={aiDraft} onChange={setAiDraft} />
           {effective ? (
             <ChartEditor
               spectra={effective.spectra}
@@ -131,6 +135,7 @@ function App() {
             parsed={effective}
             options={options}
             branding={branding}
+            aiDraft={aiDraft}
             onExported={handleExported}
           />
         </TabsContent>
@@ -148,6 +153,7 @@ function App() {
         </TabsContent>
         <TabsContent value="settings" className="grid gap-4">
           <LicenseCard />
+          <AiSettingsCard />
           <TelemetryCard />
         </TabsContent>
       </Tabs>

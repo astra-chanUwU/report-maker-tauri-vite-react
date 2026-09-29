@@ -23,11 +23,19 @@ export function ExportCard({
   parsed,
   options,
   branding,
+  aiDraft,
   onExported,
 }: {
   parsed: ParseResult | null;
   options: ReportOptions;
   branding?: Branding;
+  aiDraft?: {
+    summary: string;
+    methodology: string;
+    observations: string;
+    recommendations: string;
+    conclusion: string;
+  } | null;
   onExported?: (info: { filename: string; savedPath: string | null }) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -48,12 +56,15 @@ export function ExportCard({
     setBusy(true);
     try {
       const pointLimit = Math.max(1, Math.min(options.pointLimit ?? 120, 500));
-      const draft = fallbackDraft({
-        meta: parsed.meta,
-        spectra: parsed.spectra,
-        options,
-        stats: parsed.stats,
-      });
+      const hasDraft = aiDraft && Object.values(aiDraft).some((v) => v.trim());
+      const draft = hasDraft
+        ? aiDraft
+        : fallbackDraft({
+            meta: parsed.meta,
+            spectra: parsed.spectra,
+            options,
+            stats: parsed.stats,
+          });
       const blob = await buildDocx({
         meta: parsed.meta,
         spectra: parsed.spectra,
