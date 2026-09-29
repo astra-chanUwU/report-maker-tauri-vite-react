@@ -35,6 +35,8 @@ export interface Sp3Meta {
   overall?: OverallValues;
   /** Extra measurements in the file beyond the one shown (Spec CSV exports). */
   extraRows?: number;
+  /** Temp CSV path from mdb-export conversion (Tauri only; for row re-reads). */
+  csvPath?: string;
 }
 
 export interface Sp3Stats {
@@ -159,7 +161,7 @@ export function parseSp3(input: Uint8Array | ArrayBuffer, filename: string): Par
       spectra,
       stats: computeStats(spectra),
       warning:
-        "Jet MDB database detected (.sp3 is MS Access format) — browsers can't read it directly. Export the Data table to CSV (mdb-export file.sp3 Data > data.csv) and drop the CSV instead. Showing synthetic preview.",
+        "Jet MDB database detected (.sp3 is MS Access format) — browsers can't read it directly. In the desktop app use 'Open .sp3 file' to convert automatically, or export the Data table to CSV (mdb-export file.sp3 Data > data.csv) and drop the CSV instead. Showing synthetic preview.",
     };
   }
 

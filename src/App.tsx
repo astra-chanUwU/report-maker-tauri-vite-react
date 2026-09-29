@@ -10,6 +10,7 @@ import { ExportCard } from "./components/export-card";
 import { HistoryTab } from "./components/history";
 import { Ingest } from "./components/ingest";
 import { LicenseCard } from "./components/license";
+import { MdbImportCard } from "./components/mdb-import";
 import { ReportForm } from "./components/report-form";
 import { TelemetryCard } from "./components/telemetry";
 import { addHistoryEntry, makeEntry } from "./lib/history";
@@ -114,6 +115,7 @@ function App() {
           <TabsTrigger value="design">Design</TabsTrigger>
         </TabsList>
         <TabsContent value="report" className="grid gap-4">
+          <MdbImportCard onConverted={handleParsed} />
           <Ingest onParsed={handleParsed} />
           <ReportForm options={options} onChange={setOptions} />
           <AiDraftCard parsed={effective} options={options} draft={aiDraft} onChange={setAiDraft} />

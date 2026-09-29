@@ -117,6 +117,38 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
+const MDB_TOOL_KEY = "report-maker:mdb-tool:v1";
+
+/** In-memory fallback when localStorage is unavailable (Node tests, SSR). */
+const memStore = new Map<string, string>();
+
+function lsGet(key: string): string | null {
+  try {
+    if (typeof localStorage === "undefined") return memStore.get(key) ?? null;
+    return localStorage.getItem(key);
+  } catch {
+    return memStore.get(key) ?? null;
+  }
+}
+
+function lsSet(key: string, value: string): void {
+  try {
+    if (typeof localStorage === "undefined") memStore.set(key, value);
+    else localStorage.setItem(key, value);
+  } catch {
+    memStore.set(key, value);
+  }
+}
+
+/** Explicit mdb-export binary path override ("" = auto: settings → env → PATH). */
+export function loadMdbToolPath(): string {
+  return lsGet(MDB_TOOL_KEY) ?? "";
+}
+
+export function saveMdbToolPath(p: string): void {
+  lsSet(MDB_TOOL_KEY, p);
+}
+
 const AI_KEY = "report-maker:ai:v1";
 
 export interface AiSettings {

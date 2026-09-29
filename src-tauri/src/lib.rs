@@ -1,5 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod license;
+mod mdb;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -17,7 +18,12 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![greet, license::validate_license])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            license::validate_license,
+            mdb::mdb_tool_status,
+            mdb::export_mdb_csv
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
