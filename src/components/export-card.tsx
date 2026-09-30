@@ -255,6 +255,11 @@ export function ExportCard({
                   lastReport: e.lastReport || (e.name === options.equipmentName ? lastReport : e.lastReport),
                   problems: e.problems || draft.observations,
                   corrective: e.corrective || draft.recommendations,
+                  summary: e.summary,
+                  methodology: e.methodology,
+                  observations: e.observations,
+                  recommendations: e.recommendations,
+                  conclusion: e.conclusion,
                   vib,
                 };
               })

@@ -179,6 +179,12 @@ export interface BuildDocxInput {
     lastReport?: string;
     problems?: string;
     corrective?: string;
+    /** Per-machine condition narrative. Headings print only when that field has text. */
+    summary?: string;
+    methodology?: string;
+    observations?: string;
+    recommendations?: string;
+    conclusion?: string;
     /** Vib slice for this machine (filtered PointIDs). */
     vib?: {
       limits: ZoneLimitSet;
@@ -357,6 +363,38 @@ function equipmentSection(
     );
   }
   return out;
+}
+
+const NARRATIVE_KEYS = ["summary", "methodology", "observations", "recommendations", "conclusion"] as const;
+
+type NarrativeSource = {
+  summary?: string;
+  methodology?: string;
+  observations?: string;
+  recommendations?: string;
+  conclusion?: string;
+};
+
+function narrativeFilled(src?: NarrativeSource | null): boolean {
+  if (!src) return false;
+  return NARRATIVE_KEYS.some((key) => (src[key] ?? "").trim().length > 0);
+}
+
+/** Headings print only for fields that have text. Keys match sectionTitle() so Farsi stays translated. */
+function appendConditionNarrative(
+  out: (Paragraph | Table)[],
+  src: NarrativeSource | null | undefined,
+  lang: "en" | "fa"
+): void {
+  if (!src) return;
+  for (const key of NARRATIVE_KEYS) {
+    const text = (src[key] ?? "").trim();
+    if (!text) continue;
+    out.push(
+      docParagraph({ text: sectionTitle(lang, key), heading: HeadingLevel.HEADING_2 }),
+      docParagraph(text)
+    );
+  }
 }
 
 /** Bookmark id for equipment N (1-based index in the TOC). Word names cannot contain spaces. */
@@ -711,6 +749,9 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     }
   };
   const perMachineVib = !!multi?.some((e) => e.vib && e.vib.rows.length > 0);
+  const soleMachine = multi?.length === 1 ? multi[0] : undefined;
+  const placeSharedOnSole = !!soleMachine && !narrativeFilled(soleMachine) && narrativeFilled(d);
+  const omitSharedNarrative = !!soleMachine && (narrativeFilled(soleMachine) || placeSharedOnSole);
   if (multi) {
     multi.forEach((eq, i) => {
       const n = i + 1;
@@ -736,16 +777,19 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         if (eq.vib.trends) pushTrends(eq.vib.trends, sectionBookmarkId(n, "trends"));
         if (eq.vib.fft) pushFft(eq.vib.fft, HeadingLevel.HEADING_2, sectionBookmarkId(n, "fft"));
       }
+      appendConditionNarrative(children, placeSharedOnSole ? d : eq, lang);
     });
   } else {
     children.push(...equipmentSection(input.equipment, lang));
   }
+  if (!omitSharedNarrative) {
     children.push(
-    docParagraph({ text: sectionTitle(lang, "summary"), heading: HeadingLevel.HEADING_1 }),
-    docParagraph(
-      d?.summary ?? `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
-    ),
-  );
+      docParagraph({ text: sectionTitle(lang, "summary"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph(
+        d?.summary ?? `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
+      )
+    );
+  }
 
   const overall = input.meta.overall;
   if (overall) {
@@ -870,7 +914,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     }
   }
 
-  if (d) {
+  if (d && !omitSharedNarrative) {
     children.push(
       docParagraph({ text: sectionTitle(lang, "methodology"), heading: HeadingLevel.HEADING_1 }),
       docParagraph(d.methodology),

@@ -111,6 +111,133 @@ describe("equipments + toc", () => {
     expect(a).toBeLessThan(fan);
   }, 30000);
 
+  it("prints one machine's narrative in that section and keeps the shared essay once", async () => {
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n"), "a.sp3");
+    const png = renderChartPng(parsed.spectra);
+    const base = {
+      projectName: "P",
+      engineer: "E",
+      reportDate: "2026-09-30",
+      units: "SI",
+      norm: "Default",
+      notes: "",
+      includeToc: false,
+    };
+    const blob = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: base,
+      aiDraft: {
+        summary: "SHARED-SUMMARY",
+        methodology: "SHARED-METHOD",
+        observations: "SHARED-OBS",
+        recommendations: "SHARED-REC",
+        conclusion: "SHARED-END",
+      },
+      branding: { signature: { data: png, kind: "png" } },
+      equipments: [
+        {
+          name: "Pump A",
+          observations: "NARR-M1-OBS",
+          vib: {
+            limits: DEFAULT_ZONE_LIMITS,
+            rows: [],
+            fft: [{ label: "P1 V only-on-a", png }],
+          },
+        },
+        {
+          name: "Fan B",
+          vib: {
+            limits: DEFAULT_ZONE_LIMITS,
+            rows: [],
+            fft: [{ label: "P2 H only-on-b", png }],
+          },
+        },
+      ],
+    });
+    const JSZip = (await import("jszip")).default;
+    const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file("word/document.xml")!.async("string");
+    const count = (token: string) => xml.split(token).length - 1;
+    const a = xml.indexOf("only-on-a");
+    const narr = xml.indexOf("NARR-M1-OBS");
+    const fan = xml.indexOf("Fan B");
+    const b = xml.indexOf("only-on-b");
+    const shared = xml.indexOf("SHARED-SUMMARY");
+    const sharedEnd = xml.indexOf("SHARED-END");
+    const iso = xml.indexOf("ISO 10816-3 standards");
+    const approval = xml.indexOf("Approval");
+    expect(count("NARR-M1-OBS")).toBe(1);
+    expect(narr).toBeGreaterThan(a);
+    expect(narr).toBeLessThan(fan);
+    expect(b).toBeGreaterThan(fan);
+    expect(count("SHARED-SUMMARY")).toBe(1);
+    expect(count("SHARED-METHOD")).toBe(1);
+    expect(count("SHARED-OBS")).toBe(1);
+    expect(shared).toBeGreaterThan(b);
+    expect(xml.indexOf("SHARED-METHOD")).toBeGreaterThan(b);
+    const machine2 = xml.slice(fan, shared);
+    expect(machine2).not.toContain("NARR-M1-OBS");
+    expect(machine2).not.toContain("SHARED-METHOD");
+    expect(iso).toBeGreaterThan(sharedEnd);
+    expect(count("ISO 10816-3 standards")).toBe(1);
+    expect(approval).toBeGreaterThan(iso);
+    expect(count("Approval")).toBe(1);
+  }, 30000);
+
+  it("folds an empty single machine onto the shared draft and does not repeat it", async () => {
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n"), "a.sp3");
+    const png = renderChartPng(parsed.spectra);
+    const base = {
+      projectName: "P",
+      engineer: "E",
+      reportDate: "2026-09-30",
+      units: "SI",
+      norm: "Default",
+      notes: "",
+      includeToc: false,
+    };
+    const blob = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: { ...base, language: "fa" },
+      aiDraft: {
+        summary: "SOLE-SUMMARY",
+        methodology: "SOLE-METHOD",
+        observations: "SOLE-OBS",
+        recommendations: "SOLE-REC",
+        conclusion: "SOLE-END",
+      },
+      branding: { signature: { data: png, kind: "png" } },
+      equipments: [
+        {
+          name: "Pump A",
+          vib: {
+            limits: DEFAULT_ZONE_LIMITS,
+            rows: [],
+            fft: [{ label: "P1 V only-on-a", png }],
+          },
+        },
+      ],
+    });
+    const JSZip = (await import("jszip")).default;
+    const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file("word/document.xml")!.async("string");
+    const count = (token: string) => xml.split(token).length - 1;
+    const a = xml.indexOf("only-on-a");
+    const summary = xml.indexOf("SOLE-SUMMARY");
+    const end = xml.indexOf("SOLE-END");
+    const iso = xml.indexOf("جدول استاندارد ISO 10816-3");
+    expect(count("SOLE-SUMMARY")).toBe(1);
+    expect(count("SOLE-METHOD")).toBe(1);
+    expect(summary).toBeGreaterThan(a);
+    expect(end).toBeGreaterThan(summary);
+    expect(xml.indexOf("خلاصه")).toBeGreaterThan(a);
+    expect(xml.indexOf("خلاصه")).toBeLessThan(summary);
+    expect(iso).toBeGreaterThan(end);
+    expect(count("جدول استاندارد ISO 10816-3")).toBe(1);
+    expect(xml.indexOf("تأیید")).toBeGreaterThan(iso);
+    expect(count("تأیید")).toBe(1);
+  }, 30000);
+
   it("letterhead + fa + galleries grow docx", async () => {
     const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n"), "a.sp3");
     const base = {

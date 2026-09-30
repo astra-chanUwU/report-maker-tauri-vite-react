@@ -17,6 +17,12 @@ export interface EquipmentItem {
   pointIds?: string[];
   /** "pointId directionId" → brochure label such as "P1 V". */
   labels?: Record<string, string>;
+  /** Per-machine condition narrative. Empty stays out of that section. */
+  summary?: string;
+  methodology?: string;
+  observations?: string;
+  recommendations?: string;
+  conclusion?: string;
 }
 
 export const EQUIPMENT_STATUSES = ["Healthy", "Alert", "Danger", "Shutdown"] as const;
@@ -43,6 +49,11 @@ export function makeEquipment(partial: Partial<EquipmentItem> = {}): EquipmentIt
     machineId: partial.machineId ?? null,
     pointIds: partial.pointIds ?? [],
     labels: partial.labels ?? {},
+    summary: partial.summary ?? "",
+    methodology: partial.methodology ?? "",
+    observations: partial.observations ?? "",
+    recommendations: partial.recommendations ?? "",
+    conclusion: partial.conclusion ?? "",
   };
 }
 

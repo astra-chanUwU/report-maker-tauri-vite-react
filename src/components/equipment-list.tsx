@@ -155,6 +155,26 @@ export function EquipmentList({
                   <Label>Corrective actions</Label>
                   <Textarea value={e.corrective} onChange={(ev) => patch(e.id, { corrective: ev.target.value })} rows={2} />
                 </div>
+                <div className="grid gap-1">
+                  <Label>Summary</Label>
+                  <Textarea value={e.summary ?? ""} onChange={(ev) => patch(e.id, { summary: ev.target.value })} rows={2} />
+                </div>
+                <div className="grid gap-1">
+                  <Label>Methodology</Label>
+                  <Textarea value={e.methodology ?? ""} onChange={(ev) => patch(e.id, { methodology: ev.target.value })} rows={2} />
+                </div>
+                <div className="grid gap-1">
+                  <Label>Observations</Label>
+                  <Textarea value={e.observations ?? ""} onChange={(ev) => patch(e.id, { observations: ev.target.value })} rows={2} />
+                </div>
+                <div className="grid gap-1">
+                  <Label>Recommendations</Label>
+                  <Textarea value={e.recommendations ?? ""} onChange={(ev) => patch(e.id, { recommendations: ev.target.value })} rows={2} />
+                </div>
+                <div className="grid gap-1">
+                  <Label>Conclusion</Label>
+                  <Textarea value={e.conclusion ?? ""} onChange={(ev) => patch(e.id, { conclusion: ev.target.value })} rows={2} />
+                </div>
                 <div className="flex gap-2">
                   <Button
                     type="button"
