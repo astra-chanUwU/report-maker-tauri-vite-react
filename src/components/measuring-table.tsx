@@ -10,7 +10,7 @@ import {
   ZONE_TEXT,
   type ZoneLimitSet,
 } from "../lib/zones";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Panel } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { toast } from "./ui/sonner";
 
@@ -83,24 +83,40 @@ export function MeasuringTable({
 
   if (!tauriPath && !file) return null;
   const shown = (rows ?? []).slice(0, DISPLAY_CAP);
+  const counts: Record<string, number> = { A: 0, B: 0, U: 0, C: 0 };
+  for (const r of rows ?? []) {
+    const z = classifyZone(r.rmsV, limits.velocity);
+    if (z in counts) counts[z]++;
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Gauge className="h-4 w-4" />
-          Measuring results
-        </CardTitle>
-        <CardDescription>
-          {loading
-            ? "Reading…"
-            : rows
-              ? `${rows.length} measurements · V Zone (${limitsShort(limits.velocity)})`
-              : ""}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Table>
+    <Panel
+      icon={<Gauge />}
+      title="Measuring results"
+      description={
+        loading
+          ? "Reading…"
+          : rows
+            ? `${rows.length.toLocaleString()} measurements · velocity zones ${limitsShort(limits.velocity)}`
+            : ""
+      }
+      actions={
+        rows && rows.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5" aria-label="Velocity zone counts">
+            {Object.entries(counts).map(([z, n]) =>
+              n > 0 ? (
+                <span key={z} className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <ZoneBadge zone={z} />
+                  {n}
+                </span>
+              ) : null
+            )}
+          </div>
+        ) : null
+      }
+    >
+      <div className="overflow-hidden rounded-md border">
+        <Table containerClassName="max-h-[min(60vh,560px)]">
           <TableHeader>
             <TableRow>
               <TableHead>#</TableHead>
@@ -120,7 +136,7 @@ export function MeasuringTable({
               const zoneA = classifyZone(r.rmsA, limits.acceleration);
               return (
                 <TableRow key={r.index}>
-                  <TableCell>{r.index + 1}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.index + 1}</TableCell>
                   <TableCell>
                     {r.pointId || "?"} {r.directionId ? `/ ${r.directionId}` : ""}
                   </TableCell>
@@ -140,12 +156,13 @@ export function MeasuringTable({
             })}
           </TableBody>
         </Table>
-        {rows && rows.length > DISPLAY_CAP ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Showing first {DISPLAY_CAP} of {rows.length} — the .docx export includes all.
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
+      </div>
+      {rows && rows.length > DISPLAY_CAP ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Showing first {DISPLAY_CAP} of {rows.length.toLocaleString()}. The Word report includes
+          all of them.
+        </p>
+      ) : null}
+    </Panel>
   );
 }

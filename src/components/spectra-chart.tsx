@@ -2,9 +2,7 @@ import { useMemo } from "react";
 import { useUi } from "../lib/i18n";
 import type { SpectraPoint } from "../lib/parseSp3";
 import { previewPeakMarks } from "./spectra-chart-peaks";
-
-const W = 600;
-const H = 240;
+import { useElementWidth } from "./ui/use-width";
 
 export function SpectraChart({
   spectra,
@@ -16,6 +14,8 @@ export function SpectraChart({
   highlightPeak?: boolean;
 }) {
   const { t } = useUi();
+  const [wrapRef, W] = useElementWidth<HTMLDivElement>(600);
+  const H = height;
   const model = useMemo(() => {
     if (spectra.length === 0) return null;
     const pts = spectra.length > 500 ? downsample(spectra, 500) : spectra;
@@ -44,7 +44,7 @@ export function SpectraChart({
       path: pts.map((p) => `${X(p.freq).toFixed(1)},${Y(p.amp).toFixed(1)}`).join(" "),
       peaks,
     };
-  }, [spectra]);
+  }, [spectra, W, H]);
 
   if (!model) {
     return (
@@ -57,55 +57,64 @@ export function SpectraChart({
   const peakSummary = model.peaks.map((p) => p.label).join(", ");
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="w-full rounded-lg border bg-card"
-      style={{ height }}
-      role="img"
-      aria-label={`Spectra preview chart — ${spectra.length} points, peaks ${peakSummary}`}
-    >
-      <title>Spectra preview</title>
-      <desc>
-        {spectra.length} points, peaks {peakSummary}
-      </desc>
-      {[0.25, 0.5, 0.75].map((t) => (
+    <div ref={wrapRef}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="block w-full rounded-md border bg-card"
+        style={{ height }}
+        role="img"
+        aria-label={`Spectra preview chart — ${spectra.length} points, peaks ${peakSummary}`}
+      >
+        <title>Spectra preview</title>
+        <desc>
+          {spectra.length} points, peaks {peakSummary}
+        </desc>
+        {[0.25, 0.5, 0.75].map((t) => (
+          <line
+            key={t}
+            x1={40}
+            x2={W - 10}
+            y1={H * t}
+            y2={H * t}
+            stroke="currentColor"
+            strokeOpacity={0.12}
+          />
+        ))}
+        <line x1={40} x2={40} y1={10} y2={H - 30} stroke="currentColor" strokeOpacity={0.3} />
         <line
-          key={t}
           x1={40}
           x2={W - 10}
-          y1={H * t}
-          y2={H * t}
+          y1={H - 30}
+          y2={H - 30}
           stroke="currentColor"
-          strokeOpacity={0.12}
+          strokeOpacity={0.3}
         />
-      ))}
-      <line x1={40} x2={40} y1={10} y2={H - 30} stroke="currentColor" strokeOpacity={0.3} />
-      <line x1={40} x2={W - 10} y1={H - 30} y2={H - 30} stroke="currentColor" strokeOpacity={0.3} />
-      <polyline
-        points={model.path}
-        fill="none"
-        stroke="#2563eb"
-        strokeWidth={2}
-        strokeLinejoin="round"
-      />
-      {highlightPeak
-        ? model.peaks.map((peak) => (
-            <g key={`${peak.index}-${peak.freq}`}>
-              <circle cx={peak.x} cy={peak.y} r={4} fill="#dc2626" />
-              <text
-                x={peak.x}
-                y={peak.labelY}
-                textAnchor="middle"
-                fill="#dc2626"
-                fontSize={11}
-                fontFamily="ui-sans-serif, system-ui, sans-serif"
-              >
-                {peak.label}
-              </text>
-            </g>
-          ))
-        : null}
-    </svg>
+        <polyline
+          points={model.path}
+          fill="none"
+          stroke="#2563eb"
+          strokeWidth={2}
+          strokeLinejoin="round"
+        />
+        {highlightPeak
+          ? model.peaks.map((peak) => (
+              <g key={`${peak.index}-${peak.freq}`}>
+                <circle cx={peak.x} cy={peak.y} r={4} fill="#dc2626" />
+                <text
+                  x={peak.x}
+                  y={peak.labelY}
+                  textAnchor="middle"
+                  fill="#dc2626"
+                  fontSize={11}
+                  fontFamily="ui-sans-serif, system-ui, sans-serif"
+                >
+                  {peak.label}
+                </text>
+              </g>
+            ))
+          : null}
+      </svg>
+    </div>
   );
 }
 

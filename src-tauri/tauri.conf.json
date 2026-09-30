@@ -13,10 +13,11 @@
     "windows": [
       {
         "title": "Report Maker",
-        "width": 960,
+        "width": 1280,
         "height": 680,
-        "minWidth": 760,
-        "minHeight": 540,
+        "minWidth": 860,
+        "minHeight": 560,
+        "center": true,
         "resizable": true
       }
     ],

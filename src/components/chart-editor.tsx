@@ -1,16 +1,18 @@
 import { useMemo, useRef, useState } from "react";
 import type { ReportOptions, SpectraPoint } from "../lib/parseSp3";
+import { LineChart } from "lucide-react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Panel } from "./ui/card";
+import { Select } from "./ui/form";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { useElementWidth } from "./ui/use-width";
 
-const W = 600;
-const H = 240;
+const H = 340;
 const EDIT_CAP = 120;
 
-function scaleModel(pts: SpectraPoint[]) {
+function scaleModel(pts: SpectraPoint[], W: number) {
   let fMin = Infinity;
   let fMax = -Infinity;
   let aMin = Infinity;
@@ -64,6 +66,7 @@ export function ChartEditor({
   const [smooth, setSmooth] = useState(1);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const [wrapRef, W] = useElementWidth<HTMLDivElement>(600);
 
   const editIdx = useMemo(() => {
     if (spectra.length <= EDIT_CAP) return spectra.map((_, i) => i);
@@ -73,8 +76,8 @@ export function ChartEditor({
 
   const editPts = useMemo(() => editIdx.map((i) => spectra[i]), [editIdx, spectra]);
   const model = useMemo(
-    () => scaleModel(editPts.length > 0 ? editPts : spectra),
-    [editPts, spectra]
+    () => scaleModel(editPts.length > 0 ? editPts : spectra, W),
+    [editPts, spectra, W]
   );
   const peak = useMemo(() => {
     if (spectra.length === 0) return null;
@@ -84,14 +87,7 @@ export function ChartEditor({
   }, [spectra]);
 
   if (spectra.length === 0 || !model) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Edit chart</CardTitle>
-          <CardDescription>Drop a file above to enable editing.</CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return <Panel title="Spectrum editor" description="Load measurement data to enable editing." />;
   }
 
   const path = editPts
@@ -118,20 +114,70 @@ export function ChartEditor({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Edit chart</CardTitle>
-        <CardDescription>
-          Drag points or edit cells — preview, table and exported .docx update together. In-memory
-          only.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
+    <Panel
+      icon={<LineChart />}
+      title="Spectrum editor"
+      description="Drag points vertically or edit values in the table. Preview and report update together."
+      actions={
+        <>
+          <Label htmlFor="smooth" className="text-muted-foreground">
+            Smoothing
+          </Label>
+          <Select
+            id="smooth"
+            className="w-auto"
+            value={smooth}
+            onChange={(e) => setSmooth(Number(e.target.value))}
+          >
+            {[1, 3, 5, 7].map((w) => (
+              <option key={w} value={w}>
+                {w === 1 ? "Off" : `±${Math.floor(w / 2)} (w=${w})`}
+              </option>
+            ))}
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={smooth <= 1}
+            onClick={() => onChange(movingAverage(spectra, smooth))}
+          >
+            Apply
+          </Button>
+          <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+          <Label htmlFor="point-limit" className="text-muted-foreground">
+            Table rows in report
+          </Label>
+          <Select
+            id="point-limit"
+            className="w-auto"
+            value={options.pointLimit ?? 120}
+            onChange={(e) => onOptions({ ...options, pointLimit: Number(e.target.value) })}
+          >
+            {[80, 120, 400].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </Select>
+          <label className="flex items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={showPeak}
+              onChange={(e) => setShowPeak(e.target.checked)}
+            />
+            Peak
+          </label>
+        </>
+      }
+      contentClassName="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]"
+    >
+      <div ref={wrapRef} className="grid min-w-0 content-start gap-2">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
-          className="w-full touch-none rounded-lg border bg-card"
-          style={{ height: 220 }}
+          className="block w-full touch-none rounded-md border bg-card"
+          style={{ height: H }}
           onMouseMove={onSvgMove}
           onMouseUp={() => setDragIdx(null)}
           onMouseLeave={() => setDragIdx(null)}
@@ -200,61 +246,18 @@ export function ChartEditor({
             />
           ))}
         </svg>
+        <p className="text-xs text-muted-foreground">
+          {spectra.length.toLocaleString()} points · {editIdx.length} drag handles
+          {peak ? ` · peak ${peak.amp} @ ${peak.freq}` : ""}. Arrow keys nudge the focused handle.
+        </p>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="smooth">Smoothing</Label>
-            <select
-              id="smooth"
-              className="h-8 rounded-md border border-input bg-background px-2"
-              value={smooth}
-              onChange={(e) => setSmooth(Number(e.target.value))}
-            >
-              {[1, 3, 5, 7].map((w) => (
-                <option key={w} value={w}>
-                  {w === 1 ? "Off" : `±${Math.floor(w / 2)} (w=${w})`}
-                </option>
-              ))}
-            </select>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={smooth <= 1}
-              onClick={() => onChange(movingAverage(spectra, smooth))}
-            >
-              Apply
-            </Button>
-          </div>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={showPeak}
-              onChange={(e) => setShowPeak(e.target.checked)}
-            />
-            Peak highlight
-          </label>
-          <div className="flex items-center gap-2">
-            <Label htmlFor="point-limit">Points</Label>
-            <select
-              id="point-limit"
-              className="h-8 rounded-md border border-input bg-background px-2"
-              value={options.pointLimit ?? 120}
-              onChange={(e) => onOptions({ ...options, pointLimit: Number(e.target.value) })}
-            >
-              {[80, 120, 400].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="max-h-64 overflow-auto rounded-lg border">
-          <Table>
+      <div className="grid content-start gap-2">
+        <div className="overflow-hidden rounded-md border">
+          <Table containerClassName="max-h-[340px]">
             <TableHeader>
               <TableRow>
-                <TableHead>#</TableHead>
+                <TableHead className="w-10">#</TableHead>
                 <TableHead>Freq</TableHead>
                 <TableHead>Amp</TableHead>
               </TableRow>
@@ -262,8 +265,8 @@ export function ChartEditor({
             <TableBody>
               {editIdx.slice(0, 60).map((origIdx, k) => (
                 <TableRow key={origIdx}>
-                  <TableCell>{k + 1}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-muted-foreground">{k + 1}</TableCell>
+                  <TableCell className="py-1">
                     <Input
                       type="number"
                       className="h-7"
@@ -272,7 +275,7 @@ export function ChartEditor({
                       onBlur={(e) => setCell(origIdx, "freq", e.target.value)}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-1">
                     <Input
                       type="number"
                       step="0.001"
@@ -288,10 +291,9 @@ export function ChartEditor({
           </Table>
         </div>
         <p className="text-xs text-muted-foreground">
-          Editing first {Math.min(60, editIdx.length)} of {spectra.length} points (chart handles
-          capped at {EDIT_CAP}).
+          Table edits the first {Math.min(60, editIdx.length)} handles.
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

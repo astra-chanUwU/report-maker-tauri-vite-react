@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Download, FolderOpen } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, FolderOpen, Loader2 } from "lucide-react";
 import { renderChartPng } from "../lib/generateDocx";
 import { fallbackDraft } from "../lib/ai";
 import type { EquipmentItem } from "../lib/equipment";
@@ -20,7 +20,6 @@ import { track } from "../lib/telemetry";
 import { buildAllTrendSnapshots, groupHistories } from "../lib/trends";
 import { DEFAULT_ZONE_LIMITS, type ZoneLimitSet } from "../lib/zones";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { toast } from "./ui/sonner";
 import { useUi } from "../lib/i18n";
 
@@ -41,7 +40,8 @@ export function sanitizeFilename(name: string): string {
   return clean || "report";
 }
 
-export function ExportCard({
+export function ExportControls({
+  onBlocked,
   parsed,
   options,
   branding,
@@ -54,6 +54,8 @@ export function ExportCard({
   tauriPath,
   csvFile,
 }: {
+  /** Called instead of exporting when data or required fields are missing. */
+  onBlocked?: () => void;
   parsed: ParseResult | null;
   options: ReportOptions;
   branding?: Branding;
@@ -83,15 +85,17 @@ export function ExportCard({
   const [lastPath, setLastPath] = useState<string | null>(null);
 
   const errors = validateReportOptions(options);
-  const canExport = parsed !== null && Object.keys(errors).length === 0 && !busy;
 
   const handleExport = async () => {
+    if (busy) return;
     if (!parsed) {
       toast.error(t("dropFirst"));
+      onBlocked?.();
       return;
     }
     if (Object.keys(errors).length > 0) {
       toast.error(t("fillRequired"));
+      onBlocked?.();
       return;
     }
     setBusy(true);
@@ -329,48 +333,55 @@ export function ExportCard({
     }
   };
 
+  const exportRef = useRef(handleExport);
+  exportRef.current = handleExport;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        void exportRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate || "YYYY-MM-DD"}.docx`;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("export")}</CardTitle>
-        <CardDescription>{t("exportHint")}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-2">
+    <div className="flex items-center gap-2">
+      {lastPath ? (
         <Button
-          onClick={handleExport}
-          disabled={!canExport}
-          aria-busy={busy}
-          aria-label={busy ? t("generating") : t("generate")}
+          variant="ghost"
+          size="sm"
+          onClick={handleReveal}
+          title={lastPath}
+          aria-label="Show exported file in folder"
         >
-          <Download aria-hidden="true" />
-          {busy ? t("reading") : t("generate")}
+          <FolderOpen aria-hidden="true" />
+          <span className="hidden xl:inline">{t("reveal")}</span>
         </Button>
-        {lastPath ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReveal}
-            aria-label="Reveal exported file in folder"
-          >
-            <FolderOpen aria-hidden="true" />
-            {t("reveal")}
-          </Button>
+      ) : null}
+      <Button
+        onClick={() => void handleExport()}
+        aria-busy={busy}
+        aria-label={busy ? t("generating") : t("generate")}
+        title={`${t("generate")} (Ctrl+E) → ${filename}`}
+        className="min-w-36"
+      >
+        {busy ? (
+          <Loader2 className="animate-spin" aria-hidden="true" />
+        ) : (
+          <Download aria-hidden="true" />
+        )}
+        {busy ? t("generating") : t("generate")}
+        {!busy ? (
+          <kbd className="ms-1 hidden rounded bg-primary-foreground/15 px-1 font-sans text-[10px] font-medium lg:inline">
+            Ctrl+E
+          </kbd>
         ) : null}
-        {!parsed ? (
-          <p className="text-xs text-muted-foreground">Drop a file to enable export.</p>
-        ) : null}
-        {parsed ? (
-          <p className="text-xs text-muted-foreground" aria-live="polite">
-            Will save as{" "}
-            <code>
-              {sanitizeFilename(options.projectName) || "report"}-
-              {options.reportDate || "YYYY-MM-DD"}.docx
-            </code>{" "}
-            — Tauri save dialog when available, otherwise download.
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
+      </Button>
+    </div>
   );
 }
 

@@ -1,279 +1,452 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ChevronDown,
+  DatabaseZap,
+  FileUp,
+  FlaskConical,
+  Loader2,
+  RefreshCw,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { useUi } from "../lib/i18n";
-import { FileUp, TriangleAlert } from "lucide-react";
 import { parseSp3, type ParseResult } from "../lib/parseSp3";
-import { cn } from "../lib/utils";
+import {
+  convertSp3FromDisk,
+  convertSp3Path,
+  isTauriRuntime,
+  loadTauriCsvPath,
+  mdbToolStatus,
+  type MdbToolStatus,
+} from "../lib/mdb";
 import { classifyZone, ZONE_LABELS, type ZoneLimitSet } from "../lib/zones";
 import { ZoneBadge } from "./measuring-table";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Card } from "./ui/card";
+import { Stat } from "./ui/form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { SpectraChart } from "./spectra-chart";
+import { toast } from "./ui/sonner";
 
-const ACCEPT = ".sp3,.txt,.csv";
+export const INGEST_ACCEPT = ".sp3,.txt,.csv";
 
 /** Head slice for huge files: enough for header + first rows (Spec path needs ~200KB). */
 const HEAD_SLICE = 4 * 1024 * 1024;
 /** Above this, never buffer the whole file — first-row-only or error. */
 const FULL_BUFFER_GUARD = 50 * 1024 * 1024;
 
-export function Ingest({
-  onParsed,
-  limits,
-}: {
-  onParsed?: (r: ParseResult | null, file?: File) => void;
-  limits?: ZoneLimitSet;
-}) {
-  const { t } = useUi();
-  const [result, setResult] = useState<ParseResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
+export type OnParsed = (r: ParseResult | null, file?: File | null) => void;
 
-  const handleFile = useCallback(
-    async (file: File) => {
-      abortRef.current?.abort();
-      const ctrl = new AbortController();
-      abortRef.current = ctrl;
-      setError(null);
-      setLoading(true);
-      try {
+export interface Ingest {
+  loading: boolean;
+  error: string | null;
+  isTauri: boolean;
+  tool: MdbToolStatus | null;
+  handleFile: (file: File) => Promise<void>;
+  handlePath: (path: string) => Promise<void>;
+  openSp3: () => Promise<void>;
+  loadDemo: () => void;
+  cancel: () => void;
+  refreshTool: () => void;
+}
+
+/** Every way data enters the app (browse, drop, native drop, mdb-export) funnels through here. */
+export function useIngest(onParsed: OnParsed): Ingest {
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [isTauri, setIsTauri] = useState(false);
+  const [tool, setTool] = useState<MdbToolStatus | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const onParsedRef = useRef(onParsed);
+  onParsedRef.current = onParsed;
+
+  const refreshTool = useCallback(() => {
+    void mdbToolStatus()
+      .then(setTool)
+      .catch(() => setTool({ found: false, version: "backend unreachable" }));
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void isTauriRuntime().then((t) => {
+      if (!alive || !t) return;
+      setIsTauri(true);
+      refreshTool();
+    });
+    return () => {
+      alive = false;
+    };
+  }, [refreshTool]);
+
+  const handleFile = useCallback(async (file: File) => {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setError(null);
+    setLoading(true);
+    try {
+      let parsed: ParseResult;
+      if (file.size > HEAD_SLICE) {
+        const headBuf = await file.slice(0, HEAD_SLICE).arrayBuffer();
         if (ctrl.signal.aborted) return;
-        let parsed: ParseResult;
-        if (file.size > HEAD_SLICE) {
-          const headBuf = await file.slice(0, HEAD_SLICE).arrayBuffer();
-          if (ctrl.signal.aborted) return;
-          const head = parseSp3(new Uint8Array(headBuf), file.name);
-          if (head.meta.source === "spec-csv") {
-            parsed = {
-              ...head,
-              meta: { ...head.meta, size: file.size, extraRows: undefined },
-              warning: undefined,
-            };
-          } else if (file.size > FULL_BUFFER_GUARD) {
-            // Never buffer 50MB+ non-CSV into RAM — would OOM in WebView.
-            throw new Error(
-              `File is ${(file.size / 1024 / 1024).toFixed(0)} MB and not a Data-table CSV export. Split or export one row per file (mdb-export file.sp3 Data > data.csv) then drop the CSV. Showing preview skipped to avoid out-of-memory.`
-            );
-          } else {
-            const buf = await file.arrayBuffer();
-            if (ctrl.signal.aborted) return;
-            parsed = parseSp3(new Uint8Array(buf), file.name);
-          }
+        const head = parseSp3(new Uint8Array(headBuf), file.name);
+        if (head.meta.source === "spec-csv") {
+          parsed = {
+            ...head,
+            meta: { ...head.meta, size: file.size, extraRows: undefined },
+            warning: undefined,
+          };
+        } else if (file.size > FULL_BUFFER_GUARD) {
+          // Never buffer 50MB+ non-CSV into RAM — would OOM in WebView.
+          throw new Error(
+            `File is ${(file.size / 1024 / 1024).toFixed(0)} MB and not a Data-table CSV export. Open the .sp3 with "Open .sp3 file", or export one table to CSV (mdb-export file.sp3 Data > data.csv) and drop that.`
+          );
         } else {
           const buf = await file.arrayBuffer();
           if (ctrl.signal.aborted) return;
           parsed = parseSp3(new Uint8Array(buf), file.name);
         }
+      } else {
+        const buf = await file.arrayBuffer();
         if (ctrl.signal.aborted) return;
-        setResult(parsed);
-        onParsed?.(parsed, file);
-      } catch (e) {
-        if ((e as Error)?.name === "AbortError") return;
-        const msg =
-          e instanceof Error
-            ? e.message.includes("out of memory") ||
-              e.message.includes("Array buffer allocation failed")
-              ? "File too large to preview in the browser — use the desktop app's 'Open .sp3 file' or export one row per CSV."
-              : e.message
-            : "Failed to parse file.";
-        setResult(null);
-        onParsed?.(null);
-        setError(msg);
-      } finally {
-        if (abortRef.current === ctrl) setLoading(false);
+        parsed = parseSp3(new Uint8Array(buf), file.name);
       }
+      if (ctrl.signal.aborted) return;
+      onParsedRef.current(parsed, file);
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+      const msg =
+        e instanceof Error
+          ? e.message.includes("out of memory") ||
+            e.message.includes("Array buffer allocation failed")
+            ? 'File too large to preview — use "Open .sp3 file" or export one row per CSV.'
+            : e.message
+          : "Failed to parse file.";
+      setError(msg);
+    } finally {
+      if (abortRef.current === ctrl) setLoading(false);
+    }
+  }, []);
+
+  const runTauri = useCallback(async (job: () => Promise<ParseResult>) => {
+    abortRef.current?.abort();
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await job();
+      onParsedRef.current(result, null);
+      toast.success(`Loaded ${result.meta.filename}`);
+    } catch (e) {
+      if (e instanceof Error && e.message === "cancelled") return;
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handlePath = useCallback(
+    async (path: string) => {
+      const ext = path.split(".").pop()?.toLowerCase() ?? "";
+      if (ext === "sp3" || ext === "mdb") return runTauri(() => convertSp3Path(path));
+      if (ext === "csv") return runTauri(() => loadTauriCsvPath(path));
+      setError(
+        `Can't open .${ext || "?"} by drop here — use "Browse files" for plain .txt spectra.`
+      );
     },
-    [onParsed]
+    [runTauri]
   );
+
+  const openSp3 = useCallback(() => runTauri(convertSp3FromDisk), [runTauri]);
+
+  const loadDemo = useCallback(() => {
+    void handleFile(
+      new File(["100,0.42\n200,0.87\n300,1.31\n400,0.95\n"], "demo.sp3", { type: "text/plain" })
+    );
+  }, [handleFile]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
     setLoading(false);
-    setError("Cancelled.");
+    setError(null);
   }, []);
 
-  return (
-    <div className="grid gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("ingestTitle")}</CardTitle>
-          <CardDescription>Drop a file or pick one. Parsed locally via File API.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label="Drop .sp3, .txt or .csv file here — press Enter or Space to browse"
-            aria-busy={loading}
-            onClick={() => !loading && inputRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                inputRef.current?.click();
-              }
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              const f = e.dataTransfer.files?.[0];
-              if (f) void handleFile(f);
-            }}
-            className={cn(
-              "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              dragging ? "border-primary bg-accent" : "hover:bg-accent/50"
-            )}
-          >
-            <FileUp className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
-            <p aria-live="polite">
-              {loading
-                ? "Parsing… large files preview first row only."
-                : "Drop .sp3 / .txt / .csv here, or click to browse"}
-            </p>
-            <Button variant="outline" size="sm" type="button" tabIndex={-1} aria-hidden="true">
-              Browse files
-            </Button>
-            <input
-              ref={inputRef}
-              type="file"
-              accept={ACCEPT}
-              className="hidden"
-              aria-hidden="true"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleFile(f);
-                e.target.value = "";
-              }}
-            />
-          </div>
-          {loading ? (
-            <div className="flex items-center gap-2">
-              <p className="text-xs text-muted-foreground" aria-live="polite" aria-busy="true">
-                Reading file…
-              </p>
-              <Button variant="ghost" size="sm" onClick={cancel}>
-                Cancel
-              </Button>
-            </div>
-          ) : null}
-          {error ? (
-            <p className="text-sm text-destructive" role="alert" aria-live="assertive">
-              {error}
-            </p>
-          ) : null}
-          {!result && !error ? (
-            <p className="text-sm text-muted-foreground">No file loaded yet. Try the demo below.</p>
-          ) : null}
-          {!result ? (
-            <div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() =>
-                  void handleFile(
-                    new File(["100,0.42\n200,0.87\n300,1.31\n400,0.95\n"], "demo.sp3", {
-                      type: "text/plain",
-                    })
-                  )
-                }
-              >
-                Load demo fixture
-              </Button>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+  return {
+    loading,
+    error,
+    isTauri,
+    tool,
+    handleFile,
+    handlePath,
+    openSp3,
+    loadDemo,
+    cancel,
+    refreshTool,
+  };
+}
 
-      {result ? <IngestPreview result={result} limits={limits} /> : null}
+/** Hidden file input + a function that opens it. */
+export function useFilePicker(onFile: (f: File) => void, accept = INGEST_ACCEPT) {
+  const ref = useRef<HTMLInputElement>(null);
+  const input = (
+    <input
+      ref={ref}
+      type="file"
+      accept={accept}
+      className="hidden"
+      aria-hidden="true"
+      tabIndex={-1}
+      onChange={(e) => {
+        const f = e.target.files?.[0];
+        if (f) onFile(f);
+        e.target.value = "";
+      }}
+    />
+  );
+  return { input, open: () => ref.current?.click() };
+}
+
+/** Large import surface shown while no data is loaded. */
+export function DropZone({ ingest }: { ingest: Ingest }) {
+  const { t } = useUi();
+  const picker = useFilePicker((f) => void ingest.handleFile(f));
+  const toolMissing = ingest.isTauri && ingest.tool?.found === false;
+
+  return (
+    <div
+      className="flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed border-input bg-card px-6 py-12 text-center"
+      aria-busy={ingest.loading}
+    >
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+        {ingest.loading ? (
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+        ) : (
+          <FileUp className="h-6 w-6" aria-hidden="true" />
+        )}
+      </div>
+      <div className="grid gap-1">
+        <p className="text-base font-semibold" aria-live="polite">
+          {ingest.loading ? t("reading") : "Drop a measurement file here"}
+        </p>
+        <p className="text-[13px] text-muted-foreground">
+          Spectra <code>.sp3</code> database, Data-table <code>.csv</code> export, or a plain{" "}
+          <code>.txt</code> with <code>freq,amp</code> per line.
+        </p>
+      </div>
+      {ingest.loading ? (
+        <Button variant="outline" onClick={ingest.cancel}>
+          <X aria-hidden="true" />
+          Cancel
+        </Button>
+      ) : (
+        <div className="flex flex-wrap justify-center gap-2">
+          {ingest.isTauri ? (
+            <Button size="lg" onClick={() => void ingest.openSp3()} disabled={toolMissing}>
+              <DatabaseZap aria-hidden="true" />
+              {t("openSp3")}
+            </Button>
+          ) : null}
+          <Button size="lg" variant={ingest.isTauri ? "outline" : "default"} onClick={picker.open}>
+            <FileUp aria-hidden="true" />
+            {t("browseFiles")}
+          </Button>
+          <Button size="lg" variant="ghost" onClick={ingest.loadDemo}>
+            <FlaskConical aria-hidden="true" />
+            {t("loadDemo")}
+          </Button>
+        </div>
+      )}
+      {toolMissing ? (
+        <p className="text-xs text-destructive">
+          mdb-export was not found, so .sp3 files can't be converted. Set its path in Settings.
+        </p>
+      ) : null}
+      {ingest.error ? <IngestError message={ingest.error} /> : null}
+      {picker.input}
     </div>
   );
 }
 
-export function IngestPreview({ result, limits }: { result: ParseResult; limits?: ZoneLimitSet }) {
-  const rows = result.spectra.slice(0, 80);
+export function IngestError({ message }: { message: string }) {
+  return (
+    <div
+      className="flex max-w-xl items-start gap-2 rounded-md border border-destructive/40 bg-destructive/8 px-3 py-2 text-start text-[13px] text-destructive"
+      role="alert"
+    >
+      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <p>{message}</p>
+    </div>
+  );
+}
+
+function sourceLabel(result: ParseResult): string {
+  switch (result.meta.source) {
+    case "spec-csv":
+      return "Data-table CSV";
+    case "mdb":
+      return result.meta.csvPath ? "Spectra database" : "Jet MDB (preview only)";
+    case "text":
+      return "Text spectrum";
+    case "binary":
+      return "Binary spectrum";
+    default:
+      return result.meta.source;
+  }
+}
+
+/** Header strip for the loaded file: name, source, replace/open actions. */
+export function FileBar({ result, ingest }: { result: ParseResult; ingest: Ingest }) {
+  const { t } = useUi();
+  const picker = useFilePicker((f) => void ingest.handleFile(f));
+  const total = (result.meta.extraRows ?? 0) + 1;
+  return (
+    <Card className="flex flex-wrap items-center gap-3 px-4 py-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <DatabaseZap className="h-5 w-5" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold" title={result.meta.filename}>
+          {result.meta.filename}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          {sourceLabel(result)}
+          {result.meta.size ? ` · ${formatBytes(result.meta.size)}` : ""}
+          {total > 1 ? ` · ${total} ${t("measurementsInFile")}` : ""}
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {ingest.loading ? (
+          <Button variant="ghost" size="sm" onClick={ingest.cancel}>
+            <Loader2 className="animate-spin" aria-hidden="true" />
+            Cancel
+          </Button>
+        ) : null}
+        {ingest.isTauri ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void ingest.openSp3()}
+            disabled={ingest.loading}
+          >
+            <DatabaseZap aria-hidden="true" />
+            {t("openSp3")}
+          </Button>
+        ) : null}
+        <Button variant="outline" size="sm" onClick={picker.open} disabled={ingest.loading}>
+          <RefreshCw aria-hidden="true" />
+          {t("replaceFile")}
+        </Button>
+      </div>
+      {picker.input}
+    </Card>
+  );
+}
+
+/** KPI tiles + spectrum preview for the active measurement. */
+export function DataOverview({ result, limits }: { result: ParseResult; limits?: ZoneLimitSet }) {
+  const { t } = useUi();
   const overall = result.meta.overall;
   const zone = overall && limits ? classifyZone(overall.rmsV, limits.velocity) : "";
-  const sourceLabel =
-    result.meta.source === "spec-csv"
-      ? "spec csv"
-      : result.meta.source === "mdb"
-        ? "jet mdb (preview only)"
-        : result.meta.source;
+  const unit = overall?.unit || "";
   return (
     <div className="grid gap-4">
       {result.warning ? (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+        <div className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-[13px]">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
           <p>{result.warning}</p>
         </div>
       ) : null}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{result.meta.filename}</CardTitle>
-          <CardDescription>
-            {formatBytes(result.meta.size)} · {result.stats.spectra_points} points · source{" "}
-            {sourceLabel} · freq {result.stats.freq_min}–{result.stats.freq_max} · amp{" "}
-            {result.stats.amp_min}–{result.stats.amp_max} · peak {result.stats.peak.amp} @{" "}
-            {result.stats.peak.freq}
-            {overall
-              ? ` · ${overall.unit || "units"} · meas ${overall.measDate || "—"} · RMS-V ${overall.rmsV} · peak-V ${overall.peakV} @ ${overall.peakFreq}`
-              : ""}
-            {result.meta.extraRows ? ` · +${result.meta.extraRows} more measurements in file` : ""}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {zone ? (
-            <p className="mb-2 flex items-center gap-2 text-sm">
-              <ZoneBadge zone={zone} />
-              <span className="text-muted-foreground">
-                Velocity · {ZONE_LABELS[zone as keyof typeof ZONE_LABELS]} (RMS-V {overall?.rmsV})
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat
+          label={t("rmsVelocity")}
+          value={
+            overall ? (
+              <span className="flex items-center gap-2">
+                {overall.rmsV}
+                {zone ? <ZoneBadge zone={zone} /> : null}
               </span>
-            </p>
-          ) : null}
-          <SpectraChart spectra={result.spectra} />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Showing first {rows.length} of {result.spectra.length} rows
-            {result.spectra.length > 500 ? " (chart downsampled to 500)" : ""}.
-          </p>
-        </CardContent>
+            ) : (
+              "—"
+            )
+          }
+          sub={
+            zone
+              ? ZONE_LABELS[zone as keyof typeof ZONE_LABELS]
+              : overall
+                ? unit || "RMS"
+                : "No overall values"
+          }
+        />
+        <Stat
+          label={t("peak")}
+          value={`${result.stats.peak.amp}`}
+          sub={`at ${result.stats.peak.freq}${unit ? ` · ${unit}` : ""}`}
+        />
+        <Stat
+          label={t("freqRange")}
+          value={`${result.stats.freq_min} – ${result.stats.freq_max}`}
+          sub={`Amplitude ${result.stats.amp_min} – ${result.stats.amp_max}`}
+        />
+        <Stat
+          label={t("pointsLabel")}
+          value={result.stats.spectra_points.toLocaleString()}
+          sub={
+            overall
+              ? `Point ${overall.pointId || "?"}${overall.directionId ? ` / ${overall.directionId}` : ""}`
+              : sourceLabel(result)
+          }
+        />
+      </div>
+      <Card className="p-3">
+        <SpectraChart spectra={result.spectra} height={260} />
+        <p className="mt-2 px-1 text-xs text-muted-foreground">
+          {result.spectra.length > 500
+            ? `Preview downsampled to 500 of ${result.spectra.length.toLocaleString()} points.`
+            : `${result.spectra.length} points.`}{" "}
+          Edit values on the Chart page.
+        </p>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Spectra table</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>#</TableHead>
-                <TableHead>Freq</TableHead>
-                <TableHead>Amp</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((p, i) => (
-                <TableRow key={i}>
-                  <TableCell>{i + 1}</TableCell>
-                  <TableCell>{p.freq}</TableCell>
-                  <TableCell>{p.amp}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <RawSpectraTable result={result} />
     </div>
   );
 }
 
-function formatBytes(n: number): string {
+function RawSpectraTable({ result }: { result: ParseResult }) {
+  const rows = result.spectra.slice(0, 200);
+  return (
+    <details className="group rounded-lg border bg-card">
+      <summary className="flex cursor-default items-center gap-2 px-4 py-2.5 text-[13px] font-medium select-none hover:bg-muted/60 [&::-webkit-details-marker]:hidden">
+        <ChevronDown
+          className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180"
+          aria-hidden="true"
+        />
+        Raw spectrum values
+        <span className="text-xs font-normal text-muted-foreground">
+          first {rows.length} of {result.spectra.length.toLocaleString()}
+        </span>
+      </summary>
+      <Table containerClassName="max-h-72 border-t">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-16">#</TableHead>
+            <TableHead>Freq</TableHead>
+            <TableHead>Amp</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((p, i) => (
+            <TableRow key={i}>
+              <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+              <TableCell>{p.freq}</TableCell>
+              <TableCell>{p.amp}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </details>
+  );
+}
+
+export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;

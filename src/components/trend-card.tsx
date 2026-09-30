@@ -3,7 +3,8 @@ import { TrendingUp } from "lucide-react";
 import type { CsvRowSummary } from "../lib/mdb";
 import { groupHistories, renderTrendPng, takeLastHistory } from "../lib/trends";
 import { limitsShort, type ZoneLimitSet } from "../lib/zones";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Panel } from "./ui/card";
+import { Segmented, Select } from "./ui/form";
 import { Label } from "./ui/label";
 
 export interface TrendSnapshot {
@@ -86,76 +87,70 @@ export function TrendCard({
   const last = samples[samples.length - 1]?.dateISO ?? "—";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <TrendingUp className="h-4 w-4" />
-          Vibration trends
-        </CardTitle>
-        <CardDescription>
-          {history?.label} · {samples.length} samples · {first} → {last}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="flex flex-wrap gap-3">
-          <div className="grid gap-1">
-            <Label htmlFor="trend-point">Measuring point</Label>
-            <select
-              id="trend-point"
-              className="rounded-md border bg-background px-2 py-1.5 text-sm"
-              value={activeLabel}
-              onChange={(e) => setLabel(e.target.value)}
-            >
-              {histories.map((h) => (
-                <option key={h.label} value={h.label}>
-                  {h.label} ({h.samples.length})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid gap-1">
-            <Label htmlFor="trend-window">Window</Label>
-            <select
-              id="trend-window"
-              className="rounded-md border bg-background px-2 py-1.5 text-sm"
-              value={String(window)}
-              onChange={(e) =>
-                setWindow(e.target.value === "all" ? "all" : (Number(e.target.value) as Window))
-              }
-            >
-              {WINDOWS.map((w) => (
-                <option key={String(w)} value={String(w)}>
-                  {w === "all" ? "All data" : `Last ${w}`}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <figure className="grid gap-1">
-          <figcaption className="text-sm font-medium">
-            Velocity RMS (mm/s) · zones {limitsShort(limits.velocity)}
-          </figcaption>
-          {velUrl ? (
-            <img
-              src={velUrl}
-              alt={`Velocity trend for ${history?.label}`}
-              className="w-full rounded border bg-white"
-            />
-          ) : null}
-        </figure>
-        <figure className="grid gap-1">
-          <figcaption className="text-sm font-medium">
-            Acceleration RMS · zones {limitsShort(limits.acceleration)}
-          </figcaption>
-          {accUrl ? (
-            <img
-              src={accUrl}
-              alt={`Acceleration trend for ${history?.label}`}
-              className="w-full rounded border bg-white"
-            />
-          ) : null}
-        </figure>
-      </CardContent>
-    </Card>
+    <Panel
+      icon={<TrendingUp />}
+      title="Vibration trends"
+      description={`${history?.label} · ${samples.length} samples · ${first} → ${last}. The selected point and window go into the report.`}
+      actions={
+        <>
+          <Label htmlFor="trend-point" className="sr-only">
+            Measuring point
+          </Label>
+          <Select
+            id="trend-point"
+            className="w-auto min-w-40"
+            value={activeLabel}
+            onChange={(e) => setLabel(e.target.value)}
+          >
+            {histories.map((h) => (
+              <option key={h.label} value={h.label}>
+                {h.label} ({h.samples.length})
+              </option>
+            ))}
+          </Select>
+          <Segmented
+            ariaLabel="Trend window"
+            value={String(window)}
+            onChange={(v) => setWindow(v === "all" ? "all" : (Number(v) as Window))}
+            options={WINDOWS.map((w) => ({
+              value: String(w),
+              label: w === "all" ? "All" : `Last ${w}`,
+            }))}
+          />
+        </>
+      }
+      contentClassName="grid gap-4 xl:grid-cols-2"
+    >
+      <figure className="grid content-start gap-1.5">
+        <figcaption className="text-[13px] font-medium">
+          Velocity RMS (mm/s){" "}
+          <span className="font-normal text-muted-foreground">
+            · zones {limitsShort(limits.velocity)}
+          </span>
+        </figcaption>
+        {velUrl ? (
+          <img
+            src={velUrl}
+            alt={`Velocity trend for ${history?.label}`}
+            className="w-full rounded-md border bg-white"
+          />
+        ) : null}
+      </figure>
+      <figure className="grid content-start gap-1.5">
+        <figcaption className="text-[13px] font-medium">
+          Acceleration RMS{" "}
+          <span className="font-normal text-muted-foreground">
+            · zones {limitsShort(limits.acceleration)}
+          </span>
+        </figcaption>
+        {accUrl ? (
+          <img
+            src={accUrl}
+            alt={`Acceleration trend for ${history?.label}`}
+            className="w-full rounded-md border bg-white"
+          />
+        ) : null}
+      </figure>
+    </Panel>
   );
 }

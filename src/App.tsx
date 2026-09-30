@@ -1,27 +1,48 @@
-import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
-import { Button } from "./components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Database, FileText, Gauge, Keyboard, LineChart, Palette } from "lucide-react";
 import { AiDraftCard, AiSettingsCard, type AiDraftFields } from "./components/ai-draft";
-import { BrandingCard } from "./components/branding";
+import { BrandingCard, TemplateCard } from "./components/branding";
 import { ChartEditor } from "./components/chart-editor";
 import { ClientProfiles } from "./components/client-profiles";
 import { DesignDemo } from "./components/demo";
-import { EquipmentList } from "./components/equipment-list";
-import { ExportCard } from "./components/export-card";
+import { EquipmentWorkspace } from "./components/equipment-list";
+import { ExportControls } from "./components/export-card";
 import { HistoryTab } from "./components/history";
-import { Ingest } from "./components/ingest";
+import { DataOverview, DropZone, FileBar, IngestError, useIngest } from "./components/ingest";
 import { LicenseCard } from "./components/license";
-import { MdbImportCard } from "./components/mdb-import";
+import { MdbToolSettings } from "./components/mdb-import";
 import { MeasurementPicker } from "./components/measurement-picker";
-import { MeasuringTable } from "./components/measuring-table";
+import { MeasuringTable, ZoneBadge } from "./components/measuring-table";
 import { Onboarding } from "./components/onboarding";
-import { ReportForm } from "./components/report-form";
+import {
+  ClientDetailsCard,
+  languagePatch,
+  ProjectDetailsCard,
+  ReportContentsCard,
+} from "./components/report-form";
+import {
+  ALL_NAV,
+  DropOverlay,
+  ReadinessChip,
+  Sidebar,
+  StatusBar,
+  THEME_ICONS,
+  Toolbar,
+  useTheme,
+  type MissingItem,
+  type NavIndicator,
+  type PageId,
+  type ThemePref,
+} from "./components/shell";
 import { TelemetryCard } from "./components/telemetry";
 import { TrendCard, type TrendSnapshot } from "./components/trend-card";
+import { Button } from "./components/ui/button";
+import { Panel } from "./components/ui/card";
+import { EmptyState, Field, Segmented } from "./components/ui/form";
 import { ZoneLimitsCard } from "./components/zone-limits";
 import { addHistoryEntry, makeEntry } from "./lib/history";
 import { loadEquipments, saveEquipments, type EquipmentItem } from "./lib/equipment";
+import { APP_VERSION } from "./lib/license";
 import type { CsvRowSummary } from "./lib/mdb";
 import {
   computeStats,
@@ -38,15 +59,18 @@ import {
   saveReportOptions,
   saveZoneLimits,
   seedDefaultBranding,
+  validateReportOptions,
   type Branding,
 } from "./lib/settings";
+import { oleDateToISO } from "./lib/specdata";
 import { initCrashHooks, track } from "./lib/telemetry";
 import { translate, UiProvider, type UiLang } from "./lib/i18n";
-import type { ZoneLimitSet } from "./lib/zones";
+import { cn } from "./lib/utils";
+import { classifyZone, type ZoneLimitSet } from "./lib/zones";
 
 function App() {
-  const [dark, setDark] = useState(false);
-  const [tab, setTab] = useState("report");
+  const [themePref, setThemePref] = useTheme();
+  const [page, setPage] = useState<PageId>("data");
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [options, setOptions] = useState<ReportOptions>(() => loadReportOptions());
   const [edited, setEdited] = useState<SpectraPoint[] | null>(null);
@@ -58,12 +82,11 @@ function App() {
   const [trendSnap, setTrendSnap] = useState<TrendSnapshot | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
   const [equipments, setEquipments] = useState<EquipmentItem[]>(() => loadEquipments());
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-  }, [dark]);
+  const [showErrors, setShowErrors] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const uiLang: UiLang = options.language === "fa" ? "fa" : "en";
+  const t = useCallback((key: string) => translate(uiLang, key), [uiLang]);
 
   useEffect(() => {
     initCrashHooks();
@@ -87,14 +110,16 @@ function App() {
     saveZoneLimits(zoneLimits);
   }, [zoneLimits]);
 
-  const handleParsed = (r: ParseResult | null, file: File | null = null) => {
+  const handleParsed = useCallback((r: ParseResult | null, file: File | null = null) => {
     setParsed(r);
     setEdited(r ? r.spectra : null);
     setAiDraft(null);
     setCsvFile(r && r.meta.source === "spec-csv" ? file : null);
     setMeasureRows(null);
     setTrendSnap(null);
-  };
+  }, []);
+
+  const ingest = useIngest(handleParsed);
 
   /** Switching measurements keeps the file/CSV source for further picks. */
   const handlePicked = (r: ParseResult) => {
@@ -103,13 +128,24 @@ function App() {
     setAiDraft(null);
   };
 
-  const effective = parsed
-    ? {
-        ...parsed,
-        spectra: edited ?? parsed.spectra,
-        stats: computeStats(edited ?? parsed.spectra),
-      }
-    : null;
+  const effective = useMemo(
+    () =>
+      parsed
+        ? {
+            ...parsed,
+            spectra: edited ?? parsed.spectra,
+            stats: computeStats(edited ?? parsed.spectra),
+          }
+        : null,
+    [parsed, edited]
+  );
+
+  const hasRowSource = !!(
+    effective &&
+    (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile))
+  );
+  const rowPath = effective?.meta.csvPath ?? null;
+  const rowFile = effective?.meta.csvPath ? null : csvFile;
 
   const handleExported = (info: { filename: string; savedPath: string | null }) => {
     if (!effective) return;
@@ -125,101 +161,348 @@ function App() {
       peak: effective.stats.peak,
       options,
     });
-    void addHistoryEntry(entry).then(() => setHistoryTick((t) => t + 1));
+    void addHistoryEntry(entry).then(() => setHistoryTick((n) => n + 1));
   };
+
+  const updateEquipments = (n: EquipmentItem[]) => {
+    setEquipments(n);
+    saveEquipments(n);
+  };
+
+  const errors = validateReportOptions(options);
+  const missing: MissingItem[] = [
+    ...(!effective ? [{ key: "data", label: t("needData"), page: "data" as const }] : []),
+    ...(errors.projectName
+      ? [
+          {
+            key: "project",
+            label: t("needProject"),
+            page: "details" as const,
+            focusId: "opt-project",
+          },
+        ]
+      : []),
+    ...(errors.engineer
+      ? [
+          {
+            key: "engineer",
+            label: t("needEngineer"),
+            page: "details" as const,
+            focusId: "opt-engineer",
+          },
+        ]
+      : []),
+    ...(errors.reportDate
+      ? [{ key: "date", label: t("needDate"), page: "details" as const, focusId: "opt-date" }]
+      : []),
+  ];
+
+  const goTo = useCallback((p: PageId, focusId?: string) => {
+    setPage(p);
+    if (focusId) {
+      window.setTimeout(() => {
+        const el = document.getElementById(focusId);
+        el?.scrollIntoView({ block: "center", behavior: "smooth" });
+        el?.focus({ preventScroll: true });
+      }, 50);
+    }
+  }, []);
+
+  const fix = (m: MissingItem) => {
+    setShowErrors(true);
+    goTo(m.page, m.focusId);
+  };
+
+  // Ctrl+1..9 page switching
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= ALL_NAV.length) {
+        e.preventDefault();
+        setPage(ALL_NAV[n - 1].id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Native window drops (Tauri) carry real paths, so .sp3 can go through mdb-export.
+  const handlePathRef = useRef(ingest.handlePath);
+  handlePathRef.current = ingest.handlePath;
+  useEffect(() => {
+    if (!ingest.isTauri) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void import("@tauri-apps/api/webview")
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent((e) => {
+          const p = e.payload;
+          if (p.type === "enter" || p.type === "over") setDragOver(true);
+          else if (p.type === "leave") setDragOver(false);
+          else if (p.type === "drop") {
+            setDragOver(false);
+            const first = p.paths[0];
+            if (first) {
+              setPage("data");
+              void handlePathRef.current(first);
+            }
+          }
+        })
+      )
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [ingest.isTauri]);
+
+  // Browser/HTML5 drops (vite dev, or Tauri with native drop disabled).
+  const dragDepth = useRef(0);
+  const isFileDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+  const dropHandlers = {
+    onDragEnter: (e: React.DragEvent) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      dragDepth.current++;
+      setDragOver(true);
+    },
+    onDragOver: (e: React.DragEvent) => {
+      if (isFileDrag(e)) e.preventDefault();
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!isFileDrag(e)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDragOver(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      dragDepth.current = 0;
+      setDragOver(false);
+      const f = e.dataTransfer.files?.[0];
+      if (f) {
+        setPage("data");
+        void ingest.handleFile(f);
+      }
+    },
+  };
+
+  const draftFilled = aiDraft ? Object.values(aiDraft).filter((v) => v.trim()).length : 0;
+  const indicators: Partial<Record<PageId, NavIndicator>> = {
+    data: effective ? { kind: "done" } : undefined,
+    measurements:
+      measureRows && measureRows.length > 0
+        ? { kind: "count", value: measureRows.length }
+        : undefined,
+    details:
+      errors.projectName || errors.engineer || errors.reportDate
+        ? showErrors
+          ? { kind: "warn" }
+          : undefined
+        : { kind: "done" },
+    equipment: equipments.length > 0 ? { kind: "count", value: equipments.length } : undefined,
+    findings: draftFilled > 0 ? { kind: "done" } : undefined,
+  };
+
+  const current = ALL_NAV.find((n) => n.id === page)!;
+  const overall = effective?.meta.overall;
+  const zone = overall ? classifyZone(overall.rmsV, zoneLimits.velocity) : "";
+  const ThemeIcon = THEME_ICONS[themePref];
+  const nextTheme: Record<ThemePref, ThemePref> = {
+    system: "light",
+    light: "dark",
+    dark: "system",
+  };
+
+  const noData = (
+    <EmptyState
+      icon={<Database />}
+      title="No measurement data loaded"
+      actions={
+        <Button onClick={() => setPage("data")}>
+          <Database aria-hidden="true" />
+          Go to Data
+        </Button>
+      }
+    >
+      Import a Spectra .sp3 or a Data-table CSV first.
+    </EmptyState>
+  );
 
   return (
     <UiProvider lang={uiLang}>
-      <>
+      <div className="flex h-full" {...dropHandlers}>
         <a
           href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
+          className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
         >
-          {translate(uiLang, "skip")}
+          {t("skip")}
         </a>
-        <main id="main" className="mx-auto max-w-3xl space-y-4 p-6">
-          <header className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold">{translate(uiLang, "appTitle")}</h1>
-              <p className="text-sm text-muted-foreground" aria-live="polite">
-                {effective
-                  ? `${effective.meta.filename} · ${effective.stats.spectra_points} pts · peak ${effective.stats.peak.amp} @ ${effective.stats.peak.freq}`
-                  : translate(uiLang, "dropToBegin")}
-              </p>
-            </div>
+        <Sidebar page={page} onNavigate={setPage} indicators={indicators} version={APP_VERSION} />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Toolbar title={t(current.label)} description={t(current.desc)}>
+            <ReadinessChip missing={missing} onFix={fix} />
+            <Segmented
+              ariaLabel={t("language")}
+              size="sm"
+              className="hidden sm:inline-flex"
+              value={uiLang}
+              onChange={(l) => setOptions((o) => ({ ...o, ...languagePatch(o, l) }))}
+              options={[
+                { value: "en", label: "EN", title: "English report + interface" },
+                { value: "fa", label: "فا", title: "گزارش و رابط فارسی" },
+              ]}
+            />
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon"
-              onClick={() => setDark((d) => !d)}
-              aria-label={translate(uiLang, dark ? "lightMode" : "darkMode")}
-              aria-pressed={dark}
+              onClick={() => setThemePref(nextTheme[themePref])}
+              title={`${t("theme")}: ${t(`theme${themePref[0].toUpperCase()}${themePref.slice(1)}`)}`}
+              aria-label={`${t("theme")}: ${themePref}`}
             >
-              {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+              <ThemeIcon aria-hidden="true" />
             </Button>
-          </header>
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList>
-              <TabsTrigger value="report">{translate(uiLang, "tabReport")}</TabsTrigger>
-              <TabsTrigger value="history">{translate(uiLang, "tabHistory")}</TabsTrigger>
-              <TabsTrigger value="settings">{translate(uiLang, "tabSettings")}</TabsTrigger>
-              <TabsTrigger value="design">{translate(uiLang, "tabDesign")}</TabsTrigger>
-            </TabsList>
-            <TabsContent value="report" className="grid gap-4">
-              {!effective ? <Onboarding /> : null}
-              <MdbImportCard onConverted={handleParsed} />
-              <div id="ingest">
-                <Ingest onParsed={handleParsed} limits={zoneLimits} />
-              </div>
-              {effective &&
-              (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
-                <MeasurementPicker
-                  tauriPath={effective.meta.csvPath ?? null}
-                  file={effective.meta.csvPath ? null : csvFile}
-                  filename={effective.meta.filename}
-                  current={
-                    effective.meta.overall
-                      ? {
-                          pointId: effective.meta.overall.pointId,
-                          measDate: effective.meta.overall.measDate,
+            <span className="h-6 w-px bg-border" aria-hidden="true" />
+            <ExportControls
+              onBlocked={() => missing[0] && fix(missing[0])}
+              parsed={effective}
+              options={options}
+              branding={branding}
+              aiDraft={aiDraft}
+              onExported={handleExported}
+              limits={zoneLimits}
+              measureRows={measureRows ?? undefined}
+              trendSnap={trendSnap}
+              equipments={equipments}
+              tauriPath={rowPath}
+              csvFile={rowFile}
+            />
+          </Toolbar>
+
+          <main id="main" className="relative min-h-0 flex-1">
+            <Page active={page === "data"}>
+              {!effective ? (
+                <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+                  <DropZone ingest={ingest} />
+                  <Onboarding />
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  <FileBar result={effective} ingest={ingest} />
+                  {ingest.error ? <IngestError message={ingest.error} /> : null}
+                  <div
+                    className={cn(
+                      "grid items-start gap-4",
+                      hasRowSource && "xl:grid-cols-[minmax(0,1fr)_24rem]"
+                    )}
+                  >
+                    <DataOverview result={effective} limits={zoneLimits} />
+                    {hasRowSource ? (
+                      <MeasurementPicker
+                        className="max-h-[28rem] xl:sticky xl:top-0 xl:max-h-[calc(100vh-12rem)]"
+                        tauriPath={rowPath}
+                        file={rowFile}
+                        filename={effective.meta.filename}
+                        current={
+                          overall ? { pointId: overall.pointId, measDate: overall.measDate } : null
                         }
-                      : null
-                  }
-                  onSelect={handlePicked}
-                />
-              ) : null}
-              {effective &&
-              (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
-                <>
+                        onSelect={handlePicked}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </Page>
+
+            <Page active={page === "measurements"}>
+              {hasRowSource ? (
+                <div className="grid gap-4">
                   <MeasuringTable
-                    tauriPath={effective.meta.csvPath ?? null}
-                    file={effective.meta.csvPath ? null : csvFile}
+                    tauriPath={rowPath}
+                    file={rowFile}
                     limits={zoneLimits}
                     onRows={setMeasureRows}
                   />
                   {measureRows && measureRows.length > 0 ? (
                     <TrendCard rows={measureRows} limits={zoneLimits} onSnapshot={setTrendSnap} />
                   ) : null}
-                </>
-              ) : null}
-              <ReportForm options={options} onChange={setOptions} />
-              <EquipmentList
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<Gauge />}
+                  title="No measurement table"
+                  actions={
+                    <Button variant="outline" onClick={() => setPage("data")}>
+                      <Database aria-hidden="true" />
+                      Go to Data
+                    </Button>
+                  }
+                >
+                  Results and trends appear when you import a Spectra .sp3 database or a Data-table
+                  CSV with several measurements.
+                </EmptyState>
+              )}
+            </Page>
+
+            <Page active={page === "details"}>
+              <div className="grid gap-4">
+                <ProjectDetailsCard
+                  options={options}
+                  onChange={setOptions}
+                  showErrors={showErrors}
+                />
+                <div className="grid items-start gap-4 xl:grid-cols-2">
+                  <ClientDetailsCard options={options} onChange={setOptions} />
+                  <ClientProfiles
+                    options={options}
+                    onOptions={setOptions}
+                    onLogo={(logoBase64) => setBranding((b) => ({ ...b, logoBase64 }))}
+                  />
+                </div>
+              </div>
+            </Page>
+
+            <Page active={page === "equipment"}>
+              <EquipmentWorkspace
                 items={equipments}
-                onChange={(n) => {
-                  setEquipments(n);
-                  saveEquipments(n);
-                }}
-              />
-              <ClientProfiles
+                onChange={updateEquipments}
                 options={options}
                 onOptions={setOptions}
-                onLogo={(logoBase64) => setBranding({ ...branding, logoBase64 })}
               />
-              <AiDraftCard
-                parsed={effective}
-                options={options}
-                draft={aiDraft}
-                onChange={setAiDraft}
-              />
+            </Page>
+
+            <Page active={page === "findings"}>
+              <div className="grid gap-4">
+                {equipments.length > 0 ? (
+                  <p className="rounded-md border bg-card px-3 py-2 text-[13px] text-muted-foreground">
+                    These findings are shared by the whole report. Each machine can override them
+                    under{" "}
+                    <button
+                      type="button"
+                      className="font-medium text-primary hover:underline"
+                      onClick={() => setPage("equipment")}
+                    >
+                      Equipment → Machine narrative
+                    </button>
+                    .
+                  </p>
+                ) : null}
+                <AiDraftCard
+                  parsed={effective}
+                  options={options}
+                  draft={aiDraft}
+                  onChange={setAiDraft}
+                />
+              </div>
+            </Page>
+
+            <Page active={page === "chart"}>
               {effective ? (
                 <ChartEditor
                   spectra={effective.spectra}
@@ -227,52 +510,166 @@ function App() {
                   options={options}
                   onOptions={setOptions}
                 />
-              ) : null}
-              <BrandingCard
-                options={options}
-                onOptions={setOptions}
-                branding={branding}
-                onBranding={setBranding}
-              />
-              <ExportCard
-                parsed={effective}
-                options={options}
-                branding={branding}
-                aiDraft={aiDraft}
-                onExported={handleExported}
-                limits={zoneLimits}
-                measureRows={measureRows ?? undefined}
-                trendSnap={trendSnap}
-                equipments={equipments}
-                tauriPath={effective?.meta.csvPath ?? null}
-                csvFile={effective?.meta.csvPath ? null : csvFile}
-              />
-              {!effective ? (
-                <p className="text-xs text-muted-foreground">{translate(uiLang, "helpHint")}</p>
-              ) : null}
-            </TabsContent>
-            <TabsContent value="history">
+              ) : (
+                noData
+              )}
+            </Page>
+
+            <Page active={page === "layout"}>
+              <div className="grid gap-4">
+                <div className="grid items-start gap-4 xl:grid-cols-2">
+                  <TemplateCard options={options} onOptions={setOptions} />
+                  <ReportContentsCard options={options} onChange={setOptions} />
+                </div>
+                <BrandingCard
+                  options={options}
+                  onOptions={setOptions}
+                  branding={branding}
+                  onBranding={setBranding}
+                />
+              </div>
+            </Page>
+
+            <Page active={page === "history"}>
               <HistoryTab
                 key={historyTick}
                 onReopen={(o) => {
                   setOptions(o);
-                  setTab("report");
+                  setPage("details");
                 }}
               />
-            </TabsContent>
-            <TabsContent value="design">
-              <DesignDemo />
-            </TabsContent>
-            <TabsContent value="settings" className="grid gap-4">
-              <LicenseCard />
-              <ZoneLimitsCard limits={zoneLimits} onChange={setZoneLimits} />
-              <AiSettingsCard />
-              <TelemetryCard />
-            </TabsContent>
-          </Tabs>
-        </main>
-      </>
+            </Page>
+
+            <Page active={page === "settings"}>
+              <div className="grid items-start gap-4 xl:grid-cols-2">
+                <AppearanceCard pref={themePref} onPref={setThemePref} />
+                <ZoneLimitsCard limits={zoneLimits} onChange={setZoneLimits} />
+                <MdbToolSettings
+                  isTauri={ingest.isTauri}
+                  status={ingest.tool}
+                  onRefresh={ingest.refreshTool}
+                />
+                <LicenseCard />
+                <AiSettingsCard />
+                <TelemetryCard />
+                {import.meta.env.DEV ? (
+                  <div className="xl:col-span-2">
+                    <DesignDemo />
+                  </div>
+                ) : null}
+              </div>
+            </Page>
+          </main>
+
+          <StatusBar
+            left={
+              effective ? (
+                <>
+                  <span className="flex min-w-0 items-center gap-1.5 truncate font-medium text-foreground">
+                    <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{effective.meta.filename}</span>
+                  </span>
+                  {overall ? (
+                    <span className="hidden truncate md:inline">
+                      Pt {overall.pointId || "?"}
+                      {overall.directionId ? `/${overall.directionId}` : ""} ·{" "}
+                      {oleDateToISO(Number(overall.measDate)) || overall.measDate || "—"}
+                    </span>
+                  ) : null}
+                  <span className="flex items-center gap-1 whitespace-nowrap">
+                    <LineChart className="h-3.5 w-3.5" aria-hidden="true" />
+                    {t("peak")} {effective.stats.peak.amp} @ {effective.stats.peak.freq}
+                  </span>
+                  {zone ? (
+                    <span className="flex items-center gap-1 whitespace-nowrap">
+                      RMS-V {overall?.rmsV} <ZoneBadge zone={zone} />
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <span>{t("noFile")}</span>
+              )
+            }
+            right={
+              <>
+                {measureRows && measureRows.length > 0 ? (
+                  <span className="hidden lg:inline">
+                    {measureRows.length.toLocaleString()} {t("measurementsInFile")}
+                  </span>
+                ) : null}
+                {equipments.length > 0 ? (
+                  <span className="hidden lg:inline">
+                    {t("equipments")}: {equipments.length}
+                  </span>
+                ) : null}
+                <span>{uiLang === "fa" ? "فارسی" : "English"}</span>
+                <span>v{APP_VERSION}</span>
+              </>
+            }
+          />
+        </div>
+        <DropOverlay visible={dragOver} />
+      </div>
     </UiProvider>
+  );
+}
+
+/** Every page stays mounted so trend/measurement state (and export inputs) survive navigation. */
+function Page({ active, children }: { active: boolean; children: ReactNode }) {
+  return (
+    <div className={cn("absolute inset-0 overflow-y-auto", !active && "hidden")}>
+      <div className="mx-auto w-full max-w-[1400px] px-5 py-5">{children}</div>
+    </div>
+  );
+}
+
+function AppearanceCard({ pref, onPref }: { pref: ThemePref; onPref: (p: ThemePref) => void }) {
+  const shortcuts: [string, string][] = [
+    ["Ctrl+E", "Generate report"],
+    ["Ctrl+1 … Ctrl+7", "Jump to a report step"],
+    ["Ctrl+8 / Ctrl+9", "History / Settings"],
+    ["Drop a file", "Import it from any page"],
+  ];
+  return (
+    <Panel icon={<Palette />} title="Appearance" contentClassName="grid gap-4">
+      <Field label="Theme">
+        <Segmented
+          ariaLabel="Theme"
+          value={pref}
+          onChange={onPref}
+          options={(["light", "dark", "system"] as const).map((p) => {
+            const Icon = THEME_ICONS[p];
+            return {
+              value: p,
+              label: (
+                <>
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  {p === "system" ? "Match Windows" : p === "light" ? "Light" : "Dark"}
+                </>
+              ),
+            };
+          })}
+        />
+      </Field>
+      <div className="grid gap-1.5">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-foreground/85">
+          <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
+          Keyboard shortcuts
+        </p>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[13px]">
+          {shortcuts.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt>
+                <kbd className="rounded border bg-muted px-1.5 py-0.5 font-sans text-[11px] font-medium">
+                  {k}
+                </kbd>
+              </dt>
+              <dd className="text-muted-foreground">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </Panel>
   );
 }
 

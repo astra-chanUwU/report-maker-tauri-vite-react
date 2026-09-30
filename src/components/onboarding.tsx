@@ -1,6 +1,6 @@
-import { Download, FileSpreadsheet, Sparkles, ArrowRight } from "lucide-react";
+import { Download, ShieldCheck } from "lucide-react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Panel } from "./ui/card";
 import { useUi } from "../lib/i18n";
 
 function downloadSampleCsv() {
@@ -28,72 +28,51 @@ function downloadSampleCsv() {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
+const STEPS = [
+  {
+    title: "Import measurements",
+    body: "Open the Spectra .sp3 database, or drop a Data-table CSV. Pick which measurement to feature.",
+  },
+  {
+    title: "Fill in the report",
+    body: "Project and engineer are required. Add machines, findings and branding as needed.",
+  },
+  {
+    title: "Generate",
+    body: "Press Generate report (Ctrl+E) for an editable Word file. Past reports are kept in History.",
+  },
+];
+
 export function Onboarding() {
   const { t } = useUi();
   return (
-    <Card className="border-dashed">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Sparkles className="h-4 w-4" aria-hidden="true" />
-          {t("onboardingTitle")}
-        </CardTitle>
-        <CardDescription>{t("onboardingHint")}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        <ol className="grid gap-2 text-sm">
-          <li className="flex gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
-              1
+    <Panel title={t("onboardingTitle")} contentClassName="grid gap-4">
+      <ol className="grid gap-3">
+        {STEPS.map((s, i) => (
+          <li key={s.title} className="flex gap-3">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+              {i + 1}
             </span>
-            <span>
-              <strong>Drop a file</strong> — Data-table CSV (<code>mdb-export file.sp3 Data</code>)
-              or a plain <code>.txt</code> with <code>freq,amp</code> per line. In the desktop app
-              you can also hit <em>Open .sp3 file</em> to convert automatically.
+            <span className="grid gap-0.5">
+              <span className="text-[13px] font-semibold">{s.title}</span>
+              <span className="text-[13px] text-muted-foreground">{s.body}</span>
             </span>
           </li>
-          <li className="flex gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
-              2
-            </span>
-            <span>
-              <strong>Fill Project &amp; Engineer</strong> — required before export; the filename
-              previews as <code>project-name-YYYY-MM-DD.docx</code>.
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
-              3
-            </span>
-            <span>
-              <strong>Generate Report</strong> — editable Word with spectra table, chart PNG,
-              overall vibration, and optional AI draft. Or browse <em>History</em> to reopen past
-              reports.
-            </span>
-          </li>
-        </ol>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={downloadSampleCsv}>
-            <Download aria-hidden="true" />
-            {t("downloadSample")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              document.getElementById("ingest")?.scrollIntoView({ behavior: "smooth" })
-            }
-          >
-            <FileSpreadsheet aria-hidden="true" />
-            Drop your file
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Tip: desktop build auto-detects <code>mdb-export</code> via <code>MDB_EXPORT_PATH</code>{" "}
-          or Settings → Tool path. Large exports (100s of MB) preview the first row; pick any
-          measurement after.
-        </p>
-      </CardContent>
-    </Card>
+        ))}
+      </ol>
+      <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+        Works fully offline. Measurement data never leaves this computer.
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="justify-self-start"
+        onClick={downloadSampleCsv}
+      >
+        <Download aria-hidden="true" />
+        {t("downloadSample")}
+      </Button>
+    </Panel>
   );
 }

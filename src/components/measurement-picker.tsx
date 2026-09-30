@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ListOrdered, Search } from "lucide-react";
+import { ListOrdered, Loader2, Search } from "lucide-react";
 import type { ParseResult } from "../lib/parseSp3";
 import { oleDateToISO } from "../lib/specdata";
 import {
@@ -9,8 +9,8 @@ import {
   loadTauriRow,
   type CsvRowList,
 } from "../lib/mdb";
-import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { cn } from "../lib/utils";
+import { Panel } from "./ui/card";
 import { Input } from "./ui/input";
 import { toast } from "./ui/sonner";
 
@@ -28,12 +28,14 @@ export function MeasurementPicker({
   filename,
   current,
   onSelect,
+  className,
 }: {
   tauriPath: string | null;
   file: File | null;
   filename: string;
   current: PickerCurrent | null;
   onSelect: (r: ParseResult) => void;
+  className?: string;
 }) {
   const [list, setList] = useState<CsvRowList | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,9 +66,16 @@ export function MeasurementPicker({
     const q = query.trim().toLowerCase();
     const rows = q
       ? list.rows.filter((r) =>
-          [r.pointId, r.directionId, r.measDate, r.peakFreq, r.rmsV].some((s) =>
-            s.toLowerCase().includes(q)
-          )
+          [
+            r.pointId,
+            r.directionId,
+            r.measDate,
+            r.peakFreq,
+            r.rmsV,
+            oleDateToISO(Number(r.measDate)),
+          ]
+            .filter(Boolean)
+            .some((s) => s.toLowerCase().includes(q))
         )
       : list.rows;
     return rows.slice(0, DISPLAY_CAP);
@@ -83,9 +92,6 @@ export function MeasurementPicker({
         ? await loadTauriRow(tauriPath, index, filename, total)
         : await loadFileRow(file!, filename, index, total);
       onSelect(result);
-      toast.success(
-        `Loaded measurement ${index + 1} (Point ${result.meta.overall?.pointId || "?"})`
-      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load measurement.");
     } finally {
@@ -94,64 +100,84 @@ export function MeasurementPicker({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ListOrdered className="h-4 w-4" />
-          Measurements
-        </CardTitle>
-        <CardDescription>
-          {loading
-            ? "Reading…"
-            : list
-              ? `${list.rows.length} in this export — pick one for the report.`
-              : ""}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="relative">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            className="pl-8"
-            placeholder="Filter by point, date, peak…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-        {list && list.rows.length > DISPLAY_CAP && filtered.length >= DISPLAY_CAP ? (
-          <p className="text-xs text-muted-foreground">
-            Showing first {DISPLAY_CAP} — refine the filter.
-          </p>
-        ) : null}
-        <ul className="grid max-h-72 gap-1 overflow-auto">
-          {filtered.map((r) => {
-            const active =
-              current !== null && current.pointId === r.pointId && current.measDate === r.measDate;
-            return (
-              <li key={r.index}>
-                <Button
-                  variant={active ? "default" : "ghost"}
-                  className="h-auto w-full justify-start py-1.5 font-normal"
-                  disabled={busyIdx !== null}
-                  onClick={() => void handleSelect(r.index)}
-                >
-                  <span className="w-10 shrink-0 text-xs text-muted-foreground">
-                    #{r.index + 1}
+    <Panel
+      icon={<ListOrdered />}
+      title="Featured measurement"
+      description={
+        loading
+          ? "Reading…"
+          : list
+            ? `${list.rows.length.toLocaleString()} in this file. The one you pick is charted in the report.`
+            : ""
+      }
+      className={cn("flex min-h-0 flex-col", className)}
+      contentClassName="flex min-h-0 flex-1 flex-col gap-2"
+    >
+      <div className="relative">
+        <Search className="pointer-events-none absolute start-2.5 top-2 h-4 w-4 text-muted-foreground" />
+        <Input
+          className="ps-8"
+          placeholder="Filter by point, date, peak…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Filter measurements"
+        />
+      </div>
+      <ul
+        className="min-h-40 flex-1 overflow-auto rounded-md border"
+        aria-label="Measurements"
+        aria-busy={loading}
+      >
+        {filtered.map((r) => {
+          const active =
+            current !== null && current.pointId === r.pointId && current.measDate === r.measDate;
+          return (
+            <li key={r.index} className="border-b last:border-b-0">
+              <button
+                type="button"
+                aria-current={active ? "true" : undefined}
+                disabled={busyIdx !== null}
+                onClick={() => void handleSelect(r.index)}
+                className={cn(
+                  "grid w-full cursor-default grid-cols-[2.5rem_1fr_auto] items-center gap-2 px-2.5 py-1.5 text-start text-[13px] tabular-nums disabled:opacity-60",
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted/70 focus-visible:bg-muted/70"
+                )}
+              >
+                <span className={cn("text-xs", active ? "opacity-80" : "text-muted-foreground")}>
+                  {r.index + 1}
+                </span>
+                <span className="min-w-0 truncate">
+                  <span className="font-medium">
+                    Pt {r.pointId || "?"}
+                    {r.directionId ? ` / ${r.directionId}` : ""}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-left text-sm">
-                    Pt {r.pointId || "?"} · {oleDateToISO(Number(r.measDate)) || "—"} · peak{" "}
-                    {r.peakV} @ {r.peakFreq} {r.unit}
+                  <span className={active ? "opacity-80" : "text-muted-foreground"}>
+                    {" "}
+                    · {oleDateToISO(Number(r.measDate)) || "—"}
                   </span>
-                  {busyIdx === r.index ? <span className="text-xs">…</span> : null}
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
+                </span>
+                <span className={cn("text-xs", active ? "opacity-90" : "text-muted-foreground")}>
+                  {busyIdx === r.index ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Loading" />
+                  ) : (
+                    `${r.peakV} @ ${r.peakFreq} ${r.unit}`
+                  )}
+                </span>
+              </button>
+            </li>
+          );
+        })}
         {list && filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No matches.</p>
+          <li className="px-3 py-6 text-center text-[13px] text-muted-foreground">No matches.</li>
         ) : null}
-      </CardContent>
-    </Card>
+      </ul>
+      {list && list.rows.length > DISPLAY_CAP && filtered.length >= DISPLAY_CAP ? (
+        <p className="text-xs text-muted-foreground">
+          Showing first {DISPLAY_CAP}. Type to filter the rest.
+        </p>
+      ) : null}
+    </Panel>
   );
 }

@@ -1,4 +1,4 @@
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Siren } from "lucide-react";
 import {
   DEFAULT_ZONE_LIMITS,
   ZONE_FILL,
@@ -9,7 +9,7 @@ import {
 } from "../lib/zones";
 import { useUi } from "../lib/i18n";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Panel } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 
@@ -42,62 +42,74 @@ export function ZoneLimitsCard({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{t("zonesTitle")}</CardTitle>
-        <CardDescription>
-          B / U / C thresholds per metric. Readings at or above an edge move up a zone; envelope
-          stays disabled while all-zero.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        <div className="flex flex-wrap gap-2">
-          {(Object.keys(ZONE_LABELS) as ZoneLetter[]).map((z) => (
-            <span
-              key={z}
-              className="rounded px-2 py-0.5 text-xs font-semibold"
-              style={{ backgroundColor: `#${ZONE_FILL[z]}`, color: z === "B" ? "#000" : "#fff" }}
-              title={ZONE_LABELS[z]}
-            >
-              {z} · {ZONE_LABELS[z]}
-            </span>
-          ))}
-        </div>
-        {METRICS.map((m) => (
-          <div key={m.key} className="grid gap-1.5">
-            <p className="text-sm font-medium">
-              {m.title} <span className="font-normal text-muted-foreground">— {m.hint}</span>
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {EDGES.map((e) => (
-                <div key={e} className="grid gap-1">
-                  <Label htmlFor={`zone-${m.key}-${e}`} className="text-xs uppercase">
-                    {e === "bottom" ? "B" : e === "mid" ? "U" : "C"}
-                  </Label>
-                  <Input
-                    id={`zone-${m.key}-${e}`}
-                    type="number"
-                    step="any"
-                    value={limits[m.key][e] ?? ""}
-                    placeholder="—"
-                    onChange={(ev) => set(m.key, e, ev.target.value)}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-        <div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onChange(structuredClone(DEFAULT_ZONE_LIMITS))}
+    <Panel
+      icon={<Siren />}
+      title={t("zonesTitle")}
+      description="Readings at or above an edge move up a zone. Envelope stays off while all three are empty or zero."
+      actions={
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onChange(structuredClone(DEFAULT_ZONE_LIMITS))}
+          title="Velocity 3.5 / 7 / 8.6 · Acceleration 14.71 / 29.4 / 36.2"
+        >
+          <RotateCcw aria-hidden="true" />
+          Defaults
+        </Button>
+      }
+      contentClassName="grid gap-3"
+    >
+      <div className="flex flex-wrap gap-1.5">
+        {(Object.keys(ZONE_LABELS) as ZoneLetter[]).map((z) => (
+          <span
+            key={z}
+            className="rounded px-2 py-0.5 text-[11px] font-semibold"
+            style={{ backgroundColor: `#${ZONE_FILL[z]}`, color: z === "B" ? "#000" : "#fff" }}
           >
-            <RotateCcw />
-            Reset to defaults (3.5/7/8.6 · 14.71/29.4/36.2)
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+            {z} · {ZONE_LABELS[z]}
+          </span>
+        ))}
+      </div>
+      <div className="overflow-hidden rounded-md border">
+        <table className="w-full text-[13px]">
+          <thead className="bg-muted text-xs text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 text-start font-semibold">Metric</th>
+              {EDGES.map((e) => (
+                <th key={e} className="w-24 px-2 py-2 text-start font-semibold">
+                  {e === "bottom" ? "B from" : e === "mid" ? "U from" : "C from"}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {METRICS.map((m) => (
+              <tr key={m.key} className="border-t">
+                <td className="px-3 py-1.5">
+                  <p className="font-medium">{m.title}</p>
+                  <p className="text-xs text-muted-foreground">{m.hint}</p>
+                </td>
+                {EDGES.map((e) => (
+                  <td key={e} className="px-2 py-1.5">
+                    <Label htmlFor={`zone-${m.key}-${e}`} className="sr-only">
+                      {m.title} {e}
+                    </Label>
+                    <Input
+                      id={`zone-${m.key}-${e}`}
+                      type="number"
+                      step="any"
+                      className="h-7"
+                      value={limits[m.key][e] ?? ""}
+                      placeholder="—"
+                      onChange={(ev) => set(m.key, e, ev.target.value)}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
   );
 }

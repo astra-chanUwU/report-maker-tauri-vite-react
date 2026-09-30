@@ -1,15 +1,16 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useUi } from "../lib/i18n";
-import { Plus, Trash2 } from "lucide-react";
+import { BookUser, Check, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { loadClients, makeClient, saveClients, type ClientProfile } from "../lib/equipment";
-import { DEFAULT_ADDRESS_BLOCK_EN, DEFAULT_ADDRESS_BLOCK_FA } from "../lib/fa";
 import type { ReportOptions } from "../lib/parseSp3";
+import { cn } from "../lib/utils";
+import { imageDataUrl } from "./report-form";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
+import { Panel } from "./ui/card";
+import { Select } from "./ui/form";
+import { toast } from "./ui/sonner";
 
-/** Client profiles: set cover once, reuse for all reports (brochure p.3). */
+/** Client profiles: set the letterhead once, reuse it for every report (brochure p.3). */
 export function ClientProfiles({
   options,
   onOptions,
@@ -32,9 +33,14 @@ export function ClientProfiles({
       clientName: options.clientName ?? "",
       clientUnit: options.clientUnit ?? "",
       addressBlock: options.addressBlock ?? "",
+      isoGroups: options.isoGroups,
     });
-    if (!c.clientName && !c.clientUnit) return;
+    if (!c.clientName && !c.clientUnit) {
+      toast.error("Enter a client name or unit first.");
+      return;
+    }
     save([c, ...clients]);
+    toast.success(`Saved ${c.clientName || c.clientUnit}.`);
   };
 
   const apply = (c: ClientProfile) => {
@@ -46,6 +52,7 @@ export function ClientProfiles({
       isoGroups: c.isoGroups ?? options.isoGroups,
     });
     if (c.logoBase64) onLogo?.(c.logoBase64);
+    toast.success(`Applied ${c.clientName || "client"}.`);
   };
 
   const setLogo = async (id: string, file: File | null) => {
@@ -57,101 +64,131 @@ export function ClientProfiles({
     save(clients.map((c) => (c.id === id ? { ...c, logoBase64 } : c)));
   };
 
+  const isApplied = (c: ClientProfile) =>
+    c.clientName === (options.clientName ?? "") &&
+    c.clientUnit === (options.clientUnit ?? "") &&
+    c.addressBlock === (options.addressBlock ?? "");
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {t("clientsTitle")} ({clients.length})
-        </CardTitle>
-        <CardDescription>Save letterhead once, apply to the form.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-2">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onOptions({ ...options, addressBlock: DEFAULT_ADDRESS_BLOCK_EN })}
-          >
-            EN letterhead
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              onOptions({ ...options, addressBlock: DEFAULT_ADDRESS_BLOCK_FA, language: "fa" })
-            }
-          >
-            FA letterhead
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={addCurrent}>
-            <Plus className="h-4 w-4" /> Save current
-          </Button>
-        </div>
-        {clients.map((c) => (
-          <div key={c.id} className="flex items-center gap-2 rounded-md border p-2">
-            <button type="button" className="flex-1 text-left text-sm" onClick={() => apply(c)}>
-              <span className="font-medium">{c.clientName || "(no name)"}</span>
-              {c.clientUnit ? (
-                <span className="text-muted-foreground"> — {c.clientUnit}</span>
-              ) : null}
-              <span className="block truncate text-xs text-muted-foreground">{c.addressBlock}</span>
-            </button>
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              aria-label={`Logo for ${c.clientName || "client"}`}
-              className="max-w-28 text-xs"
-              onChange={(e) => void setLogo(c.id, e.target.files?.[0] ?? null)}
-            />
-            <select
-              className="rounded border bg-background px-1 py-1 text-xs"
-              value={c.isoGroups ?? "all"}
-              aria-label="ISO groups"
-              onChange={(e) =>
-                save(
-                  clients.map((x) =>
-                    x.id === c.id
-                      ? { ...x, isoGroups: e.target.value as ClientProfile["isoGroups"] }
-                      : x
-                  )
-                )
+    <Panel
+      icon={<BookUser />}
+      title={`${t("clientsTitle")} (${clients.length})`}
+      description={t("clientsDesc")}
+      actions={
+        <Button variant="outline" size="sm" onClick={addCurrent}>
+          <Plus aria-hidden="true" />
+          {t("saveCurrent")}
+        </Button>
+      }
+    >
+      {clients.length === 0 ? (
+        <p className="rounded-md border border-dashed px-3 py-6 text-center text-[13px] text-muted-foreground">
+          {t("noClients")}
+        </p>
+      ) : (
+        <ul className="grid max-h-80 gap-1.5 overflow-auto">
+          {clients.map((c) => (
+            <ClientRow
+              key={c.id}
+              client={c}
+              applied={isApplied(c)}
+              onApply={() => apply(c)}
+              onLogo={(f) => void setLogo(c.id, f)}
+              onIso={(iso) =>
+                save(clients.map((x) => (x.id === c.id ? { ...x, isoGroups: iso } : x)))
               }
-            >
-              <option value="all">ISO all</option>
-              <option value="1+3">1+3</option>
-              <option value="2+4">2+4</option>
-            </select>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => save(clients.filter((x) => x.id !== c.id))}
-              aria-label="Delete client"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ))}
-        {clients.length === 0 ? (
-          <div className="grid gap-1">
-            <Label htmlFor="client-quick">Quick add (name — unit)</Label>
-            <Input
-              id="client-quick"
-              placeholder="e.g. Mobarakeh Steel — Rolling unit"
-              onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
-                const v = (e.target as HTMLInputElement).value;
-                const [n, u] = v.split(/—|-/).map((s) => s.trim());
-                if (!n) return;
-                save([makeClient({ clientName: n, clientUnit: u ?? "" }), ...clients]);
-                (e.target as HTMLInputElement).value = "";
-              }}
+              onDelete={() => save(clients.filter((x) => x.id !== c.id))}
             />
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+function ClientRow({
+  client: c,
+  applied,
+  onApply,
+  onLogo,
+  onIso,
+  onDelete,
+}: {
+  client: ClientProfile;
+  applied: boolean;
+  onApply: () => void;
+  onLogo: (f: File | null) => void;
+  onIso: (iso: ClientProfile["isoGroups"]) => void;
+  onDelete: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const logo = imageDataUrl(c.logoBase64);
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-2 rounded-md border px-2 py-1.5",
+        applied && "border-primary/50 bg-accent/60"
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        className={cn(
+          "flex h-9 w-12 shrink-0 cursor-default items-center justify-center overflow-hidden rounded border",
+          logo ? "bg-white" : "bg-muted/50"
+        )}
+        title="Set client logo"
+        aria-label={`Logo for ${c.clientName || "client"}`}
+      >
+        {logo ? (
+          <img src={logo} alt="" className="h-full w-full object-contain" />
+        ) : (
+          <ImagePlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        )}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg"
+        className="hidden"
+        onChange={(e) => {
+          onLogo(e.target.files?.[0] ?? null);
+          e.target.value = "";
+        }}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium">
+          {c.clientName || "(no name)"}
+          {c.clientUnit ? (
+            <span className="font-normal text-muted-foreground"> — {c.clientUnit}</span>
+          ) : null}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">{c.addressBlock || "No address"}</p>
+      </div>
+      <Select
+        className="h-7 w-auto text-xs"
+        value={c.isoGroups ?? "all"}
+        aria-label="ISO groups"
+        title="ISO groups for this client"
+        onChange={(e) => onIso(e.target.value as ClientProfile["isoGroups"])}
+      >
+        <option value="all">ISO 1–4</option>
+        <option value="1+3">ISO 1+3</option>
+        <option value="2+4">ISO 2+4</option>
+      </Select>
+      <Button variant={applied ? "secondary" : "outline"} size="sm" onClick={onApply}>
+        {applied ? <Check aria-hidden="true" /> : null}
+        {applied ? "Applied" : "Apply"}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={onDelete}
+        aria-label="Delete client"
+        title="Delete"
+      >
+        <Trash2 aria-hidden="true" />
+      </Button>
+    </li>
   );
 }

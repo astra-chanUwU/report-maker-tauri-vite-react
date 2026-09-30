@@ -54,6 +54,15 @@ export async function convertSp3FromDisk(): Promise<ParseResult> {
     multiple: false,
   });
   if (!picked || Array.isArray(picked)) throw new Error("cancelled");
+  return convertSp3Path(picked, invoke);
+}
+
+/** Convert a known on-disk `.sp3`/`.mdb` path (e.g. from a native window drop). */
+export async function convertSp3Path(
+  picked: string,
+  invokeFn?: typeof import("@tauri-apps/api/core").invoke
+): Promise<ParseResult> {
+  const invoke = invokeFn ?? (await import("@tauri-apps/api/core")).invoke;
   const overridePath = loadMdbToolPath().trim();
   const res = await invoke<MdbExportIpc>("export_mdb_csv", {
     input: picked,
@@ -173,6 +182,14 @@ function assembleCells(
 export async function listTauriRows(csvPath: string): Promise<CsvRowList> {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<CsvRowList>("list_csv_rows", { path: csvPath, limit: null });
+}
+
+/** Tauri: open a Data-table CSV that already sits on disk (native drop). */
+export async function loadTauriCsvPath(path: string): Promise<ParseResult> {
+  const list = await listTauriRows(path);
+  if (list.rows.length === 0) throw new Error("CSV has no measurement rows.");
+  const filename = path.split(/[/\\]/).pop() || "data.csv";
+  return loadTauriRow(path, 0, filename, list.rows.length);
 }
 
 /** Tauri: load one measurement row of a converted CSV by 0-based index. */

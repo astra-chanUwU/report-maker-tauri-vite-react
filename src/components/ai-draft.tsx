@@ -3,10 +3,11 @@ import { useUi } from "../lib/i18n";
 import { draftReport, fallbackDraft, type AiDraftInput } from "../lib/ai";
 import type { ParseResult, ReportOptions } from "../lib/parseSp3";
 import { loadAiSettings, saveAiSettings } from "../lib/settings";
+import { FileText, Loader2, Sparkles } from "lucide-react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Panel } from "./ui/card";
+import { Field } from "./ui/form";
 import { Input } from "./ui/input";
-import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { toast } from "./ui/sonner";
 
@@ -32,41 +33,38 @@ export function AiSettingsCard() {
   const [settings, setSettings] = useState(() => loadAiSettings());
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("aiTitle")}</CardTitle>
-        <CardDescription>Key stays on this device (localStorage). Never committed.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="grid gap-2">
-          <Label htmlFor="ai-key">OpenAI API key</Label>
-          <Input
-            id="ai-key"
-            type="password"
-            autoComplete="off"
-            placeholder="sk-… (optional)"
-            value={settings.apiKey}
-            onChange={(e) => {
-              const next = { ...settings, apiKey: e.target.value };
-              setSettings(next);
-              saveAiSettings(next);
-            }}
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="ai-model">Model</Label>
-          <Input
-            id="ai-model"
-            value={settings.model}
-            onChange={(e) => {
-              const next = { ...settings, model: e.target.value };
-              setSettings(next);
-              saveAiSettings(next);
-            }}
-          />
-        </div>
-      </CardContent>
-    </Card>
+    <Panel
+      icon={<Sparkles />}
+      title={t("aiTitle")}
+      description="Optional. The key stays on this computer and is only used when you press Draft with AI."
+      contentClassName="grid gap-3 md:grid-cols-2"
+    >
+      <Field label="OpenAI API key" htmlFor="ai-key">
+        <Input
+          id="ai-key"
+          type="password"
+          autoComplete="off"
+          placeholder="sk-… (optional)"
+          value={settings.apiKey}
+          onChange={(e) => {
+            const next = { ...settings, apiKey: e.target.value };
+            setSettings(next);
+            saveAiSettings(next);
+          }}
+        />
+      </Field>
+      <Field label="Model" htmlFor="ai-model">
+        <Input
+          id="ai-model"
+          value={settings.model}
+          onChange={(e) => {
+            const next = { ...settings, model: e.target.value };
+            setSettings(next);
+            saveAiSettings(next);
+          }}
+        />
+      </Field>
+    </Panel>
   );
 }
 
@@ -132,55 +130,64 @@ export function AiDraftCard({
     }
   };
 
+  const filled = Object.values(fields).filter((v) => v.trim()).length;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("aiTitle")}</CardTitle>
-        <CardDescription>
-          Additive only — never required for export. Without a key or offline, the fallback fills
-          these fields.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" disabled={!parsed || busy} onClick={() => void handleDraft(false)}>
-            {busy ? "Drafting…" : "Draft with AI"}
-          </Button>
+    <Panel
+      icon={<Sparkles />}
+      title="Findings"
+      description={
+        !parsed
+          ? "Load measurement data to draft automatically. You can still type your own text."
+          : fallbackUsed
+            ? "Offline draft in use. Edit freely before export."
+            : filled === 0
+              ? "Empty fields are filled from the measurement data when you generate the report."
+              : `${filled} of 5 sections written.`
+      }
+      actions={
+        <>
           <Button
-            size="sm"
             variant="outline"
+            size="sm"
             disabled={!parsed || busy}
             onClick={() => void handleDraft(true)}
+            title="Build a draft from the measurement data without going online"
           >
-            Use offline draft
+            <FileText aria-hidden="true" />
+            Offline draft
           </Button>
-          {!parsed ? (
-            <p className="self-center text-xs text-muted-foreground">Drop a file to enable.</p>
-          ) : null}
-          {fallbackUsed ? (
-            <p className="self-center text-xs text-muted-foreground">Offline draft in use.</p>
-          ) : null}
-        </div>
-        {(
-          [
-            ["summary", "Summary"],
-            ["methodology", "Methodology"],
-            ["observations", "Observations"],
-            ["recommendations", "Recommendations"],
-            ["conclusion", "Conclusion"],
-          ] as const
-        ).map(([k, label]) => (
-          <div key={k} className="grid gap-2">
-            <Label htmlFor={`ai-${k}`}>{label}</Label>
-            <Textarea
-              id={`ai-${k}`}
-              value={fields[k]}
-              onChange={(e) => set({ [k]: e.target.value })}
-              placeholder={`${label}…`}
-            />
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+          <Button size="sm" disabled={!parsed || busy} onClick={() => void handleDraft(false)}>
+            {busy ? (
+              <Loader2 className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Sparkles aria-hidden="true" />
+            )}
+            {busy ? "Drafting…" : "Draft with AI"}
+          </Button>
+        </>
+      }
+      contentClassName="grid gap-4 lg:grid-cols-2"
+    >
+      {(
+        [
+          ["summary", "Summary", "lg:col-span-2", 4],
+          ["methodology", "Methodology", "", 5],
+          ["observations", "Observations", "", 5],
+          ["recommendations", "Recommendations", "", 5],
+          ["conclusion", "Conclusion", "", 5],
+        ] as const
+      ).map(([k, label, span, rows]) => (
+        <Field key={k} label={t(k) || label} htmlFor={`ai-${k}`} className={span}>
+          <Textarea
+            id={`ai-${k}`}
+            rows={rows}
+            value={fields[k]}
+            onChange={(e) => set({ [k]: e.target.value })}
+            placeholder={`${label}…`}
+          />
+        </Field>
+      ))}
+    </Panel>
   );
 }
