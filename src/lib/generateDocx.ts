@@ -2,10 +2,13 @@ import {
   AlignmentType,
   Bookmark,
   Document,
+  Footer,
+  Header,
   HeadingLevel,
   ImageRun,
   InternalHyperlink,
   Packer,
+  PageNumber,
   PageReference,
   Paragraph,
   ShadingType,
@@ -313,7 +316,14 @@ function headingWithBookmark(
 function equipmentSection(
   eq?: BuildDocxInput["equipment"],
   lang: "en" | "fa" = "en",
-  marks?: { status?: string; specs?: string; schematic?: string },
+  marks?: {
+    status?: string;
+    specs?: string;
+    schematic?: string;
+    description?: string;
+    problems?: string;
+    actions?: string;
+  },
   skipName = false
 ): (Paragraph | Table)[] {
   const name = eq?.name?.trim() ?? "";
@@ -340,26 +350,66 @@ function equipmentSection(
     out.push(
       headingWithBookmark(sectionTitle(lang, "specs"), HeadingLevel.HEADING_2, marks?.specs)
     );
-    for (const para of specs.split(/\n\s*\n/)) {
-      const t = para.trim();
-      if (t) out.push(docParagraph(t));
+    // Structured specs (colon-separated lines) render as a 2-column table like the brochure
+    const specLines = specs
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const kvRows = specLines
+      .filter((l) => l.includes(":"))
+      .map((l) => {
+        const idx = l.indexOf(":");
+        return [l.slice(0, idx).trim(), l.slice(idx + 1).trim()] as [string, string];
+      });
+    if (kvRows.length >= 2 && kvRows.length === specLines.filter((l) => l.includes(":")).length) {
+      const specCell = (t: string, bold = false) =>
+        new TableCell({
+          children: [docParagraph({ children: [docRun({ text: t, bold })] })],
+          shading: bold ? { type: ShadingType.CLEAR, fill: "F0F0F0", color: "auto" } : undefined,
+        });
+      out.push(
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [
+            new TableRow({
+              children: [
+                specCell(sectionTitle(lang, "metric"), true),
+                specCell(sectionTitle(lang, "value"), true),
+              ],
+            }),
+            ...kvRows.map(([k, v]) => new TableRow({ children: [specCell(k), specCell(v)] })),
+          ],
+        })
+      );
+      // Any non-kv lines (e.g. "Bearings:" header) already included as kv; bare lines appended
+      const bare = specLines.filter((l) => !l.includes(":"));
+      for (const t of bare) out.push(docParagraph(t));
+    } else {
+      for (const para of specs.split(/\n\s*\n/)) {
+        const t = para.trim();
+        if (t) out.push(docParagraph(t));
+      }
     }
   }
   if (lastReport) {
     out.push(
-      docParagraph({ text: sectionTitle(lang, "lastReport"), heading: HeadingLevel.HEADING_2 })
+      headingWithBookmark(
+        sectionTitle(lang, "description"),
+        HeadingLevel.HEADING_2,
+        marks?.description
+      )
     );
     out.push(docParagraph(lastReport));
   }
   if (problems) {
     out.push(
-      docParagraph({ text: sectionTitle(lang, "problems"), heading: HeadingLevel.HEADING_2 })
+      headingWithBookmark(sectionTitle(lang, "problems"), HeadingLevel.HEADING_2, marks?.problems)
     );
     out.push(docParagraph(problems));
   }
   if (corrective) {
     out.push(
-      docParagraph({ text: sectionTitle(lang, "actions"), heading: HeadingLevel.HEADING_2 })
+      headingWithBookmark(sectionTitle(lang, "actions"), HeadingLevel.HEADING_2, marks?.actions)
     );
     out.push(docParagraph(corrective));
   }
@@ -426,7 +476,16 @@ export function equipmentBookmarkId(index: number): string {
   return `eq${index}`;
 }
 
-export type TocPart = "status" | "schematic" | "specs" | "measuring" | "trends" | "fft";
+export type TocPart =
+  | "status"
+  | "schematic"
+  | "specs"
+  | "description"
+  | "problems"
+  | "actions"
+  | "measuring"
+  | "trends"
+  | "fft";
 
 /** Bookmark for a subsection under equipment N, e.g. eq1measuring. */
 export function sectionBookmarkId(index: number, part: TocPart): string {
@@ -438,12 +497,19 @@ export function tocPartsFor(eq: {
   status?: string;
   specs?: string;
   schematic?: { data?: Uint8Array };
+  lastReport?: string;
+  description?: string;
+  problems?: string;
+  corrective?: string;
   vib?: { rows?: unknown[]; trends?: unknown[]; fft?: unknown[] };
 }): TocPart[] {
   const parts: TocPart[] = [];
   if (eq.status?.trim()) parts.push("status");
   if (eq.schematic?.data?.length) parts.push("schematic");
   if (eq.specs?.trim()) parts.push("specs");
+  if (eq.description?.trim() || eq.lastReport?.trim()) parts.push("description");
+  if (eq.problems?.trim()) parts.push("problems");
+  if (eq.corrective?.trim()) parts.push("actions");
   if (eq.vib?.rows?.length) parts.push("measuring");
   if (eq.vib?.trends?.length) parts.push("trends");
   if (eq.vib?.fft?.length) parts.push("fft");
@@ -807,20 +873,45 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   ) => {
     if (list.length === 0) return;
     children.push(headingWithBookmark(sectionTitle(lang, "fft"), level, bookmarkId));
-    for (const g of list.slice(0, 24)) {
-      children.push(
-        docParagraph({
-          text: g.peak ? `${g.label} · peak ${g.peak}` : g.label,
-          heading: HeadingLevel.HEADING_2,
-        }),
-        docParagraph({
-          children: [
-            new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" }),
-          ],
-          alignment: AlignmentType.CENTER,
+    // Brochure p.7: 2 spectra per row in a bordered grid
+    const items = list.slice(0, 24);
+    const fftCell = (g: { label: string; png: Uint8Array; peak?: string }) =>
+      new TableCell({
+        width: { size: 50, type: WidthType.PERCENTAGE },
+        children: [
+          docParagraph({
+            text: g.peak ? `${g.label} · peak ${g.peak}` : g.label,
+            heading: HeadingLevel.HEADING_3,
+            alignment: AlignmentType.CENTER,
+          }),
+          docParagraph({
+            children: [
+              new ImageRun({
+                data: g.png,
+                transformation: { width: 280, height: 150 },
+                type: "png",
+              }),
+            ],
+            alignment: AlignmentType.CENTER,
+          }),
+        ],
+      });
+    const rows: TableRow[] = [];
+    for (let i = 0; i < items.length; i += 2) {
+      const left = items[i];
+      const right = items[i + 1];
+      rows.push(
+        new TableRow({
+          children: right ? [fftCell(left), fftCell(right)] : [fftCell(left)],
         })
       );
     }
+    children.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows,
+      })
+    );
   };
   const perMachineVib = !!multi?.some((e) => e.vib && e.vib.rows.length > 0);
   const soleMachine = multi?.length === 1 ? multi[0] : undefined;
@@ -833,6 +924,9 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         status: sectionBookmarkId(n, "status"),
         specs: sectionBookmarkId(n, "specs"),
         schematic: sectionBookmarkId(n, "schematic"),
+        description: sectionBookmarkId(n, "description"),
+        problems: sectionBookmarkId(n, "problems"),
+        actions: sectionBookmarkId(n, "actions"),
       };
       children.push(
         docParagraph({
@@ -1064,6 +1158,39 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     children.push(...buildSignatureBlock(input.options, input.branding.signature));
   }
 
+  // Brochure-style running header/footer (vendor info + page number) on every content page
+  const headerText = input.options.projectName
+    ? `${input.options.projectName} — ${input.options.reportDate || ""}`.trim()
+    : "Report";
+  const footerText =
+    input.options.addressBlock?.trim() ||
+    (fa ? "یزد، اردکان — بلوار شهید بهشتی" : "SEPAS SANAT FARTAK Co");
+  const contentHeader = new Header({
+    children: [
+      docParagraph({
+        alignment: fa ? AlignmentType.RIGHT : AlignmentType.LEFT,
+        children: [docRun({ text: headerText, size: 16, color: "737373" })],
+      }),
+    ],
+  });
+  const contentFooter = new Footer({
+    children: [
+      docParagraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          docRun({ text: `${footerText}    `, size: 16, color: "737373" }),
+          docRun({ children: [PageNumber.CURRENT], size: 16 }),
+          docRun({ text: " / ", size: 16 }),
+          docRun({ children: [PageNumber.TOTAL_PAGES], size: 16 }),
+        ],
+      }),
+    ],
+  });
+  const contentSection = {
+    headers: { default: contentHeader },
+    footers: { default: contentFooter },
+    children,
+  };
   const doc = input.branding?.cover?.data?.length
     ? new Document({
         features: { updateFields: true },
@@ -1085,10 +1212,10 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
               }),
             ],
           },
-          { children },
+          contentSection,
         ],
       })
-    : new Document({ features: { updateFields: true }, sections: [{ children }] });
+    : new Document({ features: { updateFields: true }, sections: [contentSection] });
   const blob = await Packer.toBlob(doc);
   return fa ? applyWordRtl(blob) : blob;
 }
