@@ -1,9 +1,12 @@
 import {
   AlignmentType,
+  Bookmark,
   Document,
   HeadingLevel,
   ImageRun,
+  InternalHyperlink,
   Packer,
+  PageReference,
   Paragraph,
   ShadingType,
   Table,
@@ -308,6 +311,11 @@ function equipmentSection(eq?: BuildDocxInput["equipment"], lang: "en" | "fa" = 
   return out;
 }
 
+/** Bookmark id for equipment N (1-based index in the TOC). Word names cannot contain spaces. */
+export function equipmentBookmarkId(index: number): string {
+  return `eq${index}`;
+}
+
 /** Pure TOC rows for tests: index + name + status. */
 export function buildTocRows(
   equipments: { name?: string; status?: string }[]
@@ -325,21 +333,52 @@ function tocSection(
 ): (Paragraph | Table)[] {
   if (equipments.length === 0) return [];
   const rows = buildTocRows(equipments);
-  const cell = (t: string, bold = false) =>
-    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: t, bold })] })] });
+  const cell = (children: Paragraph[]) => new TableCell({ children });
+  const textCell = (t: string, bold = false) =>
+    cell([new Paragraph({ children: [new TextRun({ text: t, bold })] })]);
   return [
     new Paragraph({ text: sectionTitle(fa ? "fa" : "en", "toc"), heading: HeadingLevel.HEADING_1 }),
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       rows: [
-        new TableRow({ children: [cell("#", true), cell(fa ? "تجهیز" : "Equipment", true), cell(fa ? "وضعیت" : "Status", true)] }),
-        ...rows.map((r) => new TableRow({ children: [cell(String(r.index)), cell(r.name), cell(r.status)] })),
+        new TableRow({
+          children: [
+            textCell("#", true),
+            textCell(fa ? "تجهیز" : "Equipment", true),
+            textCell(fa ? "وضعیت" : "Status", true),
+            textCell(fa ? "صفحه" : "Page", true),
+          ],
+        }),
+        ...rows.map((r) => {
+          const id = equipmentBookmarkId(r.index);
+          return new TableRow({
+            children: [
+              textCell(String(r.index)),
+              cell([
+                new Paragraph({
+                  children: [
+                    new InternalHyperlink({
+                      anchor: id,
+                      children: [new TextRun({ text: r.name, style: "Hyperlink" })],
+                    }),
+                  ],
+                }),
+              ]),
+              textCell(r.status),
+              cell([
+                new Paragraph({
+                  children: [new PageReference(id, { hyperlink: true })],
+                }),
+              ]),
+            ],
+          });
+        }),
       ],
     }),
     new Paragraph(
       fa
-        ? "برای به‌روزرسانی شماره صفحات در Word روی جدول راست‌کلیک و Update Field را بزنید."
-        : "Tip: in Word, right-click the table → Update Field (F9) after enabling page numbers."
+        ? "شماره صفحات با باز شدن فایل در Word به‌روز می‌شود."
+        : "Page numbers update when the file is opened in Word."
     ),
   ];
 }
@@ -592,8 +631,13 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     multi.forEach((eq, i) => {
       children.push(
         new Paragraph({
-          text: `${sectionTitle(lang, "equipment")} ${i + 1}`,
           heading: HeadingLevel.HEADING_1,
+          children: [
+            new Bookmark({
+              id: equipmentBookmarkId(i + 1),
+              children: [new TextRun(`${sectionTitle(lang, "equipment")} ${i + 1}`)],
+            }),
+          ],
         })
       );
       children.push(...equipmentSection(eq, lang).slice(1));
@@ -763,6 +807,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 
   const doc = input.branding?.cover?.data?.length
     ? new Document({
+        features: { updateFields: true },
         sections: [
           {
             properties: {
@@ -784,7 +829,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
           { children },
         ],
       })
-    : new Document({ sections: [{ children }] });
+    : new Document({ features: { updateFields: true }, sections: [{ children }] });
   return Packer.toBlob(doc);
 }
 

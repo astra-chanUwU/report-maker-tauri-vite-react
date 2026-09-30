@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildTocData, makeClient, makeEquipment } from "../equipment";
 import { gregorianToJalali, isoToJalali, isoToJalaliFa, toFaDigits } from "../fa";
-import { buildTocRows, buildDocx, buildSignatureBlock } from "../generateDocx";
+import { buildTocRows, buildDocx, buildSignatureBlock, equipmentBookmarkId } from "../generateDocx";
 import { parseSp3 } from "../parseSp3";
 import { buildAllTrendSnapshots, groupHistories } from "../trends";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
@@ -26,6 +26,7 @@ describe("equipments + toc", () => {
     expect(toc[0]).toMatchObject({ index: 1, name: "Pump A", status: "Alert" });
     expect(toc[1].name).toContain("Equipment");
     expect(buildTocRows(list)).toHaveLength(2);
+    expect(equipmentBookmarkId(1)).toBe("eq1");
     expect(makeClient({ clientName: "X" }).clientName).toBe("X");
   });
 
@@ -50,6 +51,12 @@ describe("equipments + toc", () => {
       ],
     });
     expect(multi.size).toBeGreaterThan(single.size);
+    const JSZip = (await import("jszip")).default;
+    const zip = await JSZip.loadAsync(await multi.arrayBuffer());
+    const xml = await zip.file("word/document.xml")!.async("string");
+    expect(xml).toContain("PAGEREF");
+    expect(xml).toContain("eq1");
+    expect(xml).toContain("eq2");
   }, 30000);
 
   it("letterhead + fa + galleries grow docx", async () => {
