@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildTocData, makeClient, makeEquipment } from "../equipment";
 import { gregorianToJalali, isoToJalali, isoToJalaliFa, toFaDigits } from "../fa";
-import { buildTocRows, buildDocx, buildSignatureBlock, equipmentBookmarkId, renderChartPng } from "../generateDocx";
+import { buildTocRows, buildDocx, buildSignatureBlock, equipmentBookmarkId, sectionBookmarkId, tocPartsFor, renderChartPng } from "../generateDocx";
 import { parseSp3 } from "../parseSp3";
 import { buildAllTrendSnapshots, groupHistories } from "../trends";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
@@ -27,6 +27,9 @@ describe("equipments + toc", () => {
     expect(toc[1].name).toContain("Equipment");
     expect(buildTocRows(list)).toHaveLength(2);
     expect(equipmentBookmarkId(1)).toBe("eq1");
+    expect(sectionBookmarkId(1, "fft")).toBe("eq1fft");
+    expect(tocPartsFor({ status: "Alert", specs: "15kW" })).toEqual(["status", "specs"]);
+    expect(tocPartsFor({})).toEqual([]);
     expect(makeClient({ clientName: "X" }).clientName).toBe("X");
   });
 
@@ -57,6 +60,10 @@ describe("equipments + toc", () => {
     expect(xml).toContain("PAGEREF");
     expect(xml).toContain("eq1");
     expect(xml).toContain("eq2");
+    expect(xml).toContain("eq1status");
+    expect(xml).toContain("eq1specs");
+    expect(xml).toContain("eq2status");
+    expect(xml).toContain("eq2specs");
   }, 30000);
 
   it("puts each machine FFT gallery inside that equipment section", async () => {

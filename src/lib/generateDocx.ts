@@ -285,7 +285,24 @@ function downsample(spectra: SpectraPoint[], max: number): SpectraPoint[] {
 }
 
 /** §3 equipment page: name + technical specs + machine schematic + status/AI fields. */
-function equipmentSection(eq?: BuildDocxInput["equipment"], lang: "en" | "fa" = "en"): (Paragraph | Table)[] {
+function headingWithBookmark(
+  text: string,
+  level: (typeof HeadingLevel)[keyof typeof HeadingLevel],
+  bookmarkId?: string
+): Paragraph {
+  if (!bookmarkId) return docParagraph({ text, heading: level });
+  return docParagraph({
+    heading: level,
+    children: [new Bookmark({ id: bookmarkId, children: [docRun(text)] })],
+  });
+}
+
+function equipmentSection(
+  eq?: BuildDocxInput["equipment"],
+  lang: "en" | "fa" = "en",
+  marks?: { status?: string; specs?: string; schematic?: string },
+  skipName = false
+): (Paragraph | Table)[] {
   const name = eq?.name?.trim() ?? "";
   const specs = eq?.specs?.trim() ?? "";
   const schema = eq?.schematic?.data?.length ? eq.schematic : undefined;
@@ -297,14 +314,15 @@ function equipmentSection(eq?: BuildDocxInput["equipment"], lang: "en" | "fa" = 
   const out: (Paragraph | Table)[] = [
     docParagraph({ text: sectionTitle(lang, "equipment"), heading: HeadingLevel.HEADING_1 }),
   ];
-  if (name) {
+  if (name && !skipName) {
     out.push(docParagraph({ text: name, heading: HeadingLevel.HEADING_2 }));
   }
   if (status) {
-    out.push(docParagraph(`${sectionTitle(lang, "status")}: ${status}`));
+    out.push(headingWithBookmark(sectionTitle(lang, "status"), HeadingLevel.HEADING_2, marks?.status));
+    out.push(docParagraph(status));
   }
   if (specs) {
-    out.push(docParagraph({ text: sectionTitle(lang, "specs"), heading: HeadingLevel.HEADING_2 }));
+    out.push(headingWithBookmark(sectionTitle(lang, "specs"), HeadingLevel.HEADING_2, marks?.specs));
     for (const para of specs.split(/\n\s*\n/)) {
       const t = para.trim();
       if (t) out.push(docParagraph(t));
@@ -323,6 +341,7 @@ function equipmentSection(eq?: BuildDocxInput["equipment"], lang: "en" | "fa" = 
     out.push(docParagraph(corrective));
   }
   if (schema) {
+    out.push(headingWithBookmark(sectionTitle(lang, "schematic"), HeadingLevel.HEADING_2, marks?.schematic));
     out.push(
       docParagraph({
         children: [
@@ -344,6 +363,30 @@ export function equipmentBookmarkId(index: number): string {
   return `eq${index}`;
 }
 
+export type TocPart = "status" | "schematic" | "specs" | "measuring" | "trends" | "fft";
+
+/** Bookmark for a subsection under equipment N, e.g. eq1measuring. */
+export function sectionBookmarkId(index: number, part: TocPart): string {
+  return `eq${index}${part}`;
+}
+
+/** Subsections that actually exist on this machine, in brochure order. */
+export function tocPartsFor(eq: {
+  status?: string;
+  specs?: string;
+  schematic?: { data?: Uint8Array };
+  vib?: { rows?: unknown[]; trends?: unknown[]; fft?: unknown[] };
+}): TocPart[] {
+  const parts: TocPart[] = [];
+  if (eq.status?.trim()) parts.push("status");
+  if (eq.schematic?.data?.length) parts.push("schematic");
+  if (eq.specs?.trim()) parts.push("specs");
+  if (eq.vib?.rows?.length) parts.push("measuring");
+  if (eq.vib?.trends?.length) parts.push("trends");
+  if (eq.vib?.fft?.length) parts.push("fft");
+  return parts;
+}
+
 /** Pure TOC rows for tests: index + name + status. */
 export function buildTocRows(
   equipments: { name?: string; status?: string }[]
@@ -356,16 +399,31 @@ export function buildTocRows(
 }
 
 function tocSection(
-  equipments: { name?: string; status?: string }[],
+  equipments: NonNullable<BuildDocxInput["equipments"]>,
   fa: boolean
 ): (Paragraph | Table)[] {
   if (equipments.length === 0) return [];
+  const lang: "en" | "fa" = fa ? "fa" : "en";
   const rows = buildTocRows(equipments);
   const cell = (children: Paragraph[]) => new TableCell({ children });
   const textCell = (t: string, bold = false) =>
     cell([docParagraph({ children: [docRun({ text: t, bold })] })]);
+  const linkCell = (label: string, anchor: string, indent = false) =>
+    cell([
+      docParagraph({
+        indent: indent ? { left: fa ? 0 : 360, right: fa ? 360 : 0 } : undefined,
+        children: [
+          new InternalHyperlink({
+            anchor,
+            children: [docRun({ text: label, style: "Hyperlink" })],
+          }),
+        ],
+      }),
+    ]);
+  const pageCell = (anchor: string) =>
+    cell([docParagraph({ children: [new PageReference(anchor, { hyperlink: true })] })]);
   return [
-    docParagraph({ text: sectionTitle(fa ? "fa" : "en", "toc"), heading: HeadingLevel.HEADING_1 }),
+    docParagraph({ text: sectionTitle(lang, "toc"), heading: HeadingLevel.HEADING_1 }),
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       rows: [
@@ -377,29 +435,24 @@ function tocSection(
             textCell(fa ? "صفحه" : "Page", true),
           ],
         }),
-        ...rows.map((r) => {
+        ...rows.flatMap((r, i) => {
           const id = equipmentBookmarkId(r.index);
-          return new TableRow({
-            children: [
-              textCell(String(r.index)),
-              cell([
-                docParagraph({
-                  children: [
-                    new InternalHyperlink({
-                      anchor: id,
-                      children: [docRun({ text: r.name, style: "Hyperlink" })],
-                    }),
-                  ],
-                }),
-              ]),
-              textCell(r.status),
-              cell([
-                docParagraph({
-                  children: [new PageReference(id, { hyperlink: true })],
-                }),
-              ]),
-            ],
+          const eq = equipments[i];
+          const main = new TableRow({
+            children: [textCell(String(r.index)), linkCell(r.name, id), textCell(r.status), pageCell(id)],
           });
+          const subs = tocPartsFor(eq).map(
+            (part) =>
+              new TableRow({
+                children: [
+                  textCell(""),
+                  linkCell(sectionTitle(lang, part), sectionBookmarkId(r.index, part), true),
+                  textCell(""),
+                  pageCell(sectionBookmarkId(r.index, part)),
+                ],
+              })
+          );
+          return [main, ...subs];
         }),
       ],
     }),
@@ -601,11 +654,11 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         }),
       ],
     });
-  const pushMeasuring = (limits: ZoneLimitSet, rows: MeasureRow[]) => {
+  const pushMeasuring = (limits: ZoneLimitSet, rows: MeasureRow[], bookmarkId?: string) => {
     if (rows.length === 0) return;
     const { header, body } = buildMeasuringTableData(rows, limits);
     children.push(
-      docParagraph({ text: sectionTitle(lang, "measuring"), heading: HeadingLevel.HEADING_1 }),
+      headingWithBookmark(sectionTitle(lang, "measuring"), HeadingLevel.HEADING_1, bookmarkId),
       new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
@@ -615,9 +668,9 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       })
     );
   };
-  const pushTrends = (list: NonNullable<BuildDocxInput["allTrends"]>) => {
+  const pushTrends = (list: NonNullable<BuildDocxInput["allTrends"]>, bookmarkId?: string) => {
     if (list.length === 0) return;
-    children.push(docParagraph({ text: sectionTitle(lang, "trendsAll"), heading: HeadingLevel.HEADING_1 }));
+    children.push(headingWithBookmark(sectionTitle(lang, "trendsAll"), HeadingLevel.HEADING_1, bookmarkId));
     for (const t of list.slice(0, 40)) {
       children.push(
         docParagraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
@@ -643,9 +696,9 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       );
     }
   };
-  const pushFft = (list: NonNullable<BuildDocxInput["fftGallery"]>, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1) => {
+  const pushFft = (list: NonNullable<BuildDocxInput["fftGallery"]>, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1, bookmarkId?: string) => {
     if (list.length === 0) return;
-    children.push(docParagraph({ text: sectionTitle(lang, "fft"), heading: level }));
+    children.push(headingWithBookmark(sectionTitle(lang, "fft"), level, bookmarkId));
     for (const g of list.slice(0, 24)) {
       children.push(
         docParagraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
@@ -659,22 +712,28 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const perMachineVib = !!multi?.some((e) => e.vib && e.vib.rows.length > 0);
   if (multi) {
     multi.forEach((eq, i) => {
+      const n = i + 1;
+      const marks = {
+        status: sectionBookmarkId(n, "status"),
+        specs: sectionBookmarkId(n, "specs"),
+        schematic: sectionBookmarkId(n, "schematic"),
+      };
       children.push(
         docParagraph({
           heading: HeadingLevel.HEADING_1,
           children: [
             new Bookmark({
-              id: equipmentBookmarkId(i + 1),
-              children: [docRun(`${sectionTitle(lang, "equipment")} ${i + 1}`)],
+              id: equipmentBookmarkId(n),
+              children: [docRun(eq.name?.trim() || `${sectionTitle(lang, "equipment")} ${n}`)],
             }),
           ],
         })
       );
-      children.push(...equipmentSection(eq, lang).slice(1));
+      children.push(...equipmentSection(eq, lang, marks, true).slice(1));
       if (eq.vib) {
-        pushMeasuring(eq.vib.limits, eq.vib.rows);
-        if (eq.vib.trends) pushTrends(eq.vib.trends);
-        if (eq.vib.fft) pushFft(eq.vib.fft, HeadingLevel.HEADING_2);
+        pushMeasuring(eq.vib.limits, eq.vib.rows, sectionBookmarkId(n, "measuring"));
+        if (eq.vib.trends) pushTrends(eq.vib.trends, sectionBookmarkId(n, "trends"));
+        if (eq.vib.fft) pushFft(eq.vib.fft, HeadingLevel.HEADING_2, sectionBookmarkId(n, "fft"));
       }
     });
   } else {

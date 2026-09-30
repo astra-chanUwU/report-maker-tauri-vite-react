@@ -92,6 +92,7 @@ const FA_SECTIONS: Record<string, string> = {
   problems: "مشکلات شناسایی‌شده",
   actions: "اقدامات لازم",
   status: "وضعیت تجهیز",
+  schematic: "شماتیک",
 };
 
 const EN_SECTIONS: Record<string, string> = {
@@ -121,6 +122,7 @@ const EN_SECTIONS: Record<string, string> = {
   problems: "Identified problems (AI)",
   actions: "Corrective actions",
   status: "Condition status",
+  schematic: "Schematic",
 };
 
 export function sectionTitle(lang: "en" | "fa" | undefined, key: string): string {
