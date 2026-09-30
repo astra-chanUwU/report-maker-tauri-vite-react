@@ -5,7 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { AiDraftCard, AiSettingsCard, type AiDraftFields } from "./components/ai-draft";
 import { BrandingCard } from "./components/branding";
 import { ChartEditor } from "./components/chart-editor";
+import { ClientProfiles } from "./components/client-profiles";
 import { DesignDemo } from "./components/demo";
+import { EquipmentList } from "./components/equipment-list";
 import { ExportCard } from "./components/export-card";
 import { HistoryTab } from "./components/history";
 import { Ingest } from "./components/ingest";
@@ -19,6 +21,7 @@ import { TelemetryCard } from "./components/telemetry";
 import { TrendCard, type TrendSnapshot } from "./components/trend-card";
 import { ZoneLimitsCard } from "./components/zone-limits";
 import { addHistoryEntry, makeEntry } from "./lib/history";
+import { loadEquipments, saveEquipments, type EquipmentItem } from "./lib/equipment";
 import type { CsvRowSummary } from "./lib/mdb";
 import {
   computeStats,
@@ -53,6 +56,7 @@ function App() {
   const [measureRows, setMeasureRows] = useState<CsvRowSummary[] | null>(null);
   const [trendSnap, setTrendSnap] = useState<TrendSnapshot | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
+  const [equipments, setEquipments] = useState<EquipmentItem[]>(() => loadEquipments());
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -194,6 +198,14 @@ function App() {
               </>
             ) : null}
             <ReportForm options={options} onChange={setOptions} />
+            <EquipmentList
+              items={equipments}
+              onChange={(n) => {
+                setEquipments(n);
+                saveEquipments(n);
+              }}
+            />
+            <ClientProfiles options={options} onOptions={setOptions} />
             <AiDraftCard
               parsed={effective}
               options={options}
@@ -223,6 +235,9 @@ function App() {
               limits={zoneLimits}
               measureRows={measureRows ?? undefined}
               trendSnap={trendSnap}
+              equipments={equipments}
+              tauriPath={effective?.meta.csvPath ?? null}
+              csvFile={effective?.meta.csvPath ? null : csvFile}
             />
             {!effective ? (
               <p className="text-xs text-muted-foreground">

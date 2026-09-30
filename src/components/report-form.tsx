@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { ReportOptions } from "../lib/parseSp3";
+import { EQUIPMENT_STATUSES } from "../lib/equipment";
+import { isoToJalaliFa } from "../lib/fa";
 import {
   base64ToBytes,
   bytesToBase64,
@@ -168,6 +170,60 @@ export function ReportForm({
             onChange={(e) => set({ equipmentName: e.target.value })}
           />
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-2">
+            <Label htmlFor="opt-status">Condition status</Label>
+            <select
+              id="opt-status"
+              className="rounded-md border bg-background px-2 py-1.5 text-sm"
+              value={options.equipmentStatus ?? ""}
+              onChange={(e) => set({ equipmentStatus: e.target.value })}
+            >
+              <option value="">—</option>
+              {EQUIPMENT_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="opt-letter">Letter No</Label>
+            <Input
+              id="opt-letter"
+              value={options.letterNo ?? ""}
+              placeholder="405"
+              onChange={(e) => set({ letterNo: e.target.value })}
+            />
+          </div>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="opt-lastreport">Last report summary (editable)</Label>
+          <Textarea
+            id="opt-lastreport"
+            value={options.equipmentLastReport ?? ""}
+            placeholder="Previous status + actions taken…"
+            onChange={(e) => set({ equipmentLastReport: e.target.value })}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="opt-problems">Identified problems (AI, editable)</Label>
+          <Textarea
+            id="opt-problems"
+            value={options.equipmentProblems ?? ""}
+            placeholder="AI diagnosis, editable…"
+            onChange={(e) => set({ equipmentProblems: e.target.value })}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="opt-corrective">Corrective actions (editable)</Label>
+          <Textarea
+            id="opt-corrective"
+            value={options.equipmentCorrective ?? ""}
+            placeholder="What to do next…"
+            onChange={(e) => set({ equipmentCorrective: e.target.value })}
+          />
+        </div>
         <div className="grid gap-2">
           <Label htmlFor="opt-specs">Technical specs</Label>
           <Textarea
@@ -213,6 +269,90 @@ export function ReportForm({
           />
           Append ISO 10816-3 severity table
         </label>
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={options.includeToc !== false}
+            onChange={(e) => set({ includeToc: e.target.checked })}
+            className="h-4 w-4 accent-green-700"
+          />
+          Table of contents (multi-equipment)
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={options.fftAllPoints !== false}
+            onChange={(e) => set({ fftAllPoints: e.target.checked })}
+            className="h-4 w-4 accent-green-700"
+          />
+          FFT gallery — all points (up to 24)
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={options.trendAllPoints !== false}
+            onChange={(e) => set({ trendAllPoints: e.target.checked })}
+            className="h-4 w-4 accent-green-700"
+          />
+          Trends — all points (up to 40)
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-2">
+            <Label>Language</Label>
+            <div className="flex gap-2" role="group" aria-label="Language">
+              {(["en", "fa"] as const).map((l) => (
+                <Button
+                  key={l}
+                  type="button"
+                  aria-pressed={options.language === l || (!options.language && l === "en")}
+                  variant={options.language === l || (!options.language && l === "en") ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    const jalali = l === "fa" ? isoToJalaliFa(options.reportDate) : "";
+                    set({ language: l, jalaliDate: jalali });
+                  }}
+                  className={cn((options.language === l || (!options.language && l === "en")) && "pointer-events-none")}
+                >
+                  {l === "en" ? "EN" : "فا"}
+                </Button>
+              ))}
+            </div>
+            {options.language === "fa" ? (
+              <p className="text-xs text-muted-foreground">
+                جلالی: {options.jalaliDate || isoToJalaliFa(options.reportDate) || "—"}
+              </p>
+            ) : null}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="opt-client">Client</Label>
+            <Input
+              id="opt-client"
+              value={options.clientName ?? ""}
+              placeholder="Client name"
+              onChange={(e) => set({ clientName: e.target.value })}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-2">
+            <Label htmlFor="opt-unit">Executive unit</Label>
+            <Input
+              id="opt-unit"
+              value={options.clientUnit ?? ""}
+              placeholder="Unit / site"
+              onChange={(e) => set({ clientUnit: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="opt-addr">Address block</Label>
+            <Input
+              id="opt-addr"
+              value={options.addressBlock ?? ""}
+              placeholder="Letterhead address…"
+              onChange={(e) => set({ addressBlock: e.target.value })}
+            />
+          </div>
+        </div>
         <div className="flex gap-2">
           <Button
             type="button"
