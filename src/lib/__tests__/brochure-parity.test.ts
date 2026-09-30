@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findDominantPeaks, formatPeakLabel } from "../spectra-peaks";
-import { renderChartPng } from "../generateDocx";
+import { buildMeasuringTableData, renderChartPng } from "../generateDocx";
 import {
   buildMachineSpecs,
   extractJpegFromHex,
@@ -165,6 +165,14 @@ describe("brochure polish", () => {
     const iso = buildIsoTableData({ groups: "1+3", language: "fa" });
     expect(iso.rows[0][0].text).toContain("۱");
     expect(sectionTitle("fa", "measuring")).toContain("انداز");
+    const faHeader = buildMeasuringTableData(
+      [{ point: "P1", date: "a", rms: "1", rmsA: "2", peak: "", peakFreq: "" }],
+      DEFAULT_ZONE_LIMITS,
+      "fa"
+    ).header;
+    expect(faHeader[0]).toBe("نقطه");
+    expect(faHeader[6]).toContain("ناحیه سرعت");
+    expect(faHeader[7]).toBe("فهرست پیک");
     const env = indexEnvelopeCsv("PointID,MeasDate,TotalRMSV\n1,45000,0.2\n");
     expect(env.get("1|45000")).toBe("0.2");
     const joined = [

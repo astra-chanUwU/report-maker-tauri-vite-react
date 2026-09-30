@@ -104,23 +104,24 @@ export interface MeasuringCell {
 /** Pure data builder for the measuring-results table (tested without unzipping). */
 export function buildMeasuringTableData(
   rows: MeasureRow[],
-  limits: ZoneLimitSet
+  limits: ZoneLimitSet,
+  lang: "en" | "fa" = "en"
 ): { header: string[]; body: MeasuringCell[][] } {
   const header = [
-    "Point",
+    sectionTitle(lang, "measPoint"),
     "V",
-    "Total",
-    "Avg",
-    "Prev",
-    "Curr",
-    `V Zone (${limitsShort(limits.velocity)})`,
-    "Peak list",
+    sectionTitle(lang, "measTotal"),
+    sectionTitle(lang, "measAvg"),
+    sectionTitle(lang, "measPrev"),
+    sectionTitle(lang, "measCurr"),
+    `${sectionTitle(lang, "measZoneV")} (${limitsShort(limits.velocity)})`,
+    sectionTitle(lang, "measPeaks"),
     "A",
-    "Total",
-    "Avg",
-    "Prev",
-    "Curr",
-    `A Zone (${limitsShort(limits.acceleration)})`,
+    sectionTitle(lang, "measTotal"),
+    sectionTitle(lang, "measAvg"),
+    sectionTitle(lang, "measPrev"),
+    sectionTitle(lang, "measCurr"),
+    `${sectionTitle(lang, "measZoneA")} (${limitsShort(limits.acceleration)})`,
   ];
   const body = rows.map((r) => {
     const zoneV = classifyZone(r.currV || r.rms, limits.velocity);
@@ -612,7 +613,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
       new TableRow({
-        children: ["Freq", "Amp"].map(
+        children: [sectionTitle(input.options.language === "fa" ? "fa" : "en", "freq"), sectionTitle(input.options.language === "fa" ? "fa" : "en", "amp")].map(
           (t) =>
             new TableCell({
               children: [docParagraph({ children: [docRun({ text: t, bold: true })] })],
@@ -656,7 +657,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     });
   const pushMeasuring = (limits: ZoneLimitSet, rows: MeasureRow[], bookmarkId?: string) => {
     if (rows.length === 0) return;
-    const { header, body } = buildMeasuringTableData(rows, limits);
+    const { header, body } = buildMeasuringTableData(rows, limits, lang);
     children.push(
       headingWithBookmark(sectionTitle(lang, "measuring"), HeadingLevel.HEADING_1, bookmarkId),
       new Table({
@@ -753,9 +754,9 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     const extraRows: [string, string][] = [];
     if (input.zones) {
       extraRows.push(
-        ["Velocity zone limits (B/U/C)", formatLimits(input.zones.limits.velocity)],
-        ["Accel zone limits (B/U/C)", formatLimits(input.zones.limits.acceleration)],
-        ["Envelope zone limits (B/U/C)", formatLimits(input.zones.limits.envelope)]
+        [sectionTitle(lang, "zoneVLimits"), formatLimits(input.zones.limits.velocity)],
+        [sectionTitle(lang, "zoneALimits"), formatLimits(input.zones.limits.acceleration)],
+        [sectionTitle(lang, "zoneELimits"), formatLimits(input.zones.limits.envelope)]
       );
     }
     children.push(
@@ -763,15 +764,15 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
-          new TableRow({ children: [cell("Metric", true), cell("Value", true)] }),
+          new TableRow({ children: [cell(sectionTitle(lang, "metric"), true), cell(sectionTitle(lang, "value"), true)] }),
           ...[
-            ["Unit", overall.unit || "—"],
-            ["Measured", overall.measDate || "—"],
-            ["Point / Direction", `${overall.pointId || "—"} / ${overall.directionId || "—"}`],
-            ["RMS D / V / A", `${overall.rmsD} / ${overall.rmsV} / ${overall.rmsA}`],
-            ["Peak D / V / A", `${overall.peakD} / ${overall.peakV} / ${overall.peakA}`],
-            ["Peak freq", String(overall.peakFreq)],
-            ["Freq range / lines", `${overall.freqRange} / ${overall.noLines}`],
+            [sectionTitle(lang, "unit"), overall.unit || "—"],
+            [sectionTitle(lang, "measured"), overall.measDate || "—"],
+            [sectionTitle(lang, "pointDir"), `${overall.pointId || "—"} / ${overall.directionId || "—"}`],
+            [sectionTitle(lang, "rmsDva"), `${overall.rmsD} / ${overall.rmsV} / ${overall.rmsA}`],
+            [sectionTitle(lang, "peakDva"), `${overall.peakD} / ${overall.peakV} / ${overall.peakA}`],
+            [sectionTitle(lang, "peakFreq"), String(overall.peakFreq)],
+            [sectionTitle(lang, "freqLines"), `${overall.freqRange} / ${overall.noLines}`],
             ...extraRows,
           ].map(([k, v]) => new TableRow({ children: [cell(k), cell(v)] })),
         ],
@@ -781,7 +782,9 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       const z = classifyZone(overall.rmsV, input.zones.limits.velocity);
       children.push(
         docParagraph(
-          `This measurement: velocity zone ${z || "—"} (RMS-V ${overall.rmsV} against ${formatLimits(input.zones.limits.velocity)}).`
+          fa
+            ? `این اندازه‌گیری: ناحیه سرعت ${z || "—"} (RMS-V ${overall.rmsV} نسبت به ${formatLimits(input.zones.limits.velocity)}).`
+            : `This measurement: velocity zone ${z || "—"} (RMS-V ${overall.rmsV} against ${formatLimits(input.zones.limits.velocity)}).`
         )
       );
     }
