@@ -129,6 +129,15 @@ export function ReportForm({
             onChange={(e) => set({ notes: e.target.value })}
           />
         </div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={options.includeIsoTable !== false}
+            onChange={(e) => set({ includeIsoTable: e.target.checked })}
+            className="h-4 w-4 accent-green-700"
+          />
+          Append ISO 10816-3 severity table
+        </label>
         <div className="flex gap-2">
           <Button
             type="button"

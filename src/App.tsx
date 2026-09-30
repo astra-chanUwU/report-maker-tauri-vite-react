@@ -26,12 +26,14 @@ import {
   type SpectraPoint,
 } from "./lib/parseSp3";
 import {
+  hasStoredBranding,
   loadBranding,
   loadReportOptions,
   loadZoneLimits,
   saveBranding,
   saveReportOptions,
   saveZoneLimits,
+  seedDefaultBranding,
   type Branding,
 } from "./lib/settings";
 import { initCrashHooks, track } from "./lib/telemetry";
@@ -57,6 +59,11 @@ function App() {
   useEffect(() => {
     initCrashHooks();
     void track("app_started", {});
+    if (!hasStoredBranding()) {
+      void seedDefaultBranding().then((seed) => {
+        if (seed) setBranding(seed);
+      });
+    }
   }, []);
 
   useEffect(() => {

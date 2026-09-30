@@ -64,6 +64,8 @@ export interface ReportOptions {
   notes: string;
   templateId?: string;
   pointLimit?: number;
+  /** Append the ISO 10816-3 severity reference table (default true). */
+  includeIsoTable?: boolean;
 }
 
 export interface AiDraft {

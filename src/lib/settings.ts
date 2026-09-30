@@ -19,6 +19,7 @@ export function defaultReportOptions(): ReportOptions {
     norm: "Default",
     notes: "",
     pointLimit: 120,
+    includeIsoTable: true,
   };
 }
 
@@ -40,6 +41,7 @@ export function loadReportOptions(): ReportOptions {
       notes: typeof o.notes === "string" ? o.notes : "",
       pointLimit: typeof o.pointLimit === "number" && o.pointLimit > 0 ? o.pointLimit : 120,
       templateId: typeof o.templateId === "string" ? o.templateId : undefined,
+      includeIsoTable: typeof o.includeIsoTable === "boolean" ? o.includeIsoTable : true,
     };
   } catch {
     return base;
@@ -81,25 +83,64 @@ const BRANDING_KEY = "report-maker:branding:v1";
 export interface Branding {
   /** PNG bytes as base64 (no data: prefix). Null when no logo. */
   logoBase64: string | null;
+  /** Cover-page image (JPEG/PNG base64, no prefix). Null = no cover page. */
+  coverBase64: string | null;
+  /** Signature stamp (PNG base64, no prefix). Null = no signature block. */
+  signatureBase64: string | null;
+}
+
+export function defaultBranding(): Branding {
+  return { logoBase64: null, coverBase64: null, signatureBase64: null };
 }
 
 export function loadBranding(): Branding {
   try {
-    const raw = localStorage.getItem(BRANDING_KEY);
-    if (!raw) return { logoBase64: null };
+    const raw = lsGet(BRANDING_KEY);
+    if (!raw) return defaultBranding();
     const o = JSON.parse(raw) as Partial<Branding>;
-    return { logoBase64: typeof o.logoBase64 === "string" ? o.logoBase64 : null };
+    return {
+      logoBase64: typeof o.logoBase64 === "string" ? o.logoBase64 : null,
+      coverBase64: typeof o.coverBase64 === "string" ? o.coverBase64 : null,
+      signatureBase64: typeof o.signatureBase64 === "string" ? o.signatureBase64 : null,
+    };
   } catch {
-    return { logoBase64: null };
+    return defaultBranding();
   }
 }
 
 export function saveBranding(b: Branding): void {
   try {
-    localStorage.setItem(BRANDING_KEY, JSON.stringify(b));
+    lsSet(BRANDING_KEY, JSON.stringify(b));
   } catch {
     // quota — keep in-memory only
   }
+}
+
+/** True when the user has branding stored (used to seed Elika defaults once). */
+export function hasStoredBranding(): boolean {
+  return lsGet(BRANDING_KEY) !== null;
+}
+
+async function fetchAssetBase64(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return bytesToBase64(new Uint8Array(await res.arrayBuffer()));
+  } catch {
+    return null;
+  }
+}
+
+/** First-run defaults from public/branding (Elika logo / cover / signature). */
+export async function seedDefaultBranding(): Promise<Branding | null> {
+  const base = import.meta.env.BASE_URL || "/";
+  const [logoBase64, coverBase64, signatureBase64] = await Promise.all([
+    fetchAssetBase64(`${base}branding/logo.png`),
+    fetchAssetBase64(`${base}branding/cover.jpg`),
+    fetchAssetBase64(`${base}branding/signature.png`),
+  ]);
+  if (!logoBase64 && !coverBase64 && !signatureBase64) return null;
+  return { logoBase64, coverBase64, signatureBase64 };
 }
 
 export function base64ToBytes(b64: string): Uint8Array {

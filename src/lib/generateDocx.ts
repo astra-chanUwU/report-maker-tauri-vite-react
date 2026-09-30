@@ -14,6 +14,7 @@ import {
 } from "docx";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
 import { getTemplate } from "./templates";
+import { buildIsoTableData, type IsoCell } from "./iso10816";
 import {
   classifyZone,
   formatLimits,
@@ -22,6 +23,19 @@ import {
   ZONE_TEXT,
   type ZoneLimitSet,
 } from "./zones";
+
+export interface BrandImage {
+  data: Uint8Array;
+  /** "png" | "jpg" — detected from magic bytes when omitted. */
+  kind?: "png" | "jpg";
+}
+
+/** Detect PNG vs JPEG from magic bytes (branding uploads lose their MIME). */
+export function detectImageKind(bytes: Uint8Array): "png" | "jpg" {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
+    return "jpg";
+  return "png";
+}
 
 export interface MeasureRow {
   point: string;
@@ -76,7 +90,7 @@ export interface BuildDocxInput {
     recommendations: string;
     conclusion: string;
   };
-  branding?: { logoPng?: Uint8Array };
+  branding?: { logoPng?: Uint8Array; cover?: BrandImage; signature?: BrandImage };
   templateId?: string;
   /** Measuring-results table (all export rows) + alarm limits, when available. */
   zones?: {
@@ -484,8 +498,85 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     );
   }
 
-  const doc = new Document({ sections: [{ children }] });
+  if (input.options.includeIsoTable !== false) {
+    children.push(...buildIsoSection());
+  }
+
+  if (input.branding?.signature && input.branding.signature.data.length > 0) {
+    const sig = input.branding.signature;
+    children.push(
+      new Paragraph({ text: "Approval", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({
+        children: [
+          new ImageRun({
+            data: sig.data,
+            transformation: { width: 200, height: 200 },
+            type: sig.kind ?? detectImageKind(sig.data),
+          }),
+        ],
+      }),
+      new Paragraph(
+        `Engineer: ${input.options.engineer || "—"}    Date: ${input.options.reportDate || "—"}`
+      )
+    );
+  }
+
+  const doc = input.branding?.cover?.data?.length
+    ? new Document({
+        sections: [
+          {
+            properties: {
+              page: { margin: { top: 400, bottom: 400, left: 400, right: 400 } },
+            },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new ImageRun({
+                    data: input.branding.cover.data,
+                    transformation: { width: 540, height: 764 },
+                    type: input.branding.cover.kind ?? detectImageKind(input.branding.cover.data),
+                  }),
+                ],
+              }),
+            ],
+          },
+          { children },
+        ],
+      })
+    : new Document({ sections: [{ children }] });
   return Packer.toBlob(doc);
+}
+
+/** ISO 10816-3 severity reference table (mirrors the legacy appendix). */
+function buildIsoSection(): (Paragraph | Table)[] {
+  const { rows } = buildIsoTableData();
+  const cell = (c: IsoCell, bold = false) =>
+    new TableCell({
+      ...(c.span && c.span > 1 ? { columnSpan: c.span } : {}),
+      ...(c.fill ? { shading: { type: ShadingType.CLEAR, fill: c.fill, color: "auto" } } : {}),
+      children: [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [new TextRun({ text: c.text, bold: bold || c.bold, color: c.color, size: 16 })],
+        }),
+      ],
+    });
+  return [
+    new Paragraph({ text: "ISO 10816-3 standards", heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: "Vibration severity limits by machinery group, mounting, and rated power",
+          italics: true,
+        }),
+      ],
+    }),
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: rows.map((r, i) => new TableRow({ children: r.map((c) => cell(c, i < 3)) })),
+    }),
+  ];
 }
 
 /** Minimal zip central-directory listing (for tests — validates .docx is a real zip). */

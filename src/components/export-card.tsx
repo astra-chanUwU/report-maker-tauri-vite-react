@@ -86,15 +86,18 @@ export function ExportCard({
             }
           : undefined;
       const { buildDocx } = await import("../lib/generateDocx");
+      const toBrandImage = (b64: string | null) => (b64 ? { data: base64ToBytes(b64) } : undefined);
       const blob = await buildDocx({
         meta: parsed.meta,
         spectra: parsed.spectra,
         options: { ...options, pointLimit },
         aiDraft: draft,
         templateId: options.templateId ?? "classic",
-        branding: branding?.logoBase64
-          ? { logoPng: base64ToBytes(branding.logoBase64) }
-          : undefined,
+        branding: {
+          logoPng: branding?.logoBase64 ? base64ToBytes(branding.logoBase64) : undefined,
+          cover: toBrandImage(branding?.coverBase64 ?? null),
+          signature: toBrandImage(branding?.signatureBase64 ?? null),
+        },
         zones,
       });
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;

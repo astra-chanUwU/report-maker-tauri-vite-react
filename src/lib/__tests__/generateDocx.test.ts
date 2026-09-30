@@ -2,12 +2,23 @@ import { describe, expect, it } from "vitest";
 import {
   buildDocx,
   buildMeasuringTableData,
+  detectImageKind,
   encodePng,
   listZipFilenames,
   renderChartPng,
 } from "../generateDocx";
 import { parseSp3 } from "../parseSp3";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
+
+const OPTS = {
+  projectName: "P",
+  engineer: "E",
+  reportDate: "2026-09-29",
+  units: "SI",
+  norm: "Default",
+  notes: "n",
+  pointLimit: 80,
+};
 
 describe("png encoder", () => {
   it("emits valid PNG signature and single IDAT", () => {
@@ -95,5 +106,32 @@ describe("buildDocx", () => {
       },
     });
     expect(blob.size).toBeGreaterThan(2000);
+  }, 30000);
+
+  it("detects branding image kinds from magic bytes", () => {
+    expect(detectImageKind(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2]))).toBe("png");
+    expect(detectImageKind(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2]))).toBe("jpg");
+    expect(detectImageKind(new Uint8Array([1, 2, 3]))).toBe("png");
+  });
+
+  it("builds with cover + signature + ISO, and without ISO when disabled", async () => {
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n300,1.2\n"), "a.sp3");
+    const png = renderChartPng(parsed.spectra);
+    const full = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: OPTS,
+      branding: {
+        cover: { data: png, kind: "png" },
+        signature: { data: png, kind: "png" },
+      },
+    });
+    const bare = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: { ...OPTS, includeIsoTable: false },
+    });
+    expect(full.size).toBeGreaterThan(bare.size);
+    expect(bare.size).toBeGreaterThan(2000);
   }, 30000);
 });
