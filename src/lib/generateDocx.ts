@@ -20,6 +20,7 @@ import {
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
 import { sectionTitle } from "./fa";
 import { encodePng, drawCallout, line, setPixel } from "./png";
+import { applyWordRtl } from "./docx-rtl";
 import { findDominantPeaks, formatPeakLabel } from "./spectra-peaks";
 import { getTemplate } from "./templates";
 import { buildIsoTableData, type IsoCell } from "./iso10816";
@@ -966,7 +967,8 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         ],
       })
     : new Document({ features: { updateFields: true }, sections: [{ children }] });
-  return Packer.toBlob(doc);
+  const blob = await Packer.toBlob(doc);
+  return fa ? applyWordRtl(blob) : blob;
 }
 
 /** ISO 10816-3 severity reference table (mirrors the legacy appendix). */

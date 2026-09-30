@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUi } from "../lib/i18n";
 import { draftReport, fallbackDraft, type AiDraftInput } from "../lib/ai";
 import type { ParseResult, ReportOptions } from "../lib/parseSp3";
 import { loadAiSettings, saveAiSettings } from "../lib/settings";
@@ -27,12 +28,13 @@ const EMPTY: AiDraftFields = {
 const COOLDOWN_MS = 15000;
 
 export function AiSettingsCard() {
+  const { t } = useUi();
   const [settings, setSettings] = useState(() => loadAiSettings());
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI assist</CardTitle>
+        <CardTitle>{t("aiTitle")}</CardTitle>
         <CardDescription>Key stays on this device (localStorage). Never committed.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -79,6 +81,7 @@ export function AiDraftCard({
   draft: AiDraftFields | null;
   onChange: (d: AiDraftFields) => void;
 }) {
+  const { t } = useUi();
   const [busy, setBusy] = useState(false);
   const [fallbackUsed, setFallbackUsed] = useState(false);
   const [lastRun, setLastRun] = useState(0);
@@ -132,7 +135,7 @@ export function AiDraftCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI assist</CardTitle>
+        <CardTitle>{t("aiTitle")}</CardTitle>
         <CardDescription>
           Additive only — never required for export. Without a key or offline, the fallback fills
           these fields.

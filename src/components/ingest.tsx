@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { useUi } from "../lib/i18n";
 import { FileUp, TriangleAlert } from "lucide-react";
 import { parseSp3, type ParseResult } from "../lib/parseSp3";
 import { cn } from "../lib/utils";
@@ -23,6 +24,7 @@ export function Ingest({
   onParsed?: (r: ParseResult | null, file?: File) => void;
   limits?: ZoneLimitSet;
 }) {
+  const { t } = useUi();
   const [result, setResult] = useState<ParseResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -97,7 +99,7 @@ export function Ingest({
     <div className="grid gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Ingest .sp3</CardTitle>
+          <CardTitle>{t("ingestTitle")}</CardTitle>
           <CardDescription>Drop a file or pick one. Parsed locally via File API.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">

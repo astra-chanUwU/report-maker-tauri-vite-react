@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useUi } from "../lib/i18n";
 import { DatabaseZap } from "lucide-react";
 import type { ParseResult } from "../lib/parseSp3";
 import { loadMdbToolPath, saveMdbToolPath } from "../lib/settings";
@@ -11,6 +12,7 @@ import { toast } from "./ui/sonner";
 
 /** Raw .sp3 conversion via backend mdb-export. Renders nothing outside Tauri. */
 export function MdbImportCard({ onConverted }: { onConverted: (r: ParseResult) => void }) {
+  const { t } = useUi();
   const [isTauri, setIsTauri] = useState(false);
   const [status, setStatus] = useState<MdbToolStatus | null>(null);
   const [toolPath, setToolPath] = useState(() => loadMdbToolPath());
@@ -57,7 +59,7 @@ export function MdbImportCard({ onConverted }: { onConverted: (r: ParseResult) =
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Raw .sp3 import</CardTitle>
+        <CardTitle>{t("mdbTitle")}</CardTitle>
         <CardDescription>
           Converts the Jet database via <code>mdb-export</code> (Data table) — no manual CSV step.{" "}
           {status

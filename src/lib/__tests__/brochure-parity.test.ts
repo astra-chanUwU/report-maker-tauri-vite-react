@@ -12,7 +12,9 @@ import { historyStats, renderTrendPng } from "../trends";
 import { buildIsoTableData } from "../iso10816";
 import { sectionTitle } from "../fa";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
+import { chooseSchematic, linesForMachine, renderGMachinePng } from "../spectra-gmachine";
 import { renderPointSchematic } from "../spectra-schematic";
+import { translate } from "../i18n";
 import type { SpectraPoint } from "../spectra-catalog";
 import { buildMeasureRows } from "../report-slices";
 import { applyEnvelopeSamples, indexEnvelopeCsv } from "../mdb";
@@ -76,6 +78,25 @@ describe("dominant peaks", () => {
     }
     expect(red).toBeGreaterThan(200);
     expect(boxedWhite).toBeGreaterThan(8);
+  });
+});
+
+describe("gmachine schematic", () => {
+  const gmachine = `GMID,MachineID,GMName,GMLineX1,GMLinex2,GMLineY1,GMLineY2,GMLabelLeft,GMLabelTop\n5,9,P1,10,90,40,40,20,20\n`;
+  const gdirection = `GMID,GDName,GDLineX1,GDLinex2,GDLineY1,GDLineY2\n5,V,10,10,40,70\n8,H,0,1,0,1\n`;
+
+  it("keeps the JPEG ahead of vector lines and the point drawing", () => {
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 1, 2, 3, 4, 5, 6]);
+    const lines = linesForMachine(gmachine, gdirection, "9");
+    expect(lines).toHaveLength(2);
+    expect(lines[0].label).toBe("P1");
+    const png = renderGMachinePng(lines);
+    expect(png?.[0]).toBe(137);
+    expect(chooseSchematic(jpeg, png, new Uint8Array([137, 80]))).toBe(jpeg);
+    expect(chooseSchematic(null, png, new Uint8Array([137, 80]))).toBe(png);
+    expect(chooseSchematic(new Uint8Array([1, 2, 3]), null, null)).toBeNull();
+    expect(translate("fa", "appTitle")).toBe("گزارش‌ساز");
+    expect(translate("en", "tabReport")).toBe("Report");
   });
 });
 

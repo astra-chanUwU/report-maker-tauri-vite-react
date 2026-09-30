@@ -1,6 +1,7 @@
 import { Download, FileSpreadsheet, Sparkles, ArrowRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { useUi } from "../lib/i18n";
 
 function downloadSampleCsv() {
   const header =
@@ -28,17 +29,15 @@ function downloadSampleCsv() {
 }
 
 export function Onboarding() {
+  const { t } = useUi();
   return (
     <Card className="border-dashed">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Sparkles className="h-4 w-4" aria-hidden="true" />
-          Get started in 30 seconds
+          {t("onboardingTitle")}
         </CardTitle>
-        <CardDescription>
-          No file yet — try the tour or drop a real export. Works 100% offline; data never leaves
-          this device.
-        </CardDescription>
+        <CardDescription>{t("onboardingHint")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         <ol className="grid gap-2 text-sm">
@@ -75,7 +74,7 @@ export function Onboarding() {
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={downloadSampleCsv}>
             <Download aria-hidden="true" />
-            Download sample CSV
+            {t("downloadSample")}
           </Button>
           <Button
             size="sm"

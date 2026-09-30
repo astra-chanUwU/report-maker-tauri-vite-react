@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUi } from "../lib/i18n";
 import { loadTelemetry, saveTelemetry, track, type TelemetrySettings } from "../lib/telemetry";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
@@ -7,6 +8,7 @@ import { Label } from "./ui/label";
 import { toast } from "./ui/sonner";
 
 export function TelemetryCard() {
+  const { t } = useUi();
   const [settings, setSettings] = useState<TelemetrySettings>(() => loadTelemetry());
 
   const set = (patch: Partial<TelemetrySettings>) => {
@@ -18,7 +20,7 @@ export function TelemetryCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Usage & crash reports</CardTitle>
+        <CardTitle>{t("telemetryTitle")}</CardTitle>
         <CardDescription>
           Opt-in anonymous analytics. Default OFF — when off, the app makes zero telemetry network
           calls.

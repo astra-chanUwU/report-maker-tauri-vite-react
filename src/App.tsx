@@ -41,6 +41,7 @@ import {
   type Branding,
 } from "./lib/settings";
 import { initCrashHooks, track } from "./lib/telemetry";
+import { translate, UiProvider, type UiLang } from "./lib/i18n";
 import type { ZoneLimitSet } from "./lib/zones";
 
 function App() {
@@ -61,6 +62,8 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  const uiLang: UiLang = options.language === "fa" ? "fa" : "en";
 
   useEffect(() => {
     initCrashHooks();
@@ -126,28 +129,29 @@ function App() {
   };
 
   return (
+    <UiProvider lang={uiLang}>
     <>
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
       >
-        Skip to content
+        {translate(uiLang, "skip")}
       </a>
       <main id="main" className="mx-auto max-w-3xl space-y-4 p-6">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold">Report Maker</h1>
+            <h1 className="text-xl font-semibold">{translate(uiLang, "appTitle")}</h1>
             <p className="text-sm text-muted-foreground" aria-live="polite">
               {effective
                 ? `${effective.meta.filename} · ${effective.stats.spectra_points} pts · peak ${effective.stats.peak.amp} @ ${effective.stats.peak.freq}`
-                : "Drop a .sp3 to begin."}
+                : translate(uiLang, "dropToBegin")}
             </p>
           </div>
           <Button
             variant="outline"
             size="icon"
             onClick={() => setDark((d) => !d)}
-            aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={translate(uiLang, dark ? "lightMode" : "darkMode")}
             aria-pressed={dark}
           >
             {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
@@ -155,10 +159,10 @@ function App() {
         </header>
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
-            <TabsTrigger value="report">Report</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="design">Design</TabsTrigger>
+            <TabsTrigger value="report">{translate(uiLang, "tabReport")}</TabsTrigger>
+            <TabsTrigger value="history">{translate(uiLang, "tabHistory")}</TabsTrigger>
+            <TabsTrigger value="settings">{translate(uiLang, "tabSettings")}</TabsTrigger>
+            <TabsTrigger value="design">{translate(uiLang, "tabDesign")}</TabsTrigger>
           </TabsList>
           <TabsContent value="report" className="grid gap-4">
             {!effective ? <Onboarding /> : null}
@@ -244,10 +248,7 @@ function App() {
               csvFile={effective?.meta.csvPath ? null : csvFile}
             />
             {!effective ? (
-              <p className="text-xs text-muted-foreground">
-                Need help? See README → “Importing real data” for mdb-export install, and History
-                for past reports.
-              </p>
+              <p className="text-xs text-muted-foreground">{translate(uiLang, "helpHint")}</p>
             ) : null}
           </TabsContent>
           <TabsContent value="history">
@@ -271,6 +272,7 @@ function App() {
         </Tabs>
       </main>
     </>
+    </UiProvider>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   type ZoneLimitSet,
   type ZoneMetric,
 } from "../lib/zones";
+import { useUi } from "../lib/i18n";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -28,6 +29,7 @@ export function ZoneLimitsCard({
   limits: ZoneLimitSet;
   onChange: (l: ZoneLimitSet) => void;
 }) {
+  const { t } = useUi();
   const set = (metric: ZoneMetric, edge: (typeof EDGES)[number], text: string) => {
     const v = text.trim() === "" ? null : Number(text);
     onChange({
@@ -42,7 +44,7 @@ export function ZoneLimitsCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Alarm zones</CardTitle>
+        <CardTitle className="text-base">{t("zonesTitle")}</CardTitle>
         <CardDescription>
           B / U / C thresholds per metric. Readings at or above an edge move up a zone; envelope
           stays disabled while all-zero.

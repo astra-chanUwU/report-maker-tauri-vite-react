@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUi } from "../lib/i18n";
 import { Plus, Trash2 } from "lucide-react";
 import {
   loadClients,
@@ -23,6 +24,7 @@ export function ClientProfiles({
   onOptions: (o: ReportOptions) => void;
   onLogo?: (logoBase64: string | null) => void;
 }) {
+  const { t } = useUi();
   const [clients, setClients] = useState<ClientProfile[]>(() => loadClients());
 
   const save = (next: ClientProfile[]) => {
@@ -63,7 +65,7 @@ export function ClientProfiles({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Clients ({clients.length})</CardTitle>
+        <CardTitle className="text-base">{t("clientsTitle")} ({clients.length})</CardTitle>
         <CardDescription>Save letterhead once, apply to the form.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2">

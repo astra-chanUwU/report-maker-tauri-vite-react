@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUi } from "../lib/i18n";
 import {
   APP_VERSION,
   checkForUpdates,
@@ -15,6 +16,7 @@ import { Label } from "./ui/label";
 import { toast } from "./ui/sonner";
 
 export function LicenseCard() {
+  const { t } = useUi();
   const [record, setRecord] = useState<LicenseRecord | null>(() => loadLicense());
   const [key, setKey] = useState(record?.key ?? "");
   const [busy, setBusy] = useState(false);
@@ -57,7 +59,7 @@ export function LicenseCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>License</CardTitle>
+        <CardTitle>{t("licenseTitle")}</CardTitle>
         <CardDescription>
           Perpetual key, offline-validated. Dev builds never lock. Status persists locally.
         </CardDescription>

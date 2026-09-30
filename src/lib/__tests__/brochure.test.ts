@@ -263,10 +263,14 @@ describe("equipments + toc", () => {
     });
     expect(full.size).toBeGreaterThan(bare.size);
     const JSZip = (await import("jszip")).default;
-    const faXml = await (await JSZip.loadAsync(await full.arrayBuffer())).file("word/document.xml")!.async("string");
+    const faZip = await JSZip.loadAsync(await full.arrayBuffer());
+    const faXml = await faZip.file("word/document.xml")!.async("string");
     const enXml = await (await JSZip.loadAsync(await bare.arrayBuffer())).file("word/document.xml")!.async("string");
     expect(faXml).toContain("<w:bidi/>");
+    expect(faXml).toContain("bidiVisual");
     expect(faXml).toContain("fa-IR");
+    const settings = await faZip.file("word/settings.xml")!.async("string");
+    expect(settings).toContain('w:bidi="fa-IR"');
     expect(enXml).not.toContain("<w:bidi/>");
   }, 30000);
 });

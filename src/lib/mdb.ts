@@ -311,6 +311,9 @@ export interface SpectraCatalogCsv {
   machineCsv: string;
   pointCsv: string;
   directionCsv: string;
+  /** GMachine line rows. Empty header-only export when Spectra stored no vectors. */
+  gmachineCsv?: string;
+  gdirectionCsv?: string;
 }
 
 /** Tauri: export Plant/Machine/Point/Direction as stripped CSV (no OLE). */

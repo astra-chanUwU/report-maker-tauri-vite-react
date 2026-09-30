@@ -1,3 +1,4 @@
+import { useUi } from "../lib/i18n";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -8,11 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { toast } from "./ui/sonner";
 
 export function DesignDemo() {
+  const { t } = useUi();
   return (
     <div className="grid gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Design system</CardTitle>
+          <CardTitle>{t("designTitle")}</CardTitle>
           <CardDescription>
             shadcn/new-york · neutral · CSS variables · dark-mode ready
           </CardDescription>

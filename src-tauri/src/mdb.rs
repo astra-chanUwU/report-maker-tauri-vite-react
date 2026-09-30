@@ -399,6 +399,8 @@ pub struct SpectraCatalogCsv {
     pub machine_csv: String,
     pub point_csv: String,
     pub direction_csv: String,
+    pub gmachine_csv: String,
+    pub gdirection_csv: String,
 }
 
 fn run_mdb_export(bin: &PathBuf, input: &str, table: &str, bin_mode: &str) -> Result<Vec<u8>, String> {
@@ -438,11 +440,19 @@ pub fn list_spectra_catalog(input: String, tool: Option<String>) -> Result<Spect
     if !machine.contains("MachineID") {
         return Err("Machine table missing from this .sp3.".to_string());
     }
+    let gmachine = run_mdb_export(&bin, &input, "GMachine", "strip")
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    let gdirection = run_mdb_export(&bin, &input, "GDirection", "strip")
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
     Ok(SpectraCatalogCsv {
         plant_csv: plant,
         machine_csv: machine,
         point_csv: point,
         direction_csv: direction,
+        gmachine_csv: gmachine,
+        gdirection_csv: gdirection,
     })
 }
 

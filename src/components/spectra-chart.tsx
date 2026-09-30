@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useUi } from "../lib/i18n";
 import type { SpectraPoint } from "../lib/parseSp3";
 import { previewPeakMarks } from "./spectra-chart-peaks";
 
@@ -14,6 +15,7 @@ export function SpectraChart({
   height?: number;
   highlightPeak?: boolean;
 }) {
+  const { t } = useUi();
   const model = useMemo(() => {
     if (spectra.length === 0) return null;
     const pts = spectra.length > 500 ? downsample(spectra, 500) : spectra;
@@ -47,7 +49,7 @@ export function SpectraChart({
   if (!model) {
     return (
       <div className="flex items-center justify-center rounded-lg border border-dashed p-8 text-sm text-muted-foreground">
-        No data — drop a file to preview.
+        {t("spectraEmpty")}
       </div>
     );
   }

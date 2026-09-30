@@ -16,6 +16,7 @@ import { DEFAULT_ZONE_LIMITS, type ZoneLimitSet } from "../lib/zones";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { toast } from "./ui/sonner";
+import { useUi } from "../lib/i18n";
 
 function parseTrendWindow(window?: string): number | "all" {
   const w = window ?? "";
@@ -72,6 +73,7 @@ export function ExportCard({
   csvFile?: File | null;
 }) {
   const [busy, setBusy] = useState(false);
+  const { t } = useUi();
   const [lastPath, setLastPath] = useState<string | null>(null);
 
   const errors = validateReportOptions(options);
@@ -79,11 +81,11 @@ export function ExportCard({
 
   const handleExport = async () => {
     if (!parsed) {
-      toast.error("Drop a .sp3 file first.");
+      toast.error(t("dropFirst"));
       return;
     }
     if (Object.keys(errors).length > 0) {
-      toast.error("Fill project name and engineer first.");
+      toast.error(t("fillRequired"));
       return;
     }
     setBusy(true);
@@ -283,10 +285,10 @@ export function ExportCard({
         spectra_points: parsed.stats.spectra_points,
         via: savedPath ? "tauri" : "web",
       });
-      toast.success(savedPath ? `Saved ${filename}` : `Downloaded ${filename}`);
+      toast.success(savedPath ? `${t("saved")} ${filename}` : `${t("downloaded")} ${filename}`);
     } catch (e) {
       void track("report_failed", {});
-      toast.error(e instanceof Error ? e.message : "Export failed.");
+      toast.error(e instanceof Error ? e.message : t("exportFailed"));
     } finally {
       setBusy(false);
     }
@@ -298,27 +300,25 @@ export function ExportCard({
       const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
       await revealItemInDir(lastPath);
     } catch {
-      toast.error("Could not open folder (web build?).");
+      toast.error(t("couldNotOpen"));
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Export</CardTitle>
-        <CardDescription>
-          One click → editable Word file. Tauri save dialog when available, download fallback.
-        </CardDescription>
+        <CardTitle>{t("export")}</CardTitle>
+        <CardDescription>{t("exportHint")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
         <Button
           onClick={handleExport}
           disabled={!canExport}
           aria-busy={busy}
-          aria-label={busy ? "Generating report" : "Generate report"}
+          aria-label={busy ? t("generating") : t("generate")}
         >
           <Download aria-hidden="true" />
-          {busy ? "Generating…" : "Generate Report"}
+          {busy ? t("reading") : t("generate")}
         </Button>
         {lastPath ? (
           <Button
@@ -328,7 +328,7 @@ export function ExportCard({
             aria-label="Reveal exported file in folder"
           >
             <FolderOpen aria-hidden="true" />
-            Open folder
+            {t("reveal")}
           </Button>
         ) : null}
         {!parsed ? (

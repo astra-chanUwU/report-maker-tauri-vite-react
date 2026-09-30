@@ -17,6 +17,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { toast } from "./ui/sonner";
+import { useUi } from "../lib/i18n";
 
 const MAX_SCHEMATIC_BYTES = 1024 * 1024;
 
@@ -36,6 +37,7 @@ export function ReportForm({
   onChange: (next: ReportOptions) => void;
 }) {
   const [touched, setTouched] = useState(false);
+  const { t } = useUi();
   const errors = validateReportOptions(options);
   const invalid = Object.keys(errors).length > 0;
 
@@ -47,7 +49,7 @@ export function ReportForm({
   const handleSchematic = async (file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      toast.error("Upload a PNG or JPEG schematic.");
+      toast.error(t("schematicType"));
       return;
     }
     if (file.size > MAX_SCHEMATIC_BYTES) {
@@ -58,20 +60,18 @@ export function ReportForm({
     const b64 = bytesToBase64(bytes);
     base64ToBytes(b64); // validate round-trip before persisting
     set({ schematicBase64: b64 });
-    toast.success("Schematic saved locally.");
+    toast.success(t("schematicSaved"));
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Report details</CardTitle>
-        <CardDescription>
-          Defaults persist across reloads (localStorage; Tauri store in S08).
-        </CardDescription>
+        <CardTitle>{t("reportDetails")}</CardTitle>
+        <CardDescription>{t("reportDetailsHint")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
         <div className="grid gap-2">
-          <Label htmlFor="opt-project">Project name *</Label>
+          <Label htmlFor="opt-project">{t("projectName")}</Label>
           <Input
             id="opt-project"
             value={options.projectName}
@@ -89,7 +89,7 @@ export function ReportForm({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2">
-            <Label htmlFor="opt-engineer">Engineer *</Label>
+            <Label htmlFor="opt-engineer">{t("engineer")}</Label>
             <Input
               id="opt-engineer"
               value={options.engineer}
@@ -106,7 +106,7 @@ export function ReportForm({
             ) : null}
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="opt-date">Report date *</Label>
+            <Label htmlFor="opt-date">{t("reportDate")}</Label>
             <Input
               id="opt-date"
               type="date"
@@ -153,7 +153,7 @@ export function ReportForm({
           </div>
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="opt-notes">Notes</Label>
+          <Label htmlFor="opt-notes">{t("notes")}</Label>
           <Textarea
             id="opt-notes"
             value={options.notes}
@@ -162,7 +162,7 @@ export function ReportForm({
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="opt-equipment">Equipment name</Label>
+          <Label htmlFor="opt-equipment">{t("equipment")}</Label>
           <Input
             id="opt-equipment"
             value={options.equipmentName ?? ""}
@@ -172,7 +172,7 @@ export function ReportForm({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2">
-            <Label htmlFor="opt-status">Condition status</Label>
+            <Label htmlFor="opt-status">{t("status")}</Label>
             <select
               id="opt-status"
               className="rounded-md border bg-background px-2 py-1.5 text-sm"
@@ -188,7 +188,7 @@ export function ReportForm({
             </select>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="opt-letter">Letter No</Label>
+            <Label htmlFor="opt-letter">{t("letterNo")}</Label>
             <Input
               id="opt-letter"
               value={options.letterNo ?? ""}
@@ -198,7 +198,7 @@ export function ReportForm({
           </div>
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="opt-lastreport">Last report summary (editable)</Label>
+          <Label htmlFor="opt-lastreport">{t("lastReport")}</Label>
           <Textarea
             id="opt-lastreport"
             value={options.equipmentLastReport ?? ""}
@@ -207,7 +207,7 @@ export function ReportForm({
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="opt-problems">Identified problems (AI, editable)</Label>
+          <Label htmlFor="opt-problems">{t("problems")}</Label>
           <Textarea
             id="opt-problems"
             value={options.equipmentProblems ?? ""}
@@ -216,7 +216,7 @@ export function ReportForm({
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="opt-corrective">Corrective actions (editable)</Label>
+          <Label htmlFor="opt-corrective">{t("actions")}</Label>
           <Textarea
             id="opt-corrective"
             value={options.equipmentCorrective ?? ""}
@@ -225,7 +225,7 @@ export function ReportForm({
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="opt-specs">Technical specs</Label>
+          <Label htmlFor="opt-specs">{t("specs")}</Label>
           <Textarea
             id="opt-specs"
             value={options.equipmentSpecs ?? ""}
@@ -234,7 +234,7 @@ export function ReportForm({
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="opt-schematic">Machine schematic</Label>
+          <Label htmlFor="opt-schematic">{t("schematic")}</Label>
           {schematicUrl(options.schematicBase64) ? (
             <div className="flex items-start gap-2">
               <img
@@ -270,15 +270,15 @@ export function ReportForm({
           Append ISO 10816-3 severity table
         </label>
         <label className="grid gap-1 text-sm">
-          ISO groups
+          {t("isoGroups")}
           <select
             className="rounded-md border bg-background px-2 py-1.5"
             value={options.isoGroups ?? "all"}
             onChange={(e) => set({ isoGroups: e.target.value as ReportOptions["isoGroups"] })}
           >
-            <option value="all">Groups 1–4</option>
-            <option value="1+3">Groups 1 and 3</option>
-            <option value="2+4">Groups 2 and 4</option>
+            <option value="all">{t("groupsAll")}</option>
+            <option value="1+3">{t("groups13")}</option>
+            <option value="2+4">{t("groups24")}</option>
           </select>
         </label>
         <div className="flex flex-wrap gap-3 text-sm">
@@ -295,7 +295,7 @@ export function ReportForm({
                   set({ trendMetrics: [...cur] });
                 }}
               />
-              {m === "rmsV" ? "Velocity" : m === "rmsA" ? "Acceleration" : "Envelope"}
+              {m === "rmsV" ? t("velocity") : m === "rmsA" ? t("acceleration") : t("envelope")}
             </label>
           ))}
         </div>
@@ -324,11 +324,11 @@ export function ReportForm({
             onChange={(e) => set({ trendAllPoints: e.target.checked })}
             className="h-4 w-4 accent-green-700"
           />
-          Trends — all points (up to 40)
+          {t("trendAll")}
         </label>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2">
-            <Label>Language</Label>
+            <Label>{t("language")}</Label>
             <div className="flex gap-2" role="group" aria-label="Language">
               {(["en", "fa"] as const).map((l) => (
                 <Button
@@ -354,7 +354,7 @@ export function ReportForm({
             ) : null}
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="opt-client">Client</Label>
+            <Label htmlFor="opt-client">{t("client")}</Label>
             <Input
               id="opt-client"
               value={options.clientName ?? ""}
@@ -365,7 +365,7 @@ export function ReportForm({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2">
-            <Label htmlFor="opt-unit">Executive unit</Label>
+            <Label htmlFor="opt-unit">{t("clientUnit")}</Label>
             <Input
               id="opt-unit"
               value={options.clientUnit ?? ""}
@@ -374,7 +374,7 @@ export function ReportForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="opt-addr">Address block</Label>
+            <Label htmlFor="opt-addr">{t("address")}</Label>
             <Input
               id="opt-addr"
               value={options.addressBlock ?? ""}

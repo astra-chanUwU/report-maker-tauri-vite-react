@@ -6,8 +6,10 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { toast } from "./ui/sonner";
+import { useUi } from "../lib/i18n";
 
 export function HistoryTab({ onReopen }: { onReopen: (options: ReportOptions) => void }) {
+  const { t } = useUi();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [query, setQuery] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -43,7 +45,7 @@ export function HistoryTab({ onReopen }: { onReopen: (options: ReportOptions) =>
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Past reports</CardTitle>
+        <CardTitle>{t("historyTitle")}</CardTitle>
         <CardDescription>
           {loaded ? `${entries.length} stored (cap 100), no server.` : "Loading…"} Reopen restores
           form options.

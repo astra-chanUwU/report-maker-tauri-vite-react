@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { bytesToBase64, buildMachineSpecs, joinCatalog, machineLabelMap, type SpectraMachine } from "../lib/spectra-catalog";
 import { renderPointSchematic } from "../lib/spectra-schematic";
+import { chooseSchematic, linesForMachine, renderGMachinePng } from "../lib/spectra-gmachine";
 import { fetchMachinePicture, fetchSpectraCatalog, pickSp3Path } from "../lib/mdb";
 import {
   EQUIPMENT_STATUSES,
@@ -16,6 +17,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { toast } from "./ui/sonner";
+import { useUi } from "../lib/i18n";
 
 /** Multi-equipment manager (brochure p.4): 1..N equipments → TOC + sections. */
 export function EquipmentList({
@@ -26,7 +28,13 @@ export function EquipmentList({
   onChange: (next: EquipmentItem[]) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [catalog, setCatalog] = useState<{ path: string; machines: SpectraMachine[] } | null>(null);
+  const { t } = useUi();
+  const [catalog, setCatalog] = useState<{
+    path: string;
+    machines: SpectraMachine[];
+    gmachineCsv: string;
+    gdirectionCsv: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const importCatalog = async () => {
@@ -35,7 +43,12 @@ export function EquipmentList({
       const path = await pickSp3Path();
       const csv = await fetchSpectraCatalog(path);
       const machines = joinCatalog(csv);
-      setCatalog({ path, machines });
+      setCatalog({
+        path,
+        machines,
+        gmachineCsv: csv.gmachineCsv ?? "",
+        gdirectionCsv: csv.gdirectionCsv ?? "",
+      });
       toast.success(`${machines.length} machines from Spectra.`);
     } catch (e) {
       if (e instanceof Error && e.message === "cancelled") return;
@@ -46,17 +59,20 @@ export function EquipmentList({
   };
 
   const addFromMachine = async (m: SpectraMachine) => {
-    let schematicBase64: string | null = null;
-    const drawn = renderPointSchematic(m.points);
-    if (drawn) schematicBase64 = bytesToBase64(drawn);
-    else if (catalog) {
+    let jpeg: Uint8Array | null = null;
+    if (catalog) {
       try {
-        const jpeg = await fetchMachinePicture(catalog.path, m.machineId);
-        if (jpeg.length > 8) schematicBase64 = bytesToBase64(jpeg);
+        const bytes = await fetchMachinePicture(catalog.path, m.machineId);
+        if (bytes.length > 8) jpeg = bytes;
       } catch {
-        schematicBase64 = null;
+        jpeg = null;
       }
     }
+    const vectors = catalog
+      ? renderGMachinePng(linesForMachine(catalog.gmachineCsv, catalog.gdirectionCsv, m.machineId))
+      : null;
+    const chosen = chooseSchematic(jpeg, vectors, renderPointSchematic(m.points));
+    const schematicBase64 = chosen ? bytesToBase64(chosen) : null;
     const item = makeEquipment({
       name: m.name || `Machine ${m.machineId}`,
       specs: buildMachineSpecs(m),
@@ -98,8 +114,8 @@ export function EquipmentList({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Equipments ({items.length})</CardTitle>
-        <CardDescription>Each becomes a section + TOC row. Empty = single-equipment mode.</CardDescription>
+        <CardTitle className="text-base">{t("equipments")} ({items.length})</CardTitle>
+        <CardDescription>{t("equipmentsHint")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2">
         {items.map((e, i) => (
@@ -110,7 +126,7 @@ export function EquipmentList({
                 className="flex-1 text-left text-sm font-medium"
                 onClick={() => setOpenId(openId === e.id ? null : e.id)}
               >
-                {i + 1}. {e.name || "(untitled)"} {e.status ? `· ${e.status}` : ""}
+                {i + 1}. {e.name || t("untitled")} {e.status ? `· ${e.status}` : ""}
               </button>
               <Button type="button" variant="ghost" size="sm" onClick={() => remove(e.id)} aria-label={`Remove ${e.name}`}>
                 <Trash2 className="h-4 w-4" />
@@ -119,12 +135,12 @@ export function EquipmentList({
             {openId === e.id ? (
               <div className="mt-2 grid gap-2">
                 <div className="grid gap-1">
-                  <Label>Name</Label>
+                  <Label>{t("name")}</Label>
                   <Input value={e.name} onChange={(ev) => patch(e.id, { name: ev.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="grid gap-1">
-                    <Label>Status</Label>
+                    <Label>{t("status")}</Label>
                     <select
                       className="rounded-md border bg-background px-2 py-1.5 text-sm"
                       value={e.status}
@@ -139,40 +155,40 @@ export function EquipmentList({
                     </select>
                   </div>
                   <div className="grid gap-1">
-                    <Label>Last report</Label>
+                    <Label>{t("lastReport")}</Label>
                     <Input value={e.lastReport} onChange={(ev) => patch(e.id, { lastReport: ev.target.value })} placeholder="2026-…: OK" />
                   </div>
                 </div>
                 <div className="grid gap-1">
-                  <Label>Specs</Label>
+                  <Label>{t("specs")}</Label>
                   <Textarea value={e.specs} onChange={(ev) => patch(e.id, { specs: ev.target.value })} rows={2} />
                 </div>
                 <div className="grid gap-1">
-                  <Label>Problems (AI, editable)</Label>
+                  <Label>{t("problems")}</Label>
                   <Textarea value={e.problems} onChange={(ev) => patch(e.id, { problems: ev.target.value })} rows={2} />
                 </div>
                 <div className="grid gap-1">
-                  <Label>Corrective actions</Label>
+                  <Label>{t("actions")}</Label>
                   <Textarea value={e.corrective} onChange={(ev) => patch(e.id, { corrective: ev.target.value })} rows={2} />
                 </div>
                 <div className="grid gap-1">
-                  <Label>Summary</Label>
+                  <Label>{t("summary")}</Label>
                   <Textarea value={e.summary ?? ""} onChange={(ev) => patch(e.id, { summary: ev.target.value })} rows={2} />
                 </div>
                 <div className="grid gap-1">
-                  <Label>Methodology</Label>
+                  <Label>{t("methodology")}</Label>
                   <Textarea value={e.methodology ?? ""} onChange={(ev) => patch(e.id, { methodology: ev.target.value })} rows={2} />
                 </div>
                 <div className="grid gap-1">
-                  <Label>Observations</Label>
+                  <Label>{t("observations")}</Label>
                   <Textarea value={e.observations ?? ""} onChange={(ev) => patch(e.id, { observations: ev.target.value })} rows={2} />
                 </div>
                 <div className="grid gap-1">
-                  <Label>Recommendations</Label>
+                  <Label>{t("recommendations")}</Label>
                   <Textarea value={e.recommendations ?? ""} onChange={(ev) => patch(e.id, { recommendations: ev.target.value })} rows={2} />
                 </div>
                 <div className="grid gap-1">
-                  <Label>Conclusion</Label>
+                  <Label>{t("conclusion")}</Label>
                   <Textarea value={e.conclusion ?? ""} onChange={(ev) => patch(e.id, { conclusion: ev.target.value })} rows={2} />
                 </div>
                 <div className="flex gap-2">
@@ -187,7 +203,7 @@ export function EquipmentList({
                       })
                     }
                   >
-                    Fill from form
+                    {t("fillFromForm")}
                   </Button>
                 </div>
               </div>
@@ -196,15 +212,15 @@ export function EquipmentList({
         ))}
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" size="sm" onClick={add}>
-            <Plus className="h-4 w-4" /> Add equipment
+            <Plus className="h-4 w-4" /> {t("addEquipment")}
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={() => void importCatalog()} disabled={busy}>
-            {busy ? "Reading…" : "Import from Spectra"}
+            {busy ? t("reading") : t("importSpectra")}
           </Button>
         </div>
         {catalog ? (
           <div className="grid gap-1">
-            <Label>Machines in {catalog.path.split(/[/\\]/).pop()}</Label>
+            <Label>{t("machinesIn")} {catalog.path.split(/[/\\]/).pop()}</Label>
             <div className="max-h-40 overflow-auto rounded-md border">
               {catalog.machines.map((m) => (
                 <button
@@ -214,7 +230,7 @@ export function EquipmentList({
                   onClick={() => void addFromMachine(m)}
                 >
                   {m.name || m.machineId}
-                  <span className="text-muted-foreground"> · {m.points.length} points</span>
+                  <span className="text-muted-foreground"> · {m.points.length} {t("points")}</span>
                 </button>
               ))}
             </div>

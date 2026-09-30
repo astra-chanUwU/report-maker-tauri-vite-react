@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { toast } from "./ui/sonner";
+import { useUi } from "../lib/i18n";
 
 const MAX_LOGO_BYTES = 500 * 1024;
 const MAX_COVER_BYTES = 1024 * 1024;
@@ -31,6 +32,7 @@ export function BrandingCard({
   branding: Branding;
   onBranding: (next: Branding) => void;
 }) {
+  const { t } = useUi();
   const selected = options.templateId ?? "classic";
 
   const handleFile = async (
@@ -56,7 +58,7 @@ export function BrandingCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Template & branding</CardTitle>
+        <CardTitle>{t("brandingTitle")}</CardTitle>
         <CardDescription>
           Gallery + Elika cover, logo and signature. Stored locally; applied on export.
         </CardDescription>
