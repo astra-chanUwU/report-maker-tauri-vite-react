@@ -104,7 +104,21 @@ export interface BuildDocxInput {
     name?: string;
     specs?: string;
     schematic?: BrandImage;
+    status?: string;
+    lastReport?: string;
+    problems?: string;
+    corrective?: string;
   };
+  /** Multi-equipment report (brochure p.4): one section per item + auto TOC. */
+  equipments?: {
+    name?: string;
+    specs?: string;
+    schematic?: BrandImage;
+    status?: string;
+    lastReport?: string;
+    problems?: string;
+    corrective?: string;
+  }[];
   /** Measuring-results table (all export rows) + alarm limits, when available. */
   zones?: {
     limits: ZoneLimitSet;
@@ -118,6 +132,15 @@ export interface BuildDocxInput {
     velocityPng: Uint8Array;
     accelPng: Uint8Array;
   };
+  /** All-points trends (brochure p.6): V+A PNG pair per point. */
+  allTrends?: {
+    pointLabel: string;
+    sampleCount: number;
+    velocityPng: Uint8Array;
+    accelPng: Uint8Array;
+  }[];
+  /** FFT gallery for all points (brochure p.7). */
+  fftGallery?: { label: string; png: Uint8Array; peak?: string }[];
 }
 
 export { encodePng, line } from "./png";
@@ -191,17 +214,24 @@ function downsample(spectra: SpectraPoint[], max: number): SpectraPoint[] {
   return out;
 }
 
-/** §3 equipment page: name + technical specs + machine schematic (when provided). */
+/** §3 equipment page: name + technical specs + machine schematic + status/AI fields. */
 function equipmentSection(eq?: BuildDocxInput["equipment"]): (Paragraph | Table)[] {
   const name = eq?.name?.trim() ?? "";
   const specs = eq?.specs?.trim() ?? "";
   const schema = eq?.schematic?.data?.length ? eq.schematic : undefined;
-  if (!name && !specs && !schema) return [];
+  const status = eq?.status?.trim() ?? "";
+  const lastReport = eq?.lastReport?.trim() ?? "";
+  const problems = eq?.problems?.trim() ?? "";
+  const corrective = eq?.corrective?.trim() ?? "";
+  if (!name && !specs && !schema && !status && !lastReport && !problems && !corrective) return [];
   const out: (Paragraph | Table)[] = [
     new Paragraph({ text: "Equipment", heading: HeadingLevel.HEADING_1 }),
   ];
   if (name) {
     out.push(new Paragraph({ text: name, heading: HeadingLevel.HEADING_2 }));
+  }
+  if (status) {
+    out.push(new Paragraph(`Condition status: ${status}`));
   }
   if (specs) {
     out.push(new Paragraph({ text: "Technical specifications", heading: HeadingLevel.HEADING_2 }));
@@ -209,6 +239,18 @@ function equipmentSection(eq?: BuildDocxInput["equipment"]): (Paragraph | Table)
       const t = para.trim();
       if (t) out.push(new Paragraph(t));
     }
+  }
+  if (lastReport) {
+    out.push(new Paragraph({ text: "Last report", heading: HeadingLevel.HEADING_2 }));
+    out.push(new Paragraph(lastReport));
+  }
+  if (problems) {
+    out.push(new Paragraph({ text: "Identified problems (AI)", heading: HeadingLevel.HEADING_2 }));
+    out.push(new Paragraph(problems));
+  }
+  if (corrective) {
+    out.push(new Paragraph({ text: "Corrective actions", heading: HeadingLevel.HEADING_2 }));
+    out.push(new Paragraph(corrective));
   }
   if (schema) {
     out.push(
@@ -221,6 +263,67 @@ function equipmentSection(eq?: BuildDocxInput["equipment"]): (Paragraph | Table)
           }),
         ],
         alignment: AlignmentType.CENTER,
+      })
+    );
+  }
+  return out;
+}
+
+/** Pure TOC rows for tests: index + name + status. */
+export function buildTocRows(
+  equipments: { name?: string; status?: string }[]
+): { index: number; name: string; status: string }[] {
+  return equipments.map((e, i) => ({
+    index: i + 1,
+    name: e.name?.trim() || `Equipment ${i + 1}`,
+    status: e.status?.trim() || "—",
+  }));
+}
+
+function tocSection(
+  equipments: { name?: string; status?: string }[],
+  fa: boolean
+): (Paragraph | Table)[] {
+  if (equipments.length === 0) return [];
+  const rows = buildTocRows(equipments);
+  const cell = (t: string, bold = false) =>
+    new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: t, bold })] })] });
+  return [
+    new Paragraph({ text: fa ? "فهرست مطالب" : "Table of contents", heading: HeadingLevel.HEADING_1 }),
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({ children: [cell("#", true), cell(fa ? "تجهیز" : "Equipment", true), cell(fa ? "وضعیت" : "Status", true)] }),
+        ...rows.map((r) => new TableRow({ children: [cell(String(r.index)), cell(r.name), cell(r.status)] })),
+      ],
+    }),
+    new Paragraph(
+      fa
+        ? "برای به‌روزرسانی شماره صفحات در Word روی جدول راست‌کلیک و Update Field را بزنید."
+        : "Tip: in Word, right-click the table → Update Field (F9) after enabling page numbers."
+    ),
+  ];
+}
+
+function letterheadSection(input: BuildDocxInput, fa: boolean): Paragraph[] {
+  const o = input.options;
+  const out: Paragraph[] = [];
+  const align = fa ? AlignmentType.RIGHT : AlignmentType.LEFT;
+  const addr = o.addressBlock?.trim();
+  if (addr) {
+    out.push(new Paragraph({ children: [new TextRun({ text: addr, size: 16, color: "737373" })], alignment: align }));
+  }
+  const bits: string[] = [];
+  if (o.reportDate) bits.push(fa && o.jalaliDate ? `تاریخ: ${o.jalaliDate}` : `Date: ${o.reportDate}`);
+  if (!fa && o.jalaliDate) bits.push(`Jalali: ${o.jalaliDate}`);
+  if (o.letterNo?.trim()) bits.push(fa ? `شماره: ${o.letterNo.trim()}` : `No: ${o.letterNo.trim()}`);
+  if (bits.length > 0) out.push(new Paragraph({ children: [new TextRun(bits.join("    "))] , alignment: align}));
+  const client = [o.clientName?.trim(), o.clientUnit?.trim()].filter(Boolean).join(" — ");
+  if (client) {
+    out.push(
+      new Paragraph({
+        children: [new TextRun({ text: fa ? `کارفرما: ${client}` : `Client: ${client}`, bold: true })],
+        alignment: align,
       })
     );
   }
@@ -327,14 +430,31 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     ],
   });
 
+  const fa = input.options.language === "fa";
   const children: (Paragraph | Table)[] = [
+    ...letterheadSection(input, fa),
     ...headerChildren,
-    ...equipmentSection(input.equipment),
-    new Paragraph({ text: "Summary", heading: HeadingLevel.HEADING_1 }),
+  ];
+  const multi = input.equipments && input.equipments.length > 0 ? input.equipments : null;
+  if (multi && input.options.includeToc !== false) {
+    children.push(...tocSection(multi, fa));
+  }
+  if (multi) {
+    multi.forEach((eq, i) => {
+      children.push(
+        new Paragraph({ text: `${fa ? "تجهیز" : "Equipment"} ${i + 1}`, heading: HeadingLevel.HEADING_1 })
+      );
+      children.push(...equipmentSection(eq).slice(1));
+    });
+  } else {
+    children.push(...equipmentSection(input.equipment));
+  }
+  children.push(
+    new Paragraph({ text: fa ? "خلاصه" : "Summary", heading: HeadingLevel.HEADING_1 }),
     new Paragraph(
       d?.summary ?? `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
     ),
-  ];
+  );
 
   const overall = input.meta.overall;
   if (overall) {
@@ -429,6 +549,40 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       new Paragraph({ text: "Acceleration RMS trend", heading: HeadingLevel.HEADING_2 }),
       trendImg(t.accelPng)
     );
+  }
+
+  if (input.allTrends && input.allTrends.length > 0) {
+    children.push(
+      new Paragraph({ text: fa ? "روند ارتعاشات همه نقاط" : "Vibration trends (all points)", heading: HeadingLevel.HEADING_1 })
+    );
+    for (const t of input.allTrends.slice(0, 40)) {
+      children.push(
+        new Paragraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph({
+          children: [new ImageRun({ data: t.velocityPng, transformation: { width: 600, height: 300 }, type: "png" })],
+          alignment: AlignmentType.CENTER,
+        }),
+        new Paragraph({
+          children: [new ImageRun({ data: t.accelPng, transformation: { width: 600, height: 300 }, type: "png" })],
+          alignment: AlignmentType.CENTER,
+        })
+      );
+    }
+  }
+
+  if (input.fftGallery && input.fftGallery.length > 0) {
+    children.push(
+      new Paragraph({ text: fa ? "طیف فرکانسی نقاط مختلف" : "Frequency spectra (all points)", heading: HeadingLevel.HEADING_1 })
+    );
+    for (const g of input.fftGallery.slice(0, 24)) {
+      children.push(
+        new Paragraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph({
+          children: [new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" })],
+          alignment: AlignmentType.CENTER,
+        })
+      );
+    }
   }
 
   if (d) {
