@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findDominantPeaks, formatPeakLabel } from "../spectra-peaks";
+import { renderChartPng } from "../generateDocx";
 import {
   buildMachineSpecs,
   extractJpegFromHex,
@@ -47,7 +48,67 @@ describe("dominant peaks", () => {
     expect(formatPeakLabel(24.5)).toBe("24.5");
     expect(formatPeakLabel(1500)).toBe("1500");
   });
+
+  it("draws a red callout with light digits on the peak", () => {
+    const spectra = Array.from({ length: 80 }, (_, i) => ({
+      freq: (i + 1) * 10,
+      amp: i === 40 ? 4 : 0.1,
+    }));
+    const png = renderChartPng(spectra);
+    const rgb = inflateStoredPng(png, 800, 400);
+    let red = 0;
+    let boxedWhite = 0;
+    const w = 800;
+    for (let y = 0; y < 400; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 3;
+        if (rgb[i] === 220 && rgb[i + 1] === 38 && rgb[i + 2] === 38) red++;
+        if (rgb[i] !== 255 || rgb[i + 1] !== 255 || rgb[i + 2] !== 255) continue;
+        const left = x > 0 ? (y * w + x - 1) * 3 : -1;
+        const right = x + 1 < w ? (y * w + x + 1) * 3 : -1;
+        const nearRed =
+          (left >= 0 && rgb[left] === 220 && rgb[left + 1] === 38) ||
+          (right >= 0 && rgb[right] === 220 && rgb[right + 1] === 38);
+        if (nearRed) boxedWhite++;
+      }
+    }
+    expect(red).toBeGreaterThan(200);
+    expect(boxedWhite).toBeGreaterThan(8);
+  });
 });
+
+/** Unpack this app's stored-block PNG into RGB bytes (filter byte stripped). */
+function inflateStoredPng(png: Uint8Array, width: number, height: number): Uint8Array {
+  let idat = -1;
+  let o = 8;
+  while (o + 8 < png.length) {
+    const len = (png[o] << 24) | (png[o + 1] << 16) | (png[o + 2] << 8) | png[o + 3];
+    const type = String.fromCharCode(png[o + 4], png[o + 5], png[o + 6], png[o + 7]);
+    if (type === "IDAT") {
+      idat = o + 8;
+      break;
+    }
+    o += 12 + len;
+  }
+  if (idat < 0) throw new Error("no IDAT");
+  let p = idat + 2;
+  const raw: number[] = [];
+  while (png[p] !== undefined && raw.length < 2_000_000) {
+    const final = png[p] & 1;
+    const n = png[p + 1] | (png[p + 2] << 8);
+    p += 5;
+    for (let i = 0; i < n; i++) raw.push(png[p + i]);
+    p += n;
+    if (final) break;
+  }
+  const rgb: number[] = [];
+  const stride = width * 3;
+  for (let y = 0; y < height; y++) {
+    const row = y * (stride + 1) + 1;
+    for (let i = 0; i < stride; i++) rgb.push(raw[row + i] ?? 0);
+  }
+  return new Uint8Array(rgb);
+}
 
 describe("brochure polish", () => {
   it("history stats and sparkline png", () => {

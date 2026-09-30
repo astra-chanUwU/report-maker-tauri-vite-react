@@ -17,7 +17,7 @@ import {
 } from "docx";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
 import { sectionTitle } from "./fa";
-import { encodePng, drawText, line, setPixel } from "./png";
+import { encodePng, drawCallout, line, setPixel } from "./png";
 import { findDominantPeaks, formatPeakLabel } from "./spectra-peaks";
 import { getTemplate } from "./templates";
 import { buildIsoTableData, type IsoCell } from "./iso10816";
@@ -235,16 +235,15 @@ export function renderChartPng(
     );
   }
   const peaks = findDominantPeaks(pts, 5);
-  for (const peak of peaks) {
+  peaks.forEach((peak, i) => {
     const cx = px(peak.freq);
     const cy = py(peak.amp);
     for (let dy = -4; dy <= 4; dy++)
       for (let dx = -4; dx <= 4; dx++) {
         if (dx * dx + dy * dy <= 16) setPixel(buf, w, CHART_H, cx + dx, cy + dy, 220, 38, 38);
       }
-    const label = formatPeakLabel(peak.freq);
-    drawText(buf, w, CHART_H, Math.min(cx + 4, w - 40), Math.max(2, cy - 16), label, [185, 28, 28], 1);
-  }
+    drawCallout(buf, w, CHART_H, cx, cy, formatPeakLabel(peak.freq), 22 + (i % 3) * 16);
+  });
   return encodePng(buf, w, CHART_H);
 }
 

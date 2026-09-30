@@ -181,3 +181,44 @@ export function drawText(
   }
   return cx - x;
 }
+
+/** Solid rectangle. */
+export function fillRect(
+  buf: Uint8Array,
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  rw: number,
+  rh: number,
+  rgb: [number, number, number]
+) {
+  for (let yy = y; yy < y + rh; yy++)
+    for (let xx = x; xx < x + rw; xx++) setPixel(buf, w, h, xx, yy, rgb[0], rgb[1], rgb[2]);
+}
+
+/** Brochure-style peak callout: leader line, red box, light digits. */
+export function drawCallout(
+  buf: Uint8Array,
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  text: string,
+  lift = 28
+) {
+  const scale = 2;
+  const tw = Math.max(1, text.length) * (5 + 1) * scale;
+  const th = 7 * scale;
+  const boxW = tw + 8;
+  const boxH = th + 6;
+  let bx = Math.round(x - boxW / 2);
+  let by = Math.round(y - lift - boxH);
+  if (bx < 2) bx = 2;
+  if (bx + boxW > w - 2) bx = w - 2 - boxW;
+  if (by < 2) by = Math.min(h - boxH - 2, y + 8);
+  const red: [number, number, number] = [220, 38, 38];
+  line(buf, w, h, x, y, bx + boxW / 2, by + boxH, red);
+  fillRect(buf, w, h, bx, by, boxW, boxH, red);
+  drawText(buf, w, h, bx + 4, by + 3, text, [255, 255, 255], scale);
+}
