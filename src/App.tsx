@@ -12,9 +12,12 @@ import { Ingest } from "./components/ingest";
 import { LicenseCard } from "./components/license";
 import { MdbImportCard } from "./components/mdb-import";
 import { MeasurementPicker } from "./components/measurement-picker";
+import { MeasuringTable } from "./components/measuring-table";
 import { ReportForm } from "./components/report-form";
 import { TelemetryCard } from "./components/telemetry";
+import { ZoneLimitsCard } from "./components/zone-limits";
 import { addHistoryEntry, makeEntry } from "./lib/history";
+import type { CsvRowSummary } from "./lib/mdb";
 import {
   computeStats,
   type ParseResult,
@@ -24,11 +27,14 @@ import {
 import {
   loadBranding,
   loadReportOptions,
+  loadZoneLimits,
   saveBranding,
   saveReportOptions,
+  saveZoneLimits,
   type Branding,
 } from "./lib/settings";
 import { initCrashHooks, track } from "./lib/telemetry";
+import type { ZoneLimitSet } from "./lib/zones";
 
 function App() {
   const [dark, setDark] = useState(false);
@@ -39,6 +45,8 @@ function App() {
   const [branding, setBranding] = useState<Branding>(() => loadBranding());
   const [aiDraft, setAiDraft] = useState<AiDraftFields | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [zoneLimits, setZoneLimits] = useState<ZoneLimitSet>(() => loadZoneLimits());
+  const [measureRows, setMeasureRows] = useState<CsvRowSummary[] | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
 
   useEffect(() => {
@@ -58,11 +66,16 @@ function App() {
     saveBranding(branding);
   }, [branding]);
 
+  useEffect(() => {
+    saveZoneLimits(zoneLimits);
+  }, [zoneLimits]);
+
   const handleParsed = (r: ParseResult | null, file: File | null = null) => {
     setParsed(r);
     setEdited(r ? r.spectra : null);
     setAiDraft(null);
     setCsvFile(r && r.meta.source === "spec-csv" ? file : null);
+    setMeasureRows(null);
   };
 
   /** Switching measurements keeps the file/CSV source for further picks. */
@@ -126,7 +139,7 @@ function App() {
         </TabsList>
         <TabsContent value="report" className="grid gap-4">
           <MdbImportCard onConverted={handleParsed} />
-          <Ingest onParsed={handleParsed} />
+          <Ingest onParsed={handleParsed} limits={zoneLimits} />
           {effective &&
           (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
             <MeasurementPicker
@@ -142,6 +155,15 @@ function App() {
                   : null
               }
               onSelect={handlePicked}
+            />
+          ) : null}
+          {effective &&
+          (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
+            <MeasuringTable
+              tauriPath={effective.meta.csvPath ?? null}
+              file={effective.meta.csvPath ? null : csvFile}
+              limits={zoneLimits}
+              onRows={setMeasureRows}
             />
           ) : null}
           <ReportForm options={options} onChange={setOptions} />
@@ -166,6 +188,8 @@ function App() {
             branding={branding}
             aiDraft={aiDraft}
             onExported={handleExported}
+            limits={zoneLimits}
+            measureRows={measureRows ?? undefined}
           />
         </TabsContent>
         <TabsContent value="history">
@@ -182,6 +206,7 @@ function App() {
         </TabsContent>
         <TabsContent value="settings" className="grid gap-4">
           <LicenseCard />
+          <ZoneLimitsCard limits={zoneLimits} onChange={setZoneLimits} />
           <AiSettingsCard />
           <TelemetryCard />
         </TabsContent>

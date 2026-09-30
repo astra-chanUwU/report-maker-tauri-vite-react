@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from "react";
 import { FileUp, TriangleAlert } from "lucide-react";
 import { parseSp3, type ParseResult } from "../lib/parseSp3";
 import { cn } from "../lib/utils";
+import { classifyZone, ZONE_LABELS, type ZoneLimitSet } from "../lib/zones";
+import { ZoneBadge } from "./measuring-table";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -12,7 +14,13 @@ const ACCEPT = ".sp3,.txt,.csv";
 /** Head slice for huge files: enough for header + first rows (Spec path needs ~200KB). */
 const HEAD_SLICE = 4 * 1024 * 1024;
 
-export function Ingest({ onParsed }: { onParsed?: (r: ParseResult | null, file?: File) => void }) {
+export function Ingest({
+  onParsed,
+  limits,
+}: {
+  onParsed?: (r: ParseResult | null, file?: File) => void;
+  limits?: ZoneLimitSet;
+}) {
   const [result, setResult] = useState<ParseResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -128,14 +136,15 @@ export function Ingest({ onParsed }: { onParsed?: (r: ParseResult | null, file?:
         </CardContent>
       </Card>
 
-      {result ? <IngestPreview result={result} /> : null}
+      {result ? <IngestPreview result={result} limits={limits} /> : null}
     </div>
   );
 }
 
-export function IngestPreview({ result }: { result: ParseResult }) {
+export function IngestPreview({ result, limits }: { result: ParseResult; limits?: ZoneLimitSet }) {
   const rows = result.spectra.slice(0, 80);
   const overall = result.meta.overall;
+  const zone = overall && limits ? classifyZone(overall.rmsV, limits.velocity) : "";
   const sourceLabel =
     result.meta.source === "spec-csv"
       ? "spec csv"
@@ -165,6 +174,14 @@ export function IngestPreview({ result }: { result: ParseResult }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {zone ? (
+            <p className="mb-2 flex items-center gap-2 text-sm">
+              <ZoneBadge zone={zone} />
+              <span className="text-muted-foreground">
+                Velocity · {ZONE_LABELS[zone as keyof typeof ZONE_LABELS]} (RMS-V {overall?.rmsV})
+              </span>
+            </p>
+          ) : null}
           <SpectraChart spectra={result.spectra} />
           <p className="mt-2 text-xs text-muted-foreground">
             Showing first {rows.length} of {result.spectra.length} rows

@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { Download, FolderOpen } from "lucide-react";
-import { buildDocx } from "../lib/generateDocx";
+import { buildDocx, type MeasureRow } from "../lib/generateDocx";
 import { fallbackDraft } from "../lib/ai";
+import type { CsvRowSummary } from "../lib/mdb";
 import type { ParseResult, ReportOptions } from "../lib/parseSp3";
 import { base64ToBytes, validateReportOptions, type Branding } from "../lib/settings";
+import { oleDateToISO } from "../lib/specdata";
 import { track } from "../lib/telemetry";
+import type { ZoneLimitSet } from "../lib/zones";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { toast } from "./ui/sonner";
@@ -25,6 +28,8 @@ export function ExportCard({
   branding,
   aiDraft,
   onExported,
+  limits,
+  measureRows,
 }: {
   parsed: ParseResult | null;
   options: ReportOptions;
@@ -37,6 +42,8 @@ export function ExportCard({
     conclusion: string;
   } | null;
   onExported?: (info: { filename: string; savedPath: string | null }) => void;
+  limits?: ZoneLimitSet;
+  measureRows?: CsvRowSummary[];
 }) {
   const [busy, setBusy] = useState(false);
   const [lastPath, setLastPath] = useState<string | null>(null);
@@ -65,6 +72,19 @@ export function ExportCard({
             options,
             stats: parsed.stats,
           });
+      const zones =
+        limits && measureRows && measureRows.length > 0
+          ? {
+              limits,
+              rows: measureRows.map((r): MeasureRow => ({
+                point: `${r.pointId || "?"}${r.directionId ? ` / ${r.directionId}` : ""}`,
+                date: oleDateToISO(Number(r.measDate)) || "—",
+                rms: r.rmsV,
+                peak: r.peakV,
+                peakFreq: r.peakFreq,
+              })),
+            }
+          : undefined;
       const blob = await buildDocx({
         meta: parsed.meta,
         spectra: parsed.spectra,
@@ -74,6 +94,7 @@ export function ExportCard({
         branding: branding?.logoBase64
           ? { logoPng: base64ToBytes(branding.logoBase64) }
           : undefined,
+        zones,
       });
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
       const savedPath = await saveBlob(blob, filename);

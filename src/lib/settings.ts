@@ -1,4 +1,5 @@
 import type { ReportOptions } from "./parseSp3";
+import { DEFAULT_ZONE_LIMITS, toLimit, type ZoneLimitSet } from "./zones";
 
 const KEY = "report-maker:report-options:v1";
 
@@ -147,6 +148,54 @@ export function loadMdbToolPath(): string {
 
 export function saveMdbToolPath(p: string): void {
   lsSet(MDB_TOOL_KEY, p);
+}
+
+const ZONE_KEY = "report-maker:zones:v1";
+
+function toZoneLimits(o: unknown): ZoneLimitSet {
+  const get = (
+    group: unknown,
+    fb: { bottom: number | null; mid: number | null; top: number | null }
+  ) => {
+    const g = (group ?? {}) as { bottom?: unknown; mid?: unknown; top?: unknown };
+    const b = toLimit(g.bottom);
+    const m = toLimit(g.mid);
+    const t = toLimit(g.top);
+    return {
+      bottom: b ?? fb.bottom,
+      mid: m ?? fb.mid,
+      top: t ?? fb.top,
+    };
+  };
+  const src = (o ?? {}) as {
+    velocity?: unknown;
+    acceleration?: unknown;
+    envelope?: unknown;
+  };
+  return {
+    velocity: get(src.velocity, DEFAULT_ZONE_LIMITS.velocity),
+    acceleration: get(src.acceleration, DEFAULT_ZONE_LIMITS.acceleration),
+    envelope: get(src.envelope, DEFAULT_ZONE_LIMITS.envelope),
+  };
+}
+
+/** Alarm zone thresholds (B/U/C per metric). Null = unset → falls back to default. */
+export function loadZoneLimits(): ZoneLimitSet {
+  try {
+    const raw = lsGet(ZONE_KEY);
+    if (!raw) return structuredClone(DEFAULT_ZONE_LIMITS);
+    return toZoneLimits(JSON.parse(raw));
+  } catch {
+    return structuredClone(DEFAULT_ZONE_LIMITS);
+  }
+}
+
+export function saveZoneLimits(s: ZoneLimitSet): void {
+  try {
+    lsSet(ZONE_KEY, JSON.stringify(s));
+  } catch {
+    // ignore — keeps working in-memory
+  }
 }
 
 const AI_KEY = "report-maker:ai:v1";

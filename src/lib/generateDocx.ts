@@ -5,6 +5,7 @@ import {
   ImageRun,
   Packer,
   Paragraph,
+  ShadingType,
   Table,
   TableCell,
   TableRow,
@@ -13,6 +14,56 @@ import {
 } from "docx";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
 import { getTemplate } from "./templates";
+import {
+  classifyZone,
+  formatLimits,
+  limitsShort,
+  ZONE_FILL,
+  ZONE_TEXT,
+  type ZoneLimitSet,
+} from "./zones";
+
+export interface MeasureRow {
+  point: string;
+  date: string;
+  rms: string;
+  peak: string;
+  peakFreq: string;
+}
+
+export interface MeasuringCell {
+  text: string;
+  fill?: string;
+  color?: string;
+  bold?: boolean;
+}
+
+/** Pure data builder for the measuring-results table (tested without unzipping). */
+export function buildMeasuringTableData(
+  rows: MeasureRow[],
+  limits: ZoneLimitSet
+): { header: string[]; body: MeasuringCell[][] } {
+  const header = [
+    "Point",
+    "Date",
+    "RMS-V",
+    `V Zone (${limitsShort(limits.velocity)})`,
+    "Peak",
+    "@ Freq",
+  ];
+  const body = rows.map((r) => {
+    const zone = classifyZone(r.rms, limits.velocity);
+    return [
+      { text: r.point || "?" },
+      { text: r.date || "—" },
+      { text: r.rms || "—" },
+      { text: zone || "—", fill: ZONE_FILL[zone], color: ZONE_TEXT[zone], bold: true },
+      { text: r.peak || "—" },
+      { text: r.peakFreq || "—" },
+    ];
+  });
+  return { header, body };
+}
 
 export interface BuildDocxInput {
   meta: Sp3Meta;
@@ -27,6 +78,11 @@ export interface BuildDocxInput {
   };
   branding?: { logoPng?: Uint8Array };
   templateId?: string;
+  /** Measuring-results table (all export rows) + alarm limits, when available. */
+  zones?: {
+    limits: ZoneLimitSet;
+    rows: MeasureRow[];
+  };
 }
 
 const CHART_W = 800;
@@ -337,6 +393,14 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   if (overall) {
     const cell = (t: string, bold = false) =>
       new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: t, bold })] })] });
+    const extraRows: [string, string][] = [];
+    if (input.zones) {
+      extraRows.push(
+        ["Velocity zone limits (B/U/C)", formatLimits(input.zones.limits.velocity)],
+        ["Accel zone limits (B/U/C)", formatLimits(input.zones.limits.acceleration)],
+        ["Envelope zone limits (B/U/C)", formatLimits(input.zones.limits.envelope)]
+      );
+    }
     children.push(
       new Paragraph({ text: "Overall vibration", heading: HeadingLevel.HEADING_1 }),
       new Table({
@@ -351,10 +415,19 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
             ["Peak D / V / A", `${overall.peakD} / ${overall.peakV} / ${overall.peakA}`],
             ["Peak freq", String(overall.peakFreq)],
             ["Freq range / lines", `${overall.freqRange} / ${overall.noLines}`],
+            ...extraRows,
           ].map(([k, v]) => new TableRow({ children: [cell(k), cell(v)] })),
         ],
       })
     );
+    if (input.zones) {
+      const z = classifyZone(overall.rmsV, input.zones.limits.velocity);
+      children.push(
+        new Paragraph(
+          `This measurement: velocity zone ${z || "—"} (RMS-V ${overall.rmsV} against ${formatLimits(input.zones.limits.velocity)}).`
+        )
+      );
+    }
   }
 
   children.push(
@@ -368,6 +441,29 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     new Paragraph({ text: `Data (first ${rows.length})`, heading: HeadingLevel.HEADING_1 }),
     table
   );
+
+  if (input.zones && input.zones.rows.length > 0) {
+    const { header, body } = buildMeasuringTableData(input.zones.rows, input.zones.limits);
+    const mcell = (c: MeasuringCell, bold = false) =>
+      new TableCell({
+        ...(c.fill ? { shading: { type: ShadingType.CLEAR, fill: c.fill, color: "auto" } } : {}),
+        children: [
+          new Paragraph({
+            children: [new TextRun({ text: c.text, bold: bold || c.bold, color: c.color })],
+          }),
+        ],
+      });
+    children.push(
+      new Paragraph({ text: "Measuring results", heading: HeadingLevel.HEADING_1 }),
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({ children: header.map((t) => mcell({ text: t }, true)) }),
+          ...body.map((r) => new TableRow({ children: r.map((c) => mcell(c)) })),
+        ],
+      })
+    );
+  }
 
   if (d) {
     children.push(
