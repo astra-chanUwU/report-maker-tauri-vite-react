@@ -42,14 +42,19 @@
     "resources": [],
     "windows": {
       "nsis": {
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
       },
       "wix": {
         "language": "en-US"
       }
     },
     "macOS": {
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "dmg": {
+        "background": null,
+        "windowSize": { "width": 600, "height": 400 }
+      }
     },
     "linux": {
       "deb": {
