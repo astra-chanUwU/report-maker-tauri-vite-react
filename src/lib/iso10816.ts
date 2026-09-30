@@ -106,7 +106,26 @@ export interface IsoTableData {
  * Row layout: 6 columns —
  * [swatch | band label (span 2) | swatch | RMS mm/s | eq-peak in/s].
  */
-export function buildIsoTableData(): IsoTableData {
+export type IsoGroups = "all" | "1+3" | "2+4";
+
+const FA_LABEL: Record<string, string> = {
+  "DAMAGE OCCURS": "آسیب",
+  "RESTRICTED OPERATION": "کارکرد محدود",
+  "UNRESTRICTED OPERATION": "کارکرد نامحدود",
+  "NEWLY COMMISSIONED MACHINERY": "ماشین نو",
+  "Machinery Groups 1 and 3": "گروه‌های ۱ و ۳",
+  "Machinery Groups 2 and 4": "گروه‌های ۲ و ۴",
+  "ISO 10816 - 3": "ISO 10816-3",
+  "Rated Power": "توان نامی",
+  "Velocity": "سرعت",
+  "RMS mm/s": "RMS mm/s",
+  "eq. Peak in/s": "eq. Peak in/s",
+  Flexible: "انعطاف‌پذیر",
+  Rigid: "صلب",
+  Foundation: "فونداسیون",
+};
+
+export function buildIsoTableData(opts?: { groups?: IsoGroups; language?: "en" | "fa" }): IsoTableData {
   const h = (text: string, span = 1): IsoCell => ({
     text,
     fill: ISO_HEADER_DARK,
@@ -155,5 +174,15 @@ export function buildIsoTableData(): IsoTableData {
   rows.push(
     ISO_FOOTER.map((t) => ({ text: t, fill: ISO_HEADER_DARK, color: "FFFFFF", bold: true }))
   );
+  const groups = opts?.groups ?? "all";
+  if (groups === "1+3" && rows[0]?.[1]) rows[0][1].text = "—";
+  if (groups === "2+4" && rows[0]?.[0]) rows[0][0].text = "—";
+  if (opts?.language === "fa") {
+    for (const row of rows) {
+      for (const cell of row) {
+        if (FA_LABEL[cell.text]) cell.text = FA_LABEL[cell.text];
+      }
+    }
+  }
   return { rows };
 }

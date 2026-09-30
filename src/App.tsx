@@ -205,7 +205,11 @@ function App() {
                 saveEquipments(n);
               }}
             />
-            <ClientProfiles options={options} onOptions={setOptions} />
+            <ClientProfiles
+              options={options}
+              onOptions={setOptions}
+              onLogo={(logoBase64) => setBranding({ ...branding, logoBase64 })}
+            />
             <AiDraftCard
               parsed={effective}
               options={options}

@@ -66,6 +66,8 @@ export interface ReportOptions {
   pointLimit?: number;
   /** Append the ISO 10816-3 severity reference table (default true). */
   includeIsoTable?: boolean;
+  /** Which machinery groups to emphasize in the ISO appendix. */
+  isoGroups?: "all" | "1+3" | "2+4";
   /** §3 equipment identity: name + technical specs + machine schematic. */
   equipmentName?: string;
   equipmentSpecs?: string;

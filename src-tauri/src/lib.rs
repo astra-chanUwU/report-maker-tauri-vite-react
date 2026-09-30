@@ -24,7 +24,10 @@ pub fn run() {
             mdb::mdb_tool_status,
             mdb::export_mdb_csv,
             mdb::list_csv_rows,
-            mdb::read_csv_row
+            mdb::read_csv_row,
+            mdb::list_spectra_catalog,
+            mdb::extract_machine_picture,
+            mdb::list_envelope_samples
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

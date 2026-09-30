@@ -91,6 +91,8 @@ export interface CsvRowSummary {
   peakA: string;
   unit: string;
   noLines: string;
+  /** Joined from EnvelopeData when the metric is enabled. */
+  envelopeRms?: string;
 }
 
 export interface CsvRowList {
@@ -302,4 +304,71 @@ export async function loadFileRow(
   });
   if (!result) throw new Error(`Row ${index + 1} failed to parse.`);
   return result;
+}
+
+export interface SpectraCatalogCsv {
+  plantCsv: string;
+  machineCsv: string;
+  pointCsv: string;
+  directionCsv: string;
+}
+
+/** Tauri: export Plant/Machine/Point/Direction as stripped CSV (no OLE). */
+export async function fetchSpectraCatalog(sp3Path: string): Promise<SpectraCatalogCsv> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const overridePath = loadMdbToolPath().trim();
+  return invoke<SpectraCatalogCsv>("list_spectra_catalog", {
+    input: sp3Path,
+    tool: overridePath || null,
+  });
+}
+
+/** Tauri: JPEG bytes of one machine schematic (MachPicture), or throws. */
+export async function fetchMachinePicture(sp3Path: string, machineId: string): Promise<Uint8Array> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const overridePath = loadMdbToolPath().trim();
+  const bytes = await invoke<number[]>("extract_machine_picture", {
+    input: sp3Path,
+    machineId,
+    tool: overridePath || null,
+  });
+  return new Uint8Array(bytes);
+}
+
+/** Pick an .sp3 and return its disk path (Tauri). Throws Error("cancelled"). */
+export async function pickSp3Path(): Promise<string> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const picked = await open({
+    filters: [{ name: "SP3 / MDB", extensions: ["sp3", "mdb"] }],
+    multiple: false,
+  });
+  if (!picked || Array.isArray(picked)) throw new Error("cancelled");
+  return picked;
+}
+
+export async function fetchEnvelopeSamples(
+  sp3Path: string
+): Promise<{ pointId: string; measDate: string; rms: string }[]> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const overridePath = loadMdbToolPath().trim();
+  return invoke("list_envelope_samples", { input: sp3Path, tool: overridePath || null });
+}
+
+/** PointID|MeasDate → envelope RMS from an EnvelopeData CSV (strip mode). */
+export function indexEnvelopeCsv(csv: string): Map<string, string> {
+  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim());
+  const map = new Map<string, string>();
+  if (lines.length < 2) return map;
+  const header = lines[0].split(",").map((h) => h.replace(/^"|"$/g, "").trim());
+  const ip = header.indexOf("PointID");
+  const id = header.indexOf("MeasDate");
+  const ir = header.indexOf("TotalRMSV");
+  if (ip < 0 || id < 0 || ir < 0) return map;
+  for (const line of lines.slice(1)) {
+    const cells = line.split(",");
+    const key = `${(cells[ip] ?? "").replace(/"/g, "").trim()}|${(cells[id] ?? "").trim()}`;
+    const val = (cells[ir] ?? "").replace(/"/g, "").trim();
+    if (key !== "|" && val) map.set(key, val);
+  }
+  return map;
 }

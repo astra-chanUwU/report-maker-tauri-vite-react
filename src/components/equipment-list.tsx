@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { bytesToBase64, buildMachineSpecs, joinCatalog, machineLabelMap, type SpectraMachine } from "../lib/spectra-catalog";
+import { fetchMachinePicture, fetchSpectraCatalog, pickSp3Path } from "../lib/mdb";
 import {
   EQUIPMENT_STATUSES,
   loadEquipments,
@@ -23,6 +25,48 @@ export function EquipmentList({
   onChange: (next: EquipmentItem[]) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<{ path: string; machines: SpectraMachine[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const importCatalog = async () => {
+    setBusy(true);
+    try {
+      const path = await pickSp3Path();
+      const csv = await fetchSpectraCatalog(path);
+      const machines = joinCatalog(csv);
+      setCatalog({ path, machines });
+      toast.success(`${machines.length} machines from Spectra.`);
+    } catch (e) {
+      if (e instanceof Error && e.message === "cancelled") return;
+      toast.error(e instanceof Error ? e.message : "Could not read Spectra catalog.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addFromMachine = async (m: SpectraMachine) => {
+    let schematicBase64: string | null = null;
+    if (catalog) {
+      try {
+        const jpeg = await fetchMachinePicture(catalog.path, m.machineId);
+        if (jpeg.length > 8) schematicBase64 = bytesToBase64(jpeg);
+      } catch {
+        schematicBase64 = null;
+      }
+    }
+    const item = makeEquipment({
+      name: m.name || `Machine ${m.machineId}`,
+      specs: buildMachineSpecs(m),
+      sp3Path: catalog?.path ?? null,
+      machineId: m.machineId,
+      pointIds: m.points.map((p) => p.pointId),
+      labels: machineLabelMap(m),
+      schematicBase64,
+    });
+    set([...items, item]);
+    setOpenId(item.id);
+    toast.success(`Added ${item.name}.`);
+  };
 
   const set = (next: EquipmentItem[]) => {
     onChange(next);
@@ -127,9 +171,32 @@ export function EquipmentList({
             ) : null}
           </div>
         ))}
-        <Button type="button" variant="outline" size="sm" onClick={add}>
-          <Plus className="h-4 w-4" /> Add equipment
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={add}>
+            <Plus className="h-4 w-4" /> Add equipment
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => void importCatalog()} disabled={busy}>
+            {busy ? "Reading…" : "Import from Spectra"}
+          </Button>
+        </div>
+        {catalog ? (
+          <div className="grid gap-1">
+            <Label>Machines in {catalog.path.split(/[/\\]/).pop()}</Label>
+            <div className="max-h-40 overflow-auto rounded-md border">
+              {catalog.machines.map((m) => (
+                <button
+                  key={m.machineId}
+                  type="button"
+                  className="block w-full px-2 py-1 text-left text-sm hover:bg-muted"
+                  onClick={() => void addFromMachine(m)}
+                >
+                  {m.name || m.machineId}
+                  <span className="text-muted-foreground"> · {m.points.length} points</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

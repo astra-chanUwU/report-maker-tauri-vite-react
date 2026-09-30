@@ -386,3 +386,168 @@ pub fn read_csv_row(path: String, index: usize) -> Result<CsvFullRow, String> {
     }
     Err(format!("Row {index} out of range."))
 }
+
+// ---------------------------------------------------------------------------
+// Spectra catalog (Plant / Machine / Point / Direction) — text only.
+// Binary columns (MachPicture) are stripped; JPEG is a separate command.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpectraCatalogCsv {
+    pub plant_csv: String,
+    pub machine_csv: String,
+    pub point_csv: String,
+    pub direction_csv: String,
+}
+
+fn run_mdb_export(bin: &PathBuf, input: &str, table: &str, bin_mode: &str) -> Result<Vec<u8>, String> {
+    let output = Command::new(bin)
+        .arg("-b")
+        .arg(bin_mode)
+        .arg(input)
+        .arg(table)
+        .output()
+        .map_err(|e| format!("failed to run mdb-export: {e}"))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr)
+            .trim()
+            .chars()
+            .take(300)
+            .collect::<String>();
+        return Err(format!("mdb-export {table} failed: {err}"));
+    }
+    Ok(output.stdout)
+}
+
+#[tauri::command]
+pub fn list_spectra_catalog(input: String, tool: Option<String>) -> Result<SpectraCatalogCsv, String> {
+    let bin = resolve_tool(tool).ok_or_else(|| {
+        "mdb-export not found. Install mdbtools (or set MDB_EXPORT_PATH / Settings path)."
+            .to_string()
+    })?;
+    let input_path = PathBuf::from(&input);
+    if !input_path.is_file() {
+        return Err(format!("Input file not found: {input}"));
+    }
+    let plant = String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Plant", "strip")?).into_owned();
+    let machine = String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Machine", "strip")?).into_owned();
+    let point = String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Point", "strip")?).into_owned();
+    let direction =
+        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Direction", "strip")?).into_owned();
+    if !machine.contains("MachineID") {
+        return Err("Machine table missing from this .sp3.".to_string());
+    }
+    Ok(SpectraCatalogCsv {
+        plant_csv: plant,
+        machine_csv: machine,
+        point_csv: point,
+        direction_csv: direction,
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvelopeSample {
+    pub point_id: String,
+    pub meas_date: String,
+    pub rms: String,
+}
+
+/// EnvelopeData overalls (OLE stripped) so trends can join by point + date.
+#[tauri::command]
+pub fn list_envelope_samples(input: String, tool: Option<String>) -> Result<Vec<EnvelopeSample>, String> {
+    let bin = resolve_tool(tool).ok_or_else(|| "mdb-export not found.".to_string())?;
+    let raw = run_mdb_export(&bin, &input, "EnvelopeData", "strip")?;
+    let text = String::from_utf8_lossy(&raw);
+    let mut lines = text.lines();
+    let header = split_csv_line(lines.next().unwrap_or(""));
+    let mut out = Vec::new();
+    for line in lines {
+        if line.trim().is_empty() || out.len() >= ROW_LIST_CAP {
+            continue;
+        }
+        let cells = split_csv_line(line);
+        let rms = col(&cells, &header, "TotalRMSV");
+        if rms.is_empty() {
+            continue;
+        }
+        out.push(EnvelopeSample {
+            point_id: col(&cells, &header, "PointID"),
+            meas_date: col(&cells, &header, "MeasDate"),
+            rms,
+        });
+    }
+    Ok(out)
+}
+
+/// Hex-export Machine and return the JPEG bytes of one MachPicture, if any.
+#[tauri::command]
+pub fn extract_machine_picture(
+    input: String,
+    machine_id: String,
+    tool: Option<String>,
+) -> Result<Vec<u8>, String> {
+    let bin = resolve_tool(tool).ok_or_else(|| "mdb-export not found.".to_string())?;
+    let raw = run_mdb_export(&bin, &input, "Machine", "hex")?;
+    let text = String::from_utf8_lossy(&raw);
+    let mut lines = text.lines();
+    let header = split_csv_line(lines.next().unwrap_or(""));
+    let pic_i = header
+        .iter()
+        .position(|h| h == "MachPicture")
+        .ok_or("MachPicture column missing.")?;
+    let id_i = header
+        .iter()
+        .position(|h| h == "MachineID")
+        .ok_or("MachineID column missing.")?;
+    for line in lines {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let cells = split_csv_line(line);
+        if cells.get(id_i).map(|s| s.trim()) != Some(machine_id.trim()) {
+            continue;
+        }
+        let field = cells.get(pic_i).cloned().unwrap_or_default();
+        return jpeg_from_hex(&field).ok_or_else(|| "No JPEG in MachPicture.".to_string());
+    }
+    Err(format!("Machine {machine_id} not found."))
+}
+
+fn jpeg_from_hex(field: &str) -> Option<Vec<u8>> {
+    let hex: String = field
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .collect();
+    let lower = hex.to_ascii_lowercase();
+    let start = lower.find("ffd8")?;
+    let start = start - (start % 2);
+    let slice = &hex[start..];
+    if slice.len() < 8 || slice.len() % 2 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(slice.len() / 2);
+    let bytes = slice.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        let hi = hex_val(bytes[i])?;
+        let lo = hex_val(bytes[i + 1])?;
+        out.push((hi << 4) | lo);
+        i += 2;
+    }
+    if out.len() >= 3 && out[0] == 0xFF && out[1] == 0xD8 {
+        Some(out)
+    } else {
+        None
+    }
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}

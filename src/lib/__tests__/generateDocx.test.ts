@@ -95,13 +95,15 @@ describe("buildDocx", () => {
       ],
       DEFAULT_ZONE_LIMITS
     );
-    expect(header[3]).toBe("V Zone (3.5/7/8.6)");
-    expect(header[5]).toBe("A Zone (14.71/29.4/36.2)");
-    expect(body[0][3]).toMatchObject({ text: "A", fill: "2E7D32", color: "FFFFFF" });
-    expect(body[0][5]).toMatchObject({ text: "A", fill: "2E7D32", color: "FFFFFF" });
-    expect(body[1][3]).toMatchObject({ text: "U", fill: "F57C00", color: "FFFFFF" });
-    expect(body[1][5]).toMatchObject({ text: "C", fill: "D32F2F", color: "FFFFFF" });
-    expect(body[2][3]).toMatchObject({ text: "—", fill: "E0E0E0", color: "333333" });
+    const vCol = header.findIndex((h) => h.startsWith("V Zone"));
+    const aCol = header.findIndex((h) => h.startsWith("A Zone"));
+    expect(header[vCol]).toBe("V Zone (3.5/7/8.6)");
+    expect(header[aCol]).toBe("A Zone (14.71/29.4/36.2)");
+    expect(body[0][vCol]).toMatchObject({ text: "A", fill: "2E7D32", color: "FFFFFF" });
+    expect(body[0][aCol]).toMatchObject({ text: "A", fill: "2E7D32", color: "FFFFFF" });
+    expect(body[1][vCol]).toMatchObject({ text: "U", fill: "F57C00", color: "FFFFFF" });
+    expect(body[1][aCol]).toMatchObject({ text: "C", fill: "D32F2F", color: "FFFFFF" });
+    expect(body[2][vCol]).toMatchObject({ text: "—", fill: "E0E0E0", color: "333333" });
   });
 
   it("embeds zones + measuring rows into the .docx", async () => {

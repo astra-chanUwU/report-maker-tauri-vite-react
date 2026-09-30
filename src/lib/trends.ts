@@ -20,6 +20,8 @@ export interface TrendSample {
   dateISO: string;
   rmsV: number | null;
   rmsA: number | null;
+  /** Envelope overall, when EnvelopeData was joined. */
+  envelope?: number | null;
 }
 
 export interface PointHistory {
@@ -53,12 +55,37 @@ export function groupHistories(rows: CsvRowSummary[]): PointHistory[] {
       dateISO: oleDateToISO(dateNum) || String(dateNum),
       rmsV: toLimit(r.rmsV),
       rmsA: toLimit(r.rmsA),
+      envelope: toLimit(r.envelopeRms ?? ""),
     });
   }
   const out = [...map.values()];
   for (const h of out) h.samples.sort((a, b) => a.dateNum - b.dateNum);
   out.sort((a, b) => a.label.localeCompare(b.label));
   return out;
+}
+
+export interface HistoryStat {
+  total: string;
+  avg: string;
+  prev: string;
+  curr: string;
+}
+
+function fmtStat(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  return v.toFixed(3).replace(/\.?0+$/, "");
+}
+
+/** Brochure columns: Total = latest overall, Avg, Prev, Curr. */
+export function historyStats(samples: TrendSample[], metric: "rmsV" | "rmsA" | "envelope"): HistoryStat {
+  const vals = samples
+    .map((s) => (metric === "envelope" ? (s.envelope ?? null) : s[metric]))
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+  if (vals.length === 0) return { total: "—", avg: "—", prev: "—", curr: "—" };
+  const curr = vals[vals.length - 1];
+  const prev = vals.length > 1 ? vals[vals.length - 2] : null;
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  return { total: fmtStat(curr), avg: fmtStat(avg), prev: fmtStat(prev), curr: fmtStat(curr) };
 }
 
 /** Window the history: "all" or the last N samples (legacy default 10). */
@@ -70,15 +97,23 @@ export function takeLastHistory(samples: TrendSample[], n: number | "all"): Tren
 /** Batch builder for "export all points" (brochure p.6): one V+A PNG pair per point. */
 export function buildAllTrendSnapshots(
   histories: PointHistory[],
-  limits: { velocity: ZoneLimits; acceleration: ZoneLimits },
+  limits: { velocity: ZoneLimits; acceleration: ZoneLimits; envelope?: ZoneLimits },
   window: number | "all",
-  capPoints = 40
-): { pointLabel: string; sampleCount: number; velocityPng: Uint8Array; accelPng: Uint8Array }[] {
+  capPoints = 40,
+  includeEnvelope = false
+): {
+  pointLabel: string;
+  sampleCount: number;
+  velocityPng: Uint8Array;
+  accelPng: Uint8Array;
+  envelopePng?: Uint8Array;
+}[] {
   const out: {
     pointLabel: string;
     sampleCount: number;
     velocityPng: Uint8Array;
     accelPng: Uint8Array;
+    envelopePng?: Uint8Array;
   }[] = [];
   for (const h of histories.slice(0, Math.max(1, capPoints))) {
     const samples = takeLastHistory(h.samples, window);
@@ -89,6 +124,10 @@ export function buildAllTrendSnapshots(
         sampleCount: samples.length,
         velocityPng: renderTrendPng(samples, "rmsV", limits.velocity),
         accelPng: renderTrendPng(samples, "rmsA", limits.acceleration),
+        envelopePng:
+          includeEnvelope && samples.some((s) => s.envelope != null)
+            ? renderTrendPng(samples, "envelope", limits.envelope ?? limits.acceleration)
+            : undefined,
       });
     } catch {
       // skip undecodable histories — single-point export still works
@@ -126,6 +165,8 @@ function lighten(hex: string, towardWhite: number): [number, number, number] {
 export interface TrendChartOpts {
   width?: number;
   height?: number;
+  /** Tight margins, no grid — for the measuring-table sparkline. */
+  sparkline?: boolean;
 }
 
 /**
@@ -134,22 +175,23 @@ export interface TrendChartOpts {
  */
 export function renderTrendPng(
   samples: TrendSample[],
-  metric: "rmsV" | "rmsA",
+  metric: "rmsV" | "rmsA" | "envelope",
   limits: ZoneLimits,
   opts: TrendChartOpts = {}
 ): Uint8Array {
-  const w = opts.width ?? 800;
-  const h = opts.height ?? 400;
+  const spark = opts.sparkline === true;
+  const w = opts.width ?? (spark ? 120 : 800);
+  const h = opts.height ?? (spark ? 36 : 400);
   const buf = new Uint8Array(w * h * 3);
   buf.fill(255);
-  const L = 46;
-  const R = 12;
-  const T = 12;
-  const B = 34;
+  const L = spark ? 2 : 46;
+  const R = spark ? 2 : 12;
+  const T = spark ? 2 : 12;
+  const B = spark ? 2 : 34;
   const plotW = w - L - R;
   const plotH = h - T - B;
 
-  const values = samples.map((s) => s[metric]);
+  const values = samples.map((s) => (metric === "envelope" ? (s.envelope ?? null) : s[metric]));
   const yMax = trendYMax(values, limits);
   const bands = trendZoneBands(limits, 0, yMax);
   const px = (i: number) =>
@@ -162,25 +204,27 @@ export function renderTrendPng(
     const [r, g, bl] = lighten(b.color, 0.72);
     for (let y = y0; y <= y1; y++) line(buf, w, h, L, y, w - R - 1, y, [r, g, bl]);
   }
-  // grid + axes
-  for (let gx = 0; gx <= plotW; gx += 80)
-    line(buf, w, h, L + gx, T, L + gx, T + plotH, [229, 231, 235]);
-  for (let gy = 0; gy <= plotH; gy += 40)
-    line(buf, w, h, L, T + gy, w - R - 1, T + gy, [229, 231, 235]);
-  line(buf, w, h, L, T, L, T + plotH, [17, 24, 39]);
-  line(buf, w, h, L, T + plotH, w - R - 1, T + plotH, [17, 24, 39]);
+  if (!spark) {
+    for (let gx = 0; gx <= plotW; gx += 80)
+      line(buf, w, h, L + gx, T, L + gx, T + plotH, [229, 231, 235]);
+    for (let gy = 0; gy <= plotH; gy += 40)
+      line(buf, w, h, L, T + gy, w - R - 1, T + gy, [229, 231, 235]);
+    line(buf, w, h, L, T, L, T + plotH, [17, 24, 39]);
+    line(buf, w, h, L, T + plotH, w - R - 1, T + plotH, [17, 24, 39]);
+  }
   // date ticks: first / middle / last
-  if (samples.length > 0) {
+  if (!spark && samples.length > 0) {
     for (const i of [0, Math.floor((samples.length - 1) / 2), samples.length - 1]) {
       const x = px(i);
       line(buf, w, h, x, T + plotH, x, T + plotH + 5, [17, 24, 39]);
     }
   }
   // polyline with gaps
-  const ink: [number, number, number] = metric === "rmsV" ? [37, 99, 235] : [180, 83, 9];
+  const ink: [number, number, number] =
+    metric === "rmsV" ? [37, 99, 235] : metric === "envelope" ? [22, 163, 74] : [180, 83, 9];
   let prev: { x: number; y: number } | null = null;
   samples.forEach((s, i) => {
-    const v = s[metric];
+    const v = metric === "envelope" ? (s.envelope ?? null) : s[metric];
     if (v === null) {
       prev = null;
       return;

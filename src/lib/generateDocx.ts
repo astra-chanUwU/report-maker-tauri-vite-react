@@ -13,7 +13,9 @@ import {
   WidthType,
 } from "docx";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
-import { encodePng, line, setPixel } from "./png";
+import { sectionTitle } from "./fa";
+import { encodePng, drawText, line, setPixel } from "./png";
+import { findDominantPeaks, formatPeakLabel } from "./spectra-peaks";
 import { getTemplate } from "./templates";
 import { buildIsoTableData, type IsoCell } from "./iso10816";
 import {
@@ -45,6 +47,18 @@ export interface MeasureRow {
   rmsA: string;
   peak: string;
   peakFreq: string;
+  /** Brochure Ver 2.32 stats (optional; default to rms / peak). */
+  totalV?: string;
+  avgV?: string;
+  prevV?: string;
+  currV?: string;
+  totalA?: string;
+  avgA?: string;
+  prevA?: string;
+  currA?: string;
+  peakList?: string;
+  sparkV?: Uint8Array;
+  sparkA?: Uint8Array;
 }
 
 export interface MeasuringCell {
@@ -52,6 +66,7 @@ export interface MeasuringCell {
   fill?: string;
   color?: string;
   bold?: boolean;
+  png?: Uint8Array;
 }
 
 /** Pure data builder for the measuring-results table (tested without unzipping). */
@@ -61,26 +76,39 @@ export function buildMeasuringTableData(
 ): { header: string[]; body: MeasuringCell[][] } {
   const header = [
     "Point",
-    "Date",
-    "RMS-V",
+    "V",
+    "Total",
+    "Avg",
+    "Prev",
+    "Curr",
     `V Zone (${limitsShort(limits.velocity)})`,
-    "RMS-A",
+    "Peak list",
+    "A",
+    "Total",
+    "Avg",
+    "Prev",
+    "Curr",
     `A Zone (${limitsShort(limits.acceleration)})`,
-    "Peak",
-    "@ Freq",
   ];
   const body = rows.map((r) => {
-    const zoneV = classifyZone(r.rms, limits.velocity);
-    const zoneA = classifyZone(r.rmsA, limits.acceleration);
+    const zoneV = classifyZone(r.currV || r.rms, limits.velocity);
+    const zoneA = classifyZone(r.currA || r.rmsA, limits.acceleration);
+    const peakList = r.peakList || (r.peak || r.peakFreq ? `${r.peak || "—"} @ ${r.peakFreq || "—"}` : "—");
     return [
       { text: r.point || "?" },
-      { text: r.date || "—" },
-      { text: r.rms || "—" },
+      { text: "", png: r.sparkV },
+      { text: r.totalV || r.rms || "—" },
+      { text: r.avgV || "—" },
+      { text: r.prevV || "—" },
+      { text: r.currV || r.rms || "—" },
       { text: zoneV || "—", fill: ZONE_FILL[zoneV], color: ZONE_TEXT[zoneV], bold: true },
-      { text: r.rmsA || "—" },
+      { text: peakList },
+      { text: "", png: r.sparkA },
+      { text: r.totalA || r.rmsA || "—" },
+      { text: r.avgA || "—" },
+      { text: r.prevA || "—" },
+      { text: r.currA || r.rmsA || "—" },
       { text: zoneA || "—", fill: ZONE_FILL[zoneA], color: ZONE_TEXT[zoneA], bold: true },
-      { text: r.peak || "—" },
-      { text: r.peakFreq || "—" },
     ];
   });
   return { header, body };
@@ -118,6 +146,13 @@ export interface BuildDocxInput {
     lastReport?: string;
     problems?: string;
     corrective?: string;
+    /** Vib slice for this machine (filtered PointIDs). */
+    vib?: {
+      limits: ZoneLimitSet;
+      rows: MeasureRow[];
+      trends?: NonNullable<BuildDocxInput["allTrends"]>;
+      fft?: NonNullable<BuildDocxInput["fftGallery"]>;
+    };
   }[];
   /** Measuring-results table (all export rows) + alarm limits, when available. */
   zones?: {
@@ -138,6 +173,7 @@ export interface BuildDocxInput {
     sampleCount: number;
     velocityPng: Uint8Array;
     accelPng: Uint8Array;
+    envelopePng?: Uint8Array;
   }[];
   /** FFT gallery for all points (brochure p.7). */
   fftGallery?: { label: string; png: Uint8Array; peak?: string }[];
@@ -183,8 +219,6 @@ export function renderChartPng(
   const px = (f: number) => Math.round(40 + ((f - fMin) / (fMax - fMin)) * (w - 60));
   const py = (a: number) =>
     Math.round(CHART_H - 30 - ((a - aMin) / (aMax - aMin)) * (CHART_H - 50));
-  let peak = pts[0];
-  for (const p of pts) if (p.amp > peak.amp) peak = p;
   for (let i = 1; i < pts.length; i++) {
     line(
       buf,
@@ -197,12 +231,17 @@ export function renderChartPng(
       [37, 99, 235]
     );
   }
-  const cx = px(peak.freq);
-  const cy = py(peak.amp);
-  for (let dy = -4; dy <= 4; dy++)
-    for (let dx = -4; dx <= 4; dx++) {
-      if (dx * dx + dy * dy <= 16) setPixel(buf, w, CHART_H, cx + dx, cy + dy, 220, 38, 38);
-    }
+  const peaks = findDominantPeaks(pts, 5);
+  for (const peak of peaks) {
+    const cx = px(peak.freq);
+    const cy = py(peak.amp);
+    for (let dy = -4; dy <= 4; dy++)
+      for (let dx = -4; dx <= 4; dx++) {
+        if (dx * dx + dy * dy <= 16) setPixel(buf, w, CHART_H, cx + dx, cy + dy, 220, 38, 38);
+      }
+    const label = formatPeakLabel(peak.freq);
+    drawText(buf, w, CHART_H, Math.min(cx + 4, w - 40), Math.max(2, cy - 16), label, [185, 28, 28], 1);
+  }
   return encodePng(buf, w, CHART_H);
 }
 
@@ -215,7 +254,7 @@ function downsample(spectra: SpectraPoint[], max: number): SpectraPoint[] {
 }
 
 /** §3 equipment page: name + technical specs + machine schematic + status/AI fields. */
-function equipmentSection(eq?: BuildDocxInput["equipment"]): (Paragraph | Table)[] {
+function equipmentSection(eq?: BuildDocxInput["equipment"], lang: "en" | "fa" = "en"): (Paragraph | Table)[] {
   const name = eq?.name?.trim() ?? "";
   const specs = eq?.specs?.trim() ?? "";
   const schema = eq?.schematic?.data?.length ? eq.schematic : undefined;
@@ -225,31 +264,31 @@ function equipmentSection(eq?: BuildDocxInput["equipment"]): (Paragraph | Table)
   const corrective = eq?.corrective?.trim() ?? "";
   if (!name && !specs && !schema && !status && !lastReport && !problems && !corrective) return [];
   const out: (Paragraph | Table)[] = [
-    new Paragraph({ text: "Equipment", heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ text: sectionTitle(lang, "equipment"), heading: HeadingLevel.HEADING_1 }),
   ];
   if (name) {
     out.push(new Paragraph({ text: name, heading: HeadingLevel.HEADING_2 }));
   }
   if (status) {
-    out.push(new Paragraph(`Condition status: ${status}`));
+    out.push(new Paragraph(`${sectionTitle(lang, "status")}: ${status}`));
   }
   if (specs) {
-    out.push(new Paragraph({ text: "Technical specifications", heading: HeadingLevel.HEADING_2 }));
+    out.push(new Paragraph({ text: sectionTitle(lang, "specs"), heading: HeadingLevel.HEADING_2 }));
     for (const para of specs.split(/\n\s*\n/)) {
       const t = para.trim();
       if (t) out.push(new Paragraph(t));
     }
   }
   if (lastReport) {
-    out.push(new Paragraph({ text: "Last report", heading: HeadingLevel.HEADING_2 }));
+    out.push(new Paragraph({ text: sectionTitle(lang, "lastReport"), heading: HeadingLevel.HEADING_2 }));
     out.push(new Paragraph(lastReport));
   }
   if (problems) {
-    out.push(new Paragraph({ text: "Identified problems (AI)", heading: HeadingLevel.HEADING_2 }));
+    out.push(new Paragraph({ text: sectionTitle(lang, "problems"), heading: HeadingLevel.HEADING_2 }));
     out.push(new Paragraph(problems));
   }
   if (corrective) {
-    out.push(new Paragraph({ text: "Corrective actions", heading: HeadingLevel.HEADING_2 }));
+    out.push(new Paragraph({ text: sectionTitle(lang, "actions"), heading: HeadingLevel.HEADING_2 }));
     out.push(new Paragraph(corrective));
   }
   if (schema) {
@@ -289,7 +328,7 @@ function tocSection(
   const cell = (t: string, bold = false) =>
     new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: t, bold })] })] });
   return [
-    new Paragraph({ text: fa ? "فهرست مطالب" : "Table of contents", heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ text: sectionTitle(fa ? "fa" : "en", "toc"), heading: HeadingLevel.HEADING_1 }),
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       rows: [
@@ -347,6 +386,7 @@ export function buildSignatureBlock(
         }),
       ],
     });
+  const lang: "en" | "fa" = options.language === "fa" ? "fa" : "en";
   if (options.signatureLayout === "fa") {
     const name = options.signatureName?.trim() || options.engineer || "—";
     const role = options.signatureRole?.trim() || "";
@@ -360,7 +400,7 @@ export function buildSignatureBlock(
     return out;
   }
   return [
-    new Paragraph({ text: "Approval", heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ text: sectionTitle(lang, "approval"), heading: HeadingLevel.HEADING_1 }),
     sigImg(),
     new Paragraph(
       `Engineer: ${options.engineer || "—"}    Date: ${options.reportDate || "—"}`
@@ -477,18 +517,97 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   if (multi && input.options.includeToc !== false) {
     children.push(...tocSection(multi, fa));
   }
+  const lang: "en" | "fa" = fa ? "fa" : "en";
+  const mcell = (c: MeasuringCell, bold = false) =>
+    new TableCell({
+      ...(c.fill ? { shading: { type: ShadingType.CLEAR, fill: c.fill, color: "auto" } } : {}),
+      children: [
+        new Paragraph({
+          children: [
+            ...(c.png && c.png.length > 8
+              ? [new ImageRun({ data: c.png, transformation: { width: 90, height: 28 }, type: "png" })]
+              : []),
+            ...(c.text ? [new TextRun({ text: c.text, bold: bold || c.bold, color: c.color })] : []),
+          ],
+        }),
+      ],
+    });
+  const pushMeasuring = (limits: ZoneLimitSet, rows: MeasureRow[]) => {
+    if (rows.length === 0) return;
+    const { header, body } = buildMeasuringTableData(rows, limits);
+    children.push(
+      new Paragraph({ text: sectionTitle(lang, "measuring"), heading: HeadingLevel.HEADING_1 }),
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({ children: header.map((t) => mcell({ text: t }, true)) }),
+          ...body.map((r) => new TableRow({ children: r.map((c) => mcell(c)) })),
+        ],
+      })
+    );
+  };
+  const pushTrends = (list: NonNullable<BuildDocxInput["allTrends"]>) => {
+    if (list.length === 0) return;
+    children.push(new Paragraph({ text: sectionTitle(lang, "trendsAll"), heading: HeadingLevel.HEADING_1 }));
+    for (const t of list.slice(0, 40)) {
+      children.push(
+        new Paragraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph({
+          children: [new ImageRun({ data: t.velocityPng, transformation: { width: 600, height: 300 }, type: "png" })],
+          alignment: AlignmentType.CENTER,
+        }),
+        new Paragraph({
+          children: [new ImageRun({ data: t.accelPng, transformation: { width: 600, height: 300 }, type: "png" })],
+          alignment: AlignmentType.CENTER,
+        }),
+        ...(t.envelopePng
+          ? [
+              new Paragraph({ text: sectionTitle(lang, "envelope"), heading: HeadingLevel.HEADING_2 }),
+              new Paragraph({
+                children: [
+                  new ImageRun({ data: t.envelopePng, transformation: { width: 600, height: 300 }, type: "png" }),
+                ],
+                alignment: AlignmentType.CENTER,
+              }),
+            ]
+          : [])
+      );
+    }
+  };
+  const pushFft = (list: NonNullable<BuildDocxInput["fftGallery"]>) => {
+    if (list.length === 0) return;
+    children.push(new Paragraph({ text: sectionTitle(lang, "fft"), heading: HeadingLevel.HEADING_1 }));
+    for (const g of list.slice(0, 24)) {
+      children.push(
+        new Paragraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph({
+          children: [new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" })],
+          alignment: AlignmentType.CENTER,
+        })
+      );
+    }
+  };
+  const perMachineVib = !!multi?.some((e) => e.vib && e.vib.rows.length > 0);
   if (multi) {
     multi.forEach((eq, i) => {
       children.push(
-        new Paragraph({ text: `${fa ? "تجهیز" : "Equipment"} ${i + 1}`, heading: HeadingLevel.HEADING_1 })
+        new Paragraph({
+          text: `${sectionTitle(lang, "equipment")} ${i + 1}`,
+          heading: HeadingLevel.HEADING_1,
+        })
       );
-      children.push(...equipmentSection(eq).slice(1));
+      children.push(...equipmentSection(eq, lang).slice(1));
+      if (eq.vib) {
+        pushMeasuring(eq.vib.limits, eq.vib.rows);
+        if (eq.vib.trends) pushTrends(eq.vib.trends);
+        if (eq.vib.fft) pushFft(eq.vib.fft);
+      }
     });
   } else {
-    children.push(...equipmentSection(input.equipment));
+    children.push(...equipmentSection(input.equipment, lang));
   }
-  children.push(
-    new Paragraph({ text: fa ? "خلاصه" : "Summary", heading: HeadingLevel.HEADING_1 }),
+    children.push(
+    new Paragraph({ text: sectionTitle(lang, "summary"), heading: HeadingLevel.HEADING_1 }),
     new Paragraph(
       d?.summary ?? `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
     ),
@@ -507,7 +626,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       );
     }
     children.push(
-      new Paragraph({ text: "Overall vibration", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: sectionTitle(lang, "overall"), heading: HeadingLevel.HEADING_1 }),
       new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
@@ -536,38 +655,19 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   }
 
   children.push(
-    new Paragraph({ text: "Spectra chart", heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ text: sectionTitle(lang, "spectra"), heading: HeadingLevel.HEADING_1 }),
     new Paragraph({
       children: [
         new ImageRun({ data: png, transformation: { width: 600, height: 300 }, type: "png" }),
       ],
       alignment: AlignmentType.CENTER,
     }),
-    new Paragraph({ text: `Data (first ${rows.length})`, heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ text: `${sectionTitle(lang, "data")} (${rows.length})`, heading: HeadingLevel.HEADING_1 }),
     table
   );
 
-  if (input.zones && input.zones.rows.length > 0) {
-    const { header, body } = buildMeasuringTableData(input.zones.rows, input.zones.limits);
-    const mcell = (c: MeasuringCell, bold = false) =>
-      new TableCell({
-        ...(c.fill ? { shading: { type: ShadingType.CLEAR, fill: c.fill, color: "auto" } } : {}),
-        children: [
-          new Paragraph({
-            children: [new TextRun({ text: c.text, bold: bold || c.bold, color: c.color })],
-          }),
-        ],
-      });
-    children.push(
-      new Paragraph({ text: "Measuring results", heading: HeadingLevel.HEADING_1 }),
-      new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          new TableRow({ children: header.map((t) => mcell({ text: t }, true)) }),
-          ...body.map((r) => new TableRow({ children: r.map((c) => mcell(c)) })),
-        ],
-      })
-    );
+  if (!perMachineVib && input.zones && input.zones.rows.length > 0) {
+    pushMeasuring(input.zones.limits, input.zones.rows);
   }
 
   if (input.trends && input.trends.sampleCount > 0) {
@@ -580,18 +680,18 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         alignment: AlignmentType.CENTER,
       });
     children.push(
-      new Paragraph({ text: "Vibration trends", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: sectionTitle(lang, "trends"), heading: HeadingLevel.HEADING_1 }),
       new Paragraph(`Point ${t.pointLabel} · ${t.window} · ${t.sampleCount} samples.`),
-      new Paragraph({ text: "Velocity RMS trend", heading: HeadingLevel.HEADING_2 }),
+      new Paragraph({ text: sectionTitle(lang, "velocity"), heading: HeadingLevel.HEADING_2 }),
       trendImg(t.velocityPng),
-      new Paragraph({ text: "Acceleration RMS trend", heading: HeadingLevel.HEADING_2 }),
+      new Paragraph({ text: sectionTitle(lang, "acceleration"), heading: HeadingLevel.HEADING_2 }),
       trendImg(t.accelPng)
     );
   }
 
-  if (input.allTrends && input.allTrends.length > 0) {
+  if (!perMachineVib && input.allTrends && input.allTrends.length > 0) {
     children.push(
-      new Paragraph({ text: fa ? "روند ارتعاشات همه نقاط" : "Vibration trends (all points)", heading: HeadingLevel.HEADING_1 })
+      new Paragraph({ text: sectionTitle(lang, "trendsAll"), heading: HeadingLevel.HEADING_1 })
     );
     for (const t of input.allTrends.slice(0, 40)) {
       children.push(
@@ -603,14 +703,25 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         new Paragraph({
           children: [new ImageRun({ data: t.accelPng, transformation: { width: 600, height: 300 }, type: "png" })],
           alignment: AlignmentType.CENTER,
-        })
+        }),
+        ...(t.envelopePng
+          ? [
+              new Paragraph({ text: sectionTitle(lang, "envelope"), heading: HeadingLevel.HEADING_2 }),
+              new Paragraph({
+                children: [
+                  new ImageRun({ data: t.envelopePng, transformation: { width: 600, height: 300 }, type: "png" }),
+                ],
+                alignment: AlignmentType.CENTER,
+              }),
+            ]
+          : [])
       );
     }
   }
 
-  if (input.fftGallery && input.fftGallery.length > 0) {
+  if (input.fftGallery && input.fftGallery.length > 0 && !multi?.some((e) => e.vib?.fft && e.vib.fft.length > 0)) {
     children.push(
-      new Paragraph({ text: fa ? "طیف فرکانسی نقاط مختلف" : "Frequency spectra (all points)", heading: HeadingLevel.HEADING_1 })
+      new Paragraph({ text: sectionTitle(lang, "fft"), heading: HeadingLevel.HEADING_1 })
     );
     for (const g of input.fftGallery.slice(0, 24)) {
       children.push(
@@ -625,25 +736,25 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 
   if (d) {
     children.push(
-      new Paragraph({ text: "Methodology", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: sectionTitle(lang, "methodology"), heading: HeadingLevel.HEADING_1 }),
       new Paragraph(d.methodology),
-      new Paragraph({ text: "Observations", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: sectionTitle(lang, "observations"), heading: HeadingLevel.HEADING_1 }),
       new Paragraph(d.observations),
-      new Paragraph({ text: "Recommendations", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: sectionTitle(lang, "recommendations"), heading: HeadingLevel.HEADING_1 }),
       new Paragraph(d.recommendations),
-      new Paragraph({ text: "Conclusion", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: sectionTitle(lang, "conclusion"), heading: HeadingLevel.HEADING_1 }),
       new Paragraph(d.conclusion)
     );
   }
   if (input.options.notes) {
     children.push(
-      new Paragraph({ text: "Notes", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: sectionTitle(lang, "notes"), heading: HeadingLevel.HEADING_1 }),
       new Paragraph(input.options.notes)
     );
   }
 
   if (input.options.includeIsoTable !== false) {
-    children.push(...buildIsoSection());
+    children.push(...buildIsoSection(lang, input.options.isoGroups));
   }
 
   if (input.branding?.signature && input.branding.signature.data.length > 0) {
@@ -678,8 +789,8 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 }
 
 /** ISO 10816-3 severity reference table (mirrors the legacy appendix). */
-function buildIsoSection(): (Paragraph | Table)[] {
-  const { rows } = buildIsoTableData();
+function buildIsoSection(lang: "en" | "fa" = "en", groups?: "all" | "1+3" | "2+4"): (Paragraph | Table)[] {
+  const { rows } = buildIsoTableData({ language: lang, groups });
   const cell = (c: IsoCell, bold = false) =>
     new TableCell({
       ...(c.span && c.span > 1 ? { columnSpan: c.span } : {}),
@@ -692,11 +803,11 @@ function buildIsoSection(): (Paragraph | Table)[] {
       ],
     });
   return [
-    new Paragraph({ text: "ISO 10816-3 standards", heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ text: sectionTitle(lang, "iso"), heading: HeadingLevel.HEADING_1 }),
     new Paragraph({
       children: [
         new TextRun({
-          text: "Vibration severity limits by machinery group, mounting, and rated power",
+          text: sectionTitle(lang, "isoBlurb"),
           italics: true,
         }),
       ],

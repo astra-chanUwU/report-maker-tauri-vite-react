@@ -136,3 +136,48 @@ export function encodePng(rgb: Uint8Array, width: number, height: number): Uint8
   }
   return out;
 }
+
+/** 5×7 glyphs for peak frequency labels (no canvas dependency). */
+const GLYPH: Record<string, number[]> = {
+  "0": [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
+  "1": [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
+  "2": [0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111],
+  "3": [0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110],
+  "4": [0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010],
+  "5": [0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110],
+  "6": [0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110],
+  "7": [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000],
+  "8": [0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110],
+  "9": [0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100],
+  ".": [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100],
+  "-": [0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000],
+  " ": [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
+};
+
+/** Draw a short ASCII label (digits, dot, minus). Returns pixel width used. */
+export function drawText(
+  buf: Uint8Array,
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  text: string,
+  rgb: [number, number, number],
+  scale = 1
+): number {
+  let cx = x;
+  for (const ch of text) {
+    const g = GLYPH[ch] ?? GLYPH[" "];
+    for (let row = 0; row < 7; row++) {
+      const bits = g[row] ?? 0;
+      for (let col = 0; col < 5; col++) {
+        if ((bits & (1 << (4 - col))) === 0) continue;
+        for (let sy = 0; sy < scale; sy++)
+          for (let sx = 0; sx < scale; sx++)
+            setPixel(buf, w, h, cx + col * scale + sx, y + row * scale + sy, rgb[0], rgb[1], rgb[2]);
+      }
+    }
+    cx += (5 + 1) * scale;
+  }
+  return cx - x;
+}

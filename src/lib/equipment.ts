@@ -9,6 +9,14 @@ export interface EquipmentItem {
   problems: string;
   corrective: string;
   schematicBase64: string | null;
+  /** Source Spectra .sp3, when imported from a catalog. */
+  sp3Path?: string | null;
+  /** Spectra MachineID inside that file. */
+  machineId?: string | null;
+  /** PointIDs belonging to this machine (filters vib rows). */
+  pointIds?: string[];
+  /** "pointId directionId" → brochure label such as "P1 V". */
+  labels?: Record<string, string>;
 }
 
 export const EQUIPMENT_STATUSES = ["Healthy", "Alert", "Danger", "Shutdown"] as const;
@@ -31,6 +39,10 @@ export function makeEquipment(partial: Partial<EquipmentItem> = {}): EquipmentIt
     problems: partial.problems ?? "",
     corrective: partial.corrective ?? "",
     schematicBase64: partial.schematicBase64 ?? null,
+    sp3Path: partial.sp3Path ?? null,
+    machineId: partial.machineId ?? null,
+    pointIds: partial.pointIds ?? [],
+    labels: partial.labels ?? {},
   };
 }
 
@@ -85,6 +97,8 @@ export interface ClientProfile {
   clientUnit: string;
   addressBlock: string;
   logoBase64: string | null;
+  /** ISO appendix group filter: all | 1+3 | 2+4. */
+  isoGroups?: "all" | "1+3" | "2+4";
 }
 
 const CLIENT_KEY = "report-maker:clients:v1";
@@ -111,5 +125,6 @@ export function makeClient(partial: Partial<ClientProfile> = {}): ClientProfile 
     clientUnit: partial.clientUnit ?? "",
     addressBlock: partial.addressBlock ?? "",
     logoBase64: partial.logoBase64 ?? null,
+    isoGroups: partial.isoGroups ?? "all",
   };
 }

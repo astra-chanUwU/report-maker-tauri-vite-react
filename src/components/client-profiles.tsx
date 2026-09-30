@@ -17,9 +17,11 @@ import { Label } from "./ui/label";
 export function ClientProfiles({
   options,
   onOptions,
+  onLogo,
 }: {
   options: ReportOptions;
   onOptions: (o: ReportOptions) => void;
+  onLogo?: (logoBase64: string | null) => void;
 }) {
   const [clients, setClients] = useState<ClientProfile[]>(() => loadClients());
 
@@ -44,7 +46,18 @@ export function ClientProfiles({
       clientName: c.clientName,
       clientUnit: c.clientUnit,
       addressBlock: c.addressBlock,
+      isoGroups: c.isoGroups ?? options.isoGroups,
     });
+    if (c.logoBase64) onLogo?.(c.logoBase64);
+  };
+
+  const setLogo = async (id: string, file: File | null) => {
+    if (!file) return;
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let s = "";
+    for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
+    const logoBase64 = btoa(s);
+    save(clients.map((c) => (c.id === id ? { ...c, logoBase64 } : c)));
   };
 
   return (
@@ -72,6 +85,25 @@ export function ClientProfiles({
               {c.clientUnit ? <span className="text-muted-foreground"> — {c.clientUnit}</span> : null}
               <span className="block truncate text-xs text-muted-foreground">{c.addressBlock}</span>
             </button>
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              aria-label={`Logo for ${c.clientName || "client"}`}
+              className="max-w-28 text-xs"
+              onChange={(e) => void setLogo(c.id, e.target.files?.[0] ?? null)}
+            />
+            <select
+              className="rounded border bg-background px-1 py-1 text-xs"
+              value={c.isoGroups ?? "all"}
+              aria-label="ISO groups"
+              onChange={(e) =>
+                save(clients.map((x) => (x.id === c.id ? { ...x, isoGroups: e.target.value as ClientProfile["isoGroups"] } : x)))
+              }
+            >
+              <option value="all">ISO all</option>
+              <option value="1+3">1+3</option>
+              <option value="2+4">2+4</option>
+            </select>
             <Button type="button" variant="ghost" size="sm" onClick={() => save(clients.filter((x) => x.id !== c.id))} aria-label="Delete client">
               <Trash2 className="h-4 w-4" />
             </Button>

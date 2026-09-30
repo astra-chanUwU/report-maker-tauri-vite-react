@@ -269,6 +269,36 @@ export function ReportForm({
           />
           Append ISO 10816-3 severity table
         </label>
+        <label className="grid gap-1 text-sm">
+          ISO groups
+          <select
+            className="rounded-md border bg-background px-2 py-1.5"
+            value={options.isoGroups ?? "all"}
+            onChange={(e) => set({ isoGroups: e.target.value as ReportOptions["isoGroups"] })}
+          >
+            <option value="all">Groups 1–4</option>
+            <option value="1+3">Groups 1 and 3</option>
+            <option value="2+4">Groups 2 and 4</option>
+          </select>
+        </label>
+        <div className="flex flex-wrap gap-3 text-sm">
+          {(["rmsV", "rmsA", "envelope"] as const).map((m) => (
+            <label key={m} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={(options.trendMetrics ?? ["rmsV", "rmsA"]).includes(m)}
+                onChange={(e) => {
+                  const cur = new Set(options.trendMetrics ?? ["rmsV", "rmsA"]);
+                  if (e.target.checked) cur.add(m);
+                  else cur.delete(m);
+                  set({ trendMetrics: [...cur] });
+                }}
+              />
+              {m === "rmsV" ? "Velocity" : m === "rmsA" ? "Acceleration" : "Envelope"}
+            </label>
+          ))}
+        </div>
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input
             type="checkbox"

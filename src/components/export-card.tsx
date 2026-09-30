@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Download, FolderOpen } from "lucide-react";
-import { renderChartPng, type MeasureRow } from "../lib/generateDocx";
+import { renderChartPng } from "../lib/generateDocx";
 import { fallbackDraft } from "../lib/ai";
 import type { EquipmentItem } from "../lib/equipment";
 import { isoToJalaliFa } from "../lib/fa";
 import { findLastReportFor } from "../lib/history";
-import { loadFileRow, loadTauriRow, type CsvRowSummary } from "../lib/mdb";
+import { fetchEnvelopeSamples, loadFileRow, loadTauriRow, type CsvRowSummary } from "../lib/mdb";
+import { buildMeasureRows, latestPerPoint, rowsForPoints } from "../lib/report-slices";
 import { computeStats, type ParseResult, type ReportOptions } from "../lib/parseSp3";
 import { base64ToBytes, validateReportOptions, type Branding } from "../lib/settings";
 import { oleDateToISO } from "../lib/specdata";
@@ -15,6 +16,13 @@ import type { ZoneLimitSet } from "../lib/zones";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { toast } from "./ui/sonner";
+
+function parseTrendWindow(window?: string): number | "all" {
+  const w = window ?? "";
+  if (/all/i.test(w)) return "all";
+  const m = /last\s+(\d+)/i.exec(w);
+  return m ? Number(m[1]) : 10;
+}
 
 export function sanitizeFilename(name: string): string {
   const clean = name
@@ -94,19 +102,10 @@ export function ExportCard({
             options,
             stats: parsed.stats,
           });
+      const win = parseTrendWindow(trendSnap?.window);
       const zones =
         limits && measureRows && measureRows.length > 0
-          ? {
-              limits,
-              rows: measureRows.map((r): MeasureRow => ({
-                point: `${r.pointId || "?"}${r.directionId ? ` / ${r.directionId}` : ""}`,
-                date: oleDateToISO(Number(r.measDate)) || "—",
-                rms: r.rmsV,
-                rmsA: r.rmsA,
-                peak: r.peakV,
-                peakFreq: r.peakFreq,
-              })),
-            }
+          ? { limits, rows: buildMeasureRows(measureRows, limits, win) }
           : undefined;
       // Last-report autofill (brochure p.5)
       let lastReport = options.equipmentLastReport ?? "";
@@ -118,43 +117,51 @@ export function ExportCard({
           // offline-safe: leave empty
         }
       }
+      const wantEnvelope = (options.trendMetrics ?? []).includes("envelope");
+      const sp3ForEnvelope = (equipments ?? []).find((e) => e.sp3Path)?.sp3Path;
+      if (wantEnvelope && sp3ForEnvelope && measureRows && measureRows.length > 0) {
+        try {
+          const env = await fetchEnvelopeSamples(sp3ForEnvelope);
+          const idx = new Map(env.map((e) => [`${e.pointId}|${e.measDate}`, Number(e.rms)]));
+          for (const row of measureRows) {
+            const v = idx.get(`${row.pointId}|${row.measDate}`);
+            if (v !== undefined && Number.isFinite(v)) row.envelopeRms = String(v);
+          }
+        } catch {
+          // envelope table optional
+        }
+      }
       // All-points trends (brochure p.6)
       let allTrends: { pointLabel: string; sampleCount: number; velocityPng: Uint8Array; accelPng: Uint8Array }[] | undefined;
       if (options.trendAllPoints !== false && limits && measureRows && measureRows.length > 1) {
         try {
-          let win: number | "all" = 10;
-          const w = trendSnap?.window ?? "";
-          if (/all/i.test(w)) win = "all";
-          else {
-            const m = /last\s+(\d+)/i.exec(w);
-            if (m) win = Number(m[1]);
-          }
-          allTrends = buildAllTrendSnapshots(groupHistories(measureRows), limits, win);
+          allTrends = buildAllTrendSnapshots(groupHistories(measureRows), limits, win, 40, wantEnvelope);
           // single-point mode already covers it — skip duplicate
           if (allTrends.length <= 1) allTrends = undefined;
         } catch {
           allTrends = undefined;
         }
       }
-      // FFT gallery for all points (brochure p.7): load up to 12 spectra
+      // FFT gallery: latest spectrum per point, up to 24 (brochure p.7)
       let fftGallery: { label: string; png: Uint8Array; peak?: string }[] | undefined;
-      if (options.fftAllPoints !== false && measureRows && measureRows.length > 1) {
+      const fftSource = measureRows ? latestPerPoint(measureRows) : [];
+      if (options.fftAllPoints !== false && fftSource.length > 0) {
         try {
-          const cap = Math.min(measureRows.length, 12);
+          const cap = Math.min(fftSource.length, 24);
           const items: { label: string; png: Uint8Array; peak?: string }[] = [];
           const filename = parsed.meta.filename;
           for (let i = 0; i < cap; i++) {
-            const row = measureRows[i];
+            const row = fftSource[i];
             let pr: ParseResult | null = null;
             if (tauriPath) {
               try {
-                pr = await loadTauriRow(tauriPath, row.index, filename, measureRows.length);
+                pr = await loadTauriRow(tauriPath, row.index, filename, measureRows!.length);
               } catch {
                 pr = null;
               }
             } else if (csvFile) {
               try {
-                pr = await loadFileRow(csvFile, filename, row.index, measureRows.length);
+                pr = await loadFileRow(csvFile, filename, row.index, measureRows!.length);
               } catch {
                 pr = null;
               }
@@ -192,15 +199,39 @@ export function ExportCard({
         fftGallery,
         equipments:
           eqList.length > 0
-            ? eqList.map((e) => ({
-                name: e.name,
-                specs: e.specs,
-                schematic: toBrandImage(e.schematicBase64),
-                status: e.status,
-                lastReport: e.lastReport || (e.name === options.equipmentName ? lastReport : e.lastReport),
-                problems: e.problems || draft.observations,
-                corrective: e.corrective || draft.recommendations,
-              }))
+            ? eqList.map((e) => {
+                const slice =
+                  limits && measureRows && e.pointIds && e.pointIds.length > 0
+                    ? rowsForPoints(measureRows, e.pointIds)
+                    : [];
+                const vib =
+                  limits && slice.length > 0
+                    ? {
+                        limits,
+                        rows: buildMeasureRows(slice, limits, win, e.labels),
+                        trends: buildAllTrendSnapshots(
+                          groupHistories(slice).map((h) => ({
+                            ...h,
+                            label: e.labels?.[`${h.pointId} ${h.directionId}`] || h.label,
+                          })),
+                          limits,
+                          win,
+                          40,
+                          wantEnvelope
+                        ),
+                      }
+                    : undefined;
+                return {
+                  name: e.name,
+                  specs: e.specs,
+                  schematic: toBrandImage(e.schematicBase64),
+                  status: e.status,
+                  lastReport: e.lastReport || (e.name === options.equipmentName ? lastReport : e.lastReport),
+                  problems: e.problems || draft.observations,
+                  corrective: e.corrective || draft.recommendations,
+                  vib,
+                };
+              })
             : undefined,
         equipment: {
           name: options.equipmentName,

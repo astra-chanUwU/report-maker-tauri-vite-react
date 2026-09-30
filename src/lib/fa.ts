@@ -64,3 +64,66 @@ export const DEFAULT_ADDRESS_BLOCK_FA =
   "یزد، اردکان - بلوار شهید بهشتی - کوچه ۱۹۶ - کد پستی 8951964634 - تلفکس: 03532239167";
 export const DEFAULT_ADDRESS_BLOCK_EN =
   "No. 8951964634 - 196 St - Dr. Beheshti Ave. - Ardakan - Yazd - Iran - Tel: 32239167";
+
+const FA_SECTIONS: Record<string, string> = {
+  summary: "خلاصه",
+  overall: "ارتعاش کلی",
+  spectra: "طیف فرکانسی",
+  data: "جدول داده",
+  measuring: "نتایج اندازه‌گیری",
+  trends: "روند ارتعاشات",
+  trendsAll: "روند ارتعاشات همه نقاط",
+  fft: "طیف فرکانسی نقاط مختلف",
+  methodology: "روش",
+  observations: "مشاهدات",
+  recommendations: "اقدامات اصلاحی",
+  conclusion: "نتیجه‌گیری",
+  notes: "یادداشت",
+  iso: "جدول استاندارد ISO 10816-3",
+  isoBlurb: "حدود شدت ارتعاش بر اساس گروه ماشین، فونداسیون و توان",
+  approval: "تأیید",
+  velocity: "روند سرعت",
+  acceleration: "روند شتاب",
+  envelope: "روند انولوپ",
+  equipment: "تجهیز",
+  toc: "فهرست مطالب",
+  specs: "مشخصات فنی",
+  lastReport: "آخرین گزارش",
+  problems: "مشکلات شناسایی‌شده",
+  actions: "اقدامات لازم",
+  status: "وضعیت تجهیز",
+};
+
+const EN_SECTIONS: Record<string, string> = {
+  summary: "Summary",
+  overall: "Overall vibration",
+  spectra: "Spectra chart",
+  data: "Data",
+  measuring: "Measuring results",
+  trends: "Vibration trends",
+  trendsAll: "Vibration trends (all points)",
+  fft: "Frequency spectra (all points)",
+  methodology: "Methodology",
+  observations: "Observations",
+  recommendations: "Recommendations",
+  conclusion: "Conclusion",
+  notes: "Notes",
+  iso: "ISO 10816-3 standards",
+  isoBlurb: "Vibration severity limits by machinery group, mounting, and rated power",
+  approval: "Approval",
+  velocity: "Velocity RMS trend",
+  acceleration: "Acceleration RMS trend",
+  envelope: "Envelope RMS trend",
+  equipment: "Equipment",
+  toc: "Table of contents",
+  specs: "Technical specifications",
+  lastReport: "Last report",
+  problems: "Identified problems (AI)",
+  actions: "Corrective actions",
+  status: "Condition status",
+};
+
+export function sectionTitle(lang: "en" | "fa" | undefined, key: string): string {
+  const table = lang === "fa" ? FA_SECTIONS : EN_SECTIONS;
+  return table[key] ?? EN_SECTIONS[key] ?? key;
+}
