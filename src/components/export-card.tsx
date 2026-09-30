@@ -5,7 +5,7 @@ import { fallbackDraft } from "../lib/ai";
 import type { EquipmentItem } from "../lib/equipment";
 import { isoToJalaliFa } from "../lib/fa";
 import { findLastReportFor } from "../lib/history";
-import { fetchEnvelopeSamples, loadFileRow, loadTauriRow, type CsvRowSummary } from "../lib/mdb";
+import { applyEnvelopeSamples, fetchEnvelopeSamples, loadFileRow, loadTauriRow, type CsvRowSummary } from "../lib/mdb";
 import { buildMeasureRows, latestPerPoint, rowsForPoints } from "../lib/report-slices";
 import { computeStats, type ParseResult, type ReportOptions } from "../lib/parseSp3";
 import { base64ToBytes, validateReportOptions, type Branding } from "../lib/settings";
@@ -117,25 +117,29 @@ export function ExportCard({
           // offline-safe: leave empty
         }
       }
-      const wantEnvelope = (options.trendMetrics ?? []).includes("envelope");
-      const sp3ForEnvelope = (equipments ?? []).find((e) => e.sp3Path)?.sp3Path;
-      if (wantEnvelope && sp3ForEnvelope && measureRows && measureRows.length > 0) {
-        try {
-          const env = await fetchEnvelopeSamples(sp3ForEnvelope);
-          const idx = new Map(env.map((e) => [`${e.pointId}|${e.measDate}`, Number(e.rms)]));
-          for (const row of measureRows) {
-            const v = idx.get(`${row.pointId}|${row.measDate}`);
-            if (v !== undefined && Number.isFinite(v)) row.envelopeRms = String(v);
+      const askedEnvelope = (options.trendMetrics ?? []).includes("envelope");
+      const sp3Paths = [
+        ...new Set((equipments ?? []).map((e) => e.sp3Path).filter((p): p is string => Boolean(p))),
+      ];
+      let envelopeHits = 0;
+      if (measureRows && measureRows.length > 0 && sp3Paths.length > 0) {
+        for (const path of sp3Paths) {
+          try {
+            envelopeHits += applyEnvelopeSamples(measureRows, await fetchEnvelopeSamples(path));
+          } catch {
+            // envelope table optional
           }
-        } catch {
-          // envelope table optional
         }
       }
+      const includeEnvelope =
+        envelopeHits > 0 ||
+        (askedEnvelope &&
+          (measureRows ?? []).some((r) => r.envelopeRms != null && Number.isFinite(Number(r.envelopeRms))));
       // All-points trends (brochure p.6)
       let allTrends: { pointLabel: string; sampleCount: number; velocityPng: Uint8Array; accelPng: Uint8Array }[] | undefined;
       if (options.trendAllPoints !== false && limits && measureRows && measureRows.length > 1) {
         try {
-          allTrends = buildAllTrendSnapshots(groupHistories(measureRows), limits, win, 40, wantEnvelope);
+          allTrends = buildAllTrendSnapshots(groupHistories(measureRows), limits, win, 40, includeEnvelope);
           // single-point mode already covers it — skip duplicate
           if (allTrends.length <= 1) allTrends = undefined;
         } catch {
@@ -237,7 +241,7 @@ export function ExportCard({
                                 limits,
                                 win,
                                 40,
-                                wantEnvelope
+                                includeEnvelope
                               )
                             : undefined,
                         fft,

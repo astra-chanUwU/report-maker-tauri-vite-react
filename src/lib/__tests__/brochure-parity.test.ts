@@ -15,7 +15,7 @@ import { DEFAULT_ZONE_LIMITS } from "../zones";
 import { renderPointSchematic } from "../spectra-schematic";
 import type { SpectraPoint } from "../spectra-catalog";
 import { buildMeasureRows } from "../report-slices";
-import { indexEnvelopeCsv } from "../mdb";
+import { applyEnvelopeSamples, indexEnvelopeCsv } from "../mdb";
 
 const plant = `PlantID,Name\n1,"Motor Pump RO1"\n`;
 const machine = `MachineID,PlantID,Name,LblRPM,ValueRPM,Note\n1,1,"HHP-101A","Primary RPM",24.583,"Potable Water"\n`;
@@ -167,5 +167,14 @@ describe("brochure polish", () => {
     expect(sectionTitle("fa", "measuring")).toContain("انداز");
     const env = indexEnvelopeCsv("PointID,MeasDate,TotalRMSV\n1,45000,0.2\n");
     expect(env.get("1|45000")).toBe("0.2");
+    const joined = [
+      { pointId: "1", measDate: "45000", envelopeRms: undefined as string | undefined },
+      { pointId: "9", measDate: "45000", envelopeRms: undefined as string | undefined },
+    ];
+    expect(
+      applyEnvelopeSamples(joined, [{ pointId: "1", measDate: "45000", rms: "0.2" }])
+    ).toBe(1);
+    expect(joined[0].envelopeRms).toBe("0.2");
+    expect(joined[1].envelopeRms).toBeUndefined();
   });
 });

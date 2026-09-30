@@ -372,3 +372,19 @@ export function indexEnvelopeCsv(csv: string): Map<string, string> {
   }
   return map;
 }
+
+/** Write envelope RMS onto measuring rows that share PointID and MeasDate. Returns how many rows were filled. */
+export function applyEnvelopeSamples(
+  rows: { pointId: string; measDate: string; envelopeRms?: string }[],
+  samples: { pointId: string; measDate: string; rms: string }[]
+): number {
+  const idx = new Map(samples.map((e) => [`${e.pointId}|${e.measDate}`, e.rms]));
+  let n = 0;
+  for (const row of rows) {
+    const v = idx.get(`${row.pointId}|${row.measDate}`);
+    if (v == null || !Number.isFinite(Number(v))) continue;
+    row.envelopeRms = v;
+    n++;
+  }
+  return n;
+}
