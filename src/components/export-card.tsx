@@ -12,7 +12,7 @@ import { base64ToBytes, validateReportOptions, type Branding } from "../lib/sett
 import { oleDateToISO } from "../lib/specdata";
 import { track } from "../lib/telemetry";
 import { buildAllTrendSnapshots, groupHistories } from "../lib/trends";
-import type { ZoneLimitSet } from "../lib/zones";
+import { DEFAULT_ZONE_LIMITS, type ZoneLimitSet } from "../lib/zones";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { toast } from "./ui/sonner";
@@ -142,46 +142,63 @@ export function ExportCard({
           allTrends = undefined;
         }
       }
-      // FFT gallery: latest spectrum per point, up to 24 (brochure p.7)
-      let fftGallery: { label: string; png: Uint8Array; peak?: string }[] | undefined;
-      const fftSource = measureRows ? latestPerPoint(measureRows) : [];
-      if (options.fftAllPoints !== false && fftSource.length > 0) {
-        try {
-          const cap = Math.min(fftSource.length, 24);
-          const items: { label: string; png: Uint8Array; peak?: string }[] = [];
-          const filename = parsed.meta.filename;
-          for (let i = 0; i < cap; i++) {
-            const row = fftSource[i];
-            let pr: ParseResult | null = null;
-            if (tauriPath) {
-              try {
-                pr = await loadTauriRow(tauriPath, row.index, filename, measureRows!.length);
-              } catch {
-                pr = null;
-              }
-            } else if (csvFile) {
-              try {
-                pr = await loadFileRow(csvFile, filename, row.index, measureRows!.length);
-              } catch {
-                pr = null;
-              }
-            }
-            if (!pr) continue;
-            const st = computeStats(pr.spectra);
-            items.push({
-              label: `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""} · ${oleDateToISO(Number(row.measDate)) || ""}`,
-              png: renderChartPng(pr.spectra),
-              peak: `${st.peak.amp} @ ${st.peak.freq}`,
-            });
+      // FFT charts: latest spectrum per point. Bound machines keep their own gallery (cap 24 each).
+      const fftItem = async (row: CsvRowSummary, labels?: Record<string, string>) => {
+        if (!measureRows) return null;
+        let pr: ParseResult | null = null;
+        if (tauriPath) {
+          try {
+            pr = await loadTauriRow(tauriPath, row.index, parsed.meta.filename, measureRows.length);
+          } catch {
+            pr = null;
           }
-          if (items.length > 0) fftGallery = items;
+        } else if (csvFile) {
+          try {
+            pr = await loadFileRow(csvFile, parsed.meta.filename, row.index, measureRows.length);
+          } catch {
+            pr = null;
+          }
+        }
+        if (!pr) return null;
+        const st = computeStats(pr.spectra);
+        const named = labels?.[`${row.pointId} ${row.directionId}`.trim()];
+        const fallback = `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""}`;
+        return {
+          label: `${named || fallback} · ${oleDateToISO(Number(row.measDate)) || ""}`,
+          png: renderChartPng(pr.spectra),
+          peak: `${st.peak.amp} @ ${st.peak.freq}`,
+        };
+      };
+      const loadFft = async (rows: CsvRowSummary[], labels?: Record<string, string>) => {
+        const items: { label: string; png: Uint8Array; peak?: string }[] = [];
+        for (const row of latestPerPoint(rows).slice(0, 24)) {
+          const item = await fftItem(row, labels);
+          if (item) items.push(item);
+        }
+        return items;
+      };
+      const eqList = (equipments ?? []).filter((e) => e.name.trim() || e.specs.trim());
+      const perMachineFft = new Map<string, { label: string; png: Uint8Array; peak?: string }[]>();
+      let fftGallery: { label: string; png: Uint8Array; peak?: string }[] | undefined;
+      if (options.fftAllPoints !== false && measureRows && measureRows.length > 0) {
+        try {
+          const bound = eqList.filter((e) => e.pointIds && e.pointIds.length > 0);
+          if (bound.length > 0) {
+            for (const e of bound) {
+              const items = await loadFft(rowsForPoints(measureRows, e.pointIds), e.labels);
+              if (items.length > 0) perMachineFft.set(e.id, items);
+            }
+          }
+          if (perMachineFft.size === 0) {
+            const items = await loadFft(measureRows);
+            if (items.length > 0) fftGallery = items;
+          }
         } catch {
           fftGallery = undefined;
         }
       }
       const { buildDocx } = await import("../lib/generateDocx");
       const toBrandImage = (b64: string | null) => (b64 ? { data: base64ToBytes(b64) } : undefined);
-      const eqList = (equipments ?? []).filter((e) => e.name.trim() || e.specs.trim());
       const blob = await buildDocx({
         meta: parsed.meta,
         spectra: parsed.spectra,
@@ -204,21 +221,26 @@ export function ExportCard({
                   limits && measureRows && e.pointIds && e.pointIds.length > 0
                     ? rowsForPoints(measureRows, e.pointIds)
                     : [];
+                const fft = perMachineFft.get(e.id);
                 const vib =
-                  limits && slice.length > 0
+                  (limits && slice.length > 0) || (fft && fft.length > 0)
                     ? {
-                        limits,
-                        rows: buildMeasureRows(slice, limits, win, e.labels),
-                        trends: buildAllTrendSnapshots(
-                          groupHistories(slice).map((h) => ({
-                            ...h,
-                            label: e.labels?.[`${h.pointId} ${h.directionId}`] || h.label,
-                          })),
-                          limits,
-                          win,
-                          40,
-                          wantEnvelope
-                        ),
+                        limits: limits ?? DEFAULT_ZONE_LIMITS,
+                        rows: limits && slice.length > 0 ? buildMeasureRows(slice, limits, win, e.labels) : [],
+                        trends:
+                          limits && slice.length > 0
+                            ? buildAllTrendSnapshots(
+                                groupHistories(slice).map((h) => ({
+                                  ...h,
+                                  label: e.labels?.[`${h.pointId} ${h.directionId}`] || h.label,
+                                })),
+                                limits,
+                                win,
+                                40,
+                                wantEnvelope
+                              )
+                            : undefined,
+                        fft,
                       }
                     : undefined;
                 return {

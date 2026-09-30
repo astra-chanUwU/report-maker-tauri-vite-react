@@ -613,9 +613,9 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       );
     }
   };
-  const pushFft = (list: NonNullable<BuildDocxInput["fftGallery"]>) => {
+  const pushFft = (list: NonNullable<BuildDocxInput["fftGallery"]>, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1) => {
     if (list.length === 0) return;
-    children.push(new Paragraph({ text: sectionTitle(lang, "fft"), heading: HeadingLevel.HEADING_1 }));
+    children.push(new Paragraph({ text: sectionTitle(lang, "fft"), heading: level }));
     for (const g of list.slice(0, 24)) {
       children.push(
         new Paragraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
@@ -644,7 +644,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       if (eq.vib) {
         pushMeasuring(eq.vib.limits, eq.vib.rows);
         if (eq.vib.trends) pushTrends(eq.vib.trends);
-        if (eq.vib.fft) pushFft(eq.vib.fft);
+        if (eq.vib.fft) pushFft(eq.vib.fft, HeadingLevel.HEADING_2);
       }
     });
   } else {

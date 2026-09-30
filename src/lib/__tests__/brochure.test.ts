@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildTocData, makeClient, makeEquipment } from "../equipment";
 import { gregorianToJalali, isoToJalali, isoToJalaliFa, toFaDigits } from "../fa";
-import { buildTocRows, buildDocx, buildSignatureBlock, equipmentBookmarkId } from "../generateDocx";
+import { buildTocRows, buildDocx, buildSignatureBlock, equipmentBookmarkId, renderChartPng } from "../generateDocx";
 import { parseSp3 } from "../parseSp3";
 import { buildAllTrendSnapshots, groupHistories } from "../trends";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
@@ -57,6 +57,51 @@ describe("equipments + toc", () => {
     expect(xml).toContain("PAGEREF");
     expect(xml).toContain("eq1");
     expect(xml).toContain("eq2");
+  }, 30000);
+
+  it("puts each machine FFT gallery inside that equipment section", async () => {
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n"), "a.sp3");
+    const png = renderChartPng(parsed.spectra);
+    const base = {
+      projectName: "P",
+      engineer: "E",
+      reportDate: "2026-09-30",
+      units: "SI",
+      norm: "Default",
+      notes: "",
+    };
+    const blob = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: { ...base, includeToc: false },
+      equipments: [
+        {
+          name: "Pump A",
+          vib: {
+            limits: DEFAULT_ZONE_LIMITS,
+            rows: [],
+            fft: [{ label: "P1 V only-on-a", png, peak: "1 @ 100" }],
+          },
+        },
+        {
+          name: "Fan B",
+          vib: {
+            limits: DEFAULT_ZONE_LIMITS,
+            rows: [],
+            fft: [{ label: "P2 H only-on-b", png, peak: "2 @ 200" }],
+          },
+        },
+      ],
+    });
+    const JSZip = (await import("jszip")).default;
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    const xml = await zip.file("word/document.xml")!.async("string");
+    const a = xml.indexOf("only-on-a");
+    const b = xml.indexOf("only-on-b");
+    const fan = xml.indexOf("Fan B");
+    expect(a).toBeGreaterThan(0);
+    expect(b).toBeGreaterThan(fan);
+    expect(a).toBeLessThan(fan);
   }, 30000);
 
   it("letterhead + fa + galleries grow docx", async () => {
