@@ -18,9 +18,9 @@ function encodeOctal(values: number[]): string {
 
 function twoRowCsv(): string {
   const header =
-    "DataID,PointID,DirectionID,NoLines,BandWidth,Unit,MeasDate,ValuePeakMaxV,FreqPeakMaxV,TotalRMSV,Specdata";
-  const r1 = `1,7,1,4,0.5,"mm/s",45811.43,0.5,1.0,0.83,${encodeOctal([0.1, 0.5, 0.2, 0.05])}`;
-  const r2 = `2,9,2,4,0.5,"mm/s",45812.43,0.4,1.5,0.9,${encodeOctal([0.2, 0.1, 0.4, 0.05])}`;
+    "DataID,PointID,DirectionID,NoLines,BandWidth,Unit,MeasDate,ValuePeakMaxV,FreqPeakMaxV,TotalRMSV,TotalRMSA,TotalPeakA,Specdata";
+  const r1 = `1,7,1,4,0.5,"mm/s",45811.43,0.5,1.0,0.83,12.4,0.9,${encodeOctal([0.1, 0.5, 0.2, 0.05])}`;
+  const r2 = `2,9,2,4,0.5,"mm/s",45812.43,0.4,1.5,0.9,31.2,1.1,${encodeOctal([0.2, 0.1, 0.4, 0.05])}`;
   return `${header}\n${r1}\n${r2}\n`;
 }
 
@@ -51,6 +51,8 @@ describe("mdb (Tauri-only integration)", () => {
     expect(list.rows[0].pointId).toBe("7");
     expect(list.rows[1].pointId).toBe("9");
     expect(list.rows[0].index).toBe(0);
+    expect(list.rows[0].rmsA).toBe("12.4");
+    expect(list.rows[1].peakA).toBe("1.1");
     const second = await loadFileRow(file, "data.csv", 1, list.rows.length);
     expect(second.meta.source).toBe("spec-csv");
     expect(second.meta.overall?.pointId).toBe("9");

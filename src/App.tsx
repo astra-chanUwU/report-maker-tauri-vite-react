@@ -16,6 +16,7 @@ import { MeasuringTable } from "./components/measuring-table";
 import { Onboarding } from "./components/onboarding";
 import { ReportForm } from "./components/report-form";
 import { TelemetryCard } from "./components/telemetry";
+import { TrendCard, type TrendSnapshot } from "./components/trend-card";
 import { ZoneLimitsCard } from "./components/zone-limits";
 import { addHistoryEntry, makeEntry } from "./lib/history";
 import type { CsvRowSummary } from "./lib/mdb";
@@ -50,6 +51,7 @@ function App() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [zoneLimits, setZoneLimits] = useState<ZoneLimitSet>(() => loadZoneLimits());
   const [measureRows, setMeasureRows] = useState<CsvRowSummary[] | null>(null);
+  const [trendSnap, setTrendSnap] = useState<TrendSnapshot | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
 
   useEffect(() => {
@@ -84,6 +86,7 @@ function App() {
     setAiDraft(null);
     setCsvFile(r && r.meta.source === "spec-csv" ? file : null);
     setMeasureRows(null);
+    setTrendSnap(null);
   };
 
   /** Switching measurements keeps the file/CSV source for further picks. */
@@ -178,12 +181,17 @@ function App() {
             ) : null}
             {effective &&
             (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
-              <MeasuringTable
-                tauriPath={effective.meta.csvPath ?? null}
-                file={effective.meta.csvPath ? null : csvFile}
-                limits={zoneLimits}
-                onRows={setMeasureRows}
-              />
+              <>
+                <MeasuringTable
+                  tauriPath={effective.meta.csvPath ?? null}
+                  file={effective.meta.csvPath ? null : csvFile}
+                  limits={zoneLimits}
+                  onRows={setMeasureRows}
+                />
+                {measureRows && measureRows.length > 0 ? (
+                  <TrendCard rows={measureRows} limits={zoneLimits} onSnapshot={setTrendSnap} />
+                ) : null}
+              </>
             ) : null}
             <ReportForm options={options} onChange={setOptions} />
             <AiDraftCard
@@ -214,6 +222,7 @@ function App() {
               onExported={handleExported}
               limits={zoneLimits}
               measureRows={measureRows ?? undefined}
+              trendSnap={trendSnap}
             />
             {!effective ? (
               <p className="text-xs text-muted-foreground">

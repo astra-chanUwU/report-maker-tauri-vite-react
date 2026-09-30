@@ -30,6 +30,7 @@ export function ExportCard({
   onExported,
   limits,
   measureRows,
+  trendSnap,
 }: {
   parsed: ParseResult | null;
   options: ReportOptions;
@@ -44,6 +45,13 @@ export function ExportCard({
   onExported?: (info: { filename: string; savedPath: string | null }) => void;
   limits?: ZoneLimitSet;
   measureRows?: CsvRowSummary[];
+  trendSnap?: {
+    pointLabel: string;
+    sampleCount: number;
+    window: string;
+    velocityPng: Uint8Array;
+    accelPng: Uint8Array;
+  } | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [lastPath, setLastPath] = useState<string | null>(null);
@@ -80,6 +88,7 @@ export function ExportCard({
                 point: `${r.pointId || "?"}${r.directionId ? ` / ${r.directionId}` : ""}`,
                 date: oleDateToISO(Number(r.measDate)) || "—",
                 rms: r.rmsV,
+                rmsA: r.rmsA,
                 peak: r.peakV,
                 peakFreq: r.peakFreq,
               })),
@@ -99,6 +108,7 @@ export function ExportCard({
           signature: toBrandImage(branding?.signatureBase64 ?? null),
         },
         zones,
+        trends: trendSnap ?? undefined,
       });
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
       // filename preview already sanitized — shown below when enabled

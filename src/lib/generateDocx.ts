@@ -13,6 +13,7 @@ import {
   WidthType,
 } from "docx";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
+import { encodePng, line, setPixel } from "./png";
 import { getTemplate } from "./templates";
 import { buildIsoTableData, type IsoCell } from "./iso10816";
 import {
@@ -41,6 +42,7 @@ export interface MeasureRow {
   point: string;
   date: string;
   rms: string;
+  rmsA: string;
   peak: string;
   peakFreq: string;
 }
@@ -62,16 +64,21 @@ export function buildMeasuringTableData(
     "Date",
     "RMS-V",
     `V Zone (${limitsShort(limits.velocity)})`,
+    "RMS-A",
+    `A Zone (${limitsShort(limits.acceleration)})`,
     "Peak",
     "@ Freq",
   ];
   const body = rows.map((r) => {
-    const zone = classifyZone(r.rms, limits.velocity);
+    const zoneV = classifyZone(r.rms, limits.velocity);
+    const zoneA = classifyZone(r.rmsA, limits.acceleration);
     return [
       { text: r.point || "?" },
       { text: r.date || "—" },
       { text: r.rms || "—" },
-      { text: zone || "—", fill: ZONE_FILL[zone], color: ZONE_TEXT[zone], bold: true },
+      { text: zoneV || "—", fill: ZONE_FILL[zoneV], color: ZONE_TEXT[zoneV], bold: true },
+      { text: r.rmsA || "—" },
+      { text: zoneA || "—", fill: ZONE_FILL[zoneA], color: ZONE_TEXT[zoneA], bold: true },
       { text: r.peak || "—" },
       { text: r.peakFreq || "—" },
     ];
@@ -97,57 +104,20 @@ export interface BuildDocxInput {
     limits: ZoneLimitSet;
     rows: MeasureRow[];
   };
+  /** Rendered trend charts (velocity + acceleration) for one point. */
+  trends?: {
+    pointLabel: string;
+    sampleCount: number;
+    window: string;
+    velocityPng: Uint8Array;
+    accelPng: Uint8Array;
+  };
 }
+
+export { encodePng, line } from "./png";
 
 const CHART_W = 800;
 const CHART_H = 400;
-
-function setPixel(
-  buf: Uint8Array,
-  w: number,
-  x: number,
-  y: number,
-  r: number,
-  g: number,
-  b: number
-) {
-  if (x < 0 || y < 0 || x >= w || y >= CHART_H) return;
-  const i = (y * w + x) * 3;
-  buf[i] = r;
-  buf[i + 1] = g;
-  buf[i + 2] = b;
-}
-
-function line(
-  buf: Uint8Array,
-  w: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  rgb: [number, number, number]
-) {
-  let dx = Math.abs(x1 - x0);
-  let dy = -Math.abs(y1 - y0);
-  const sx = x0 < x1 ? 1 : -1;
-  const sy = y0 < y1 ? 1 : -1;
-  let err = dx + dy;
-  let x = x0;
-  let y = y0;
-  for (;;) {
-    setPixel(buf, w, x, y, rgb[0], rgb[1], rgb[2]);
-    if (x === x1 && y === y1) break;
-    const e2 = 2 * err;
-    if (e2 >= dy) {
-      err += dy;
-      x += sx;
-    }
-    if (e2 <= dx) {
-      err += dx;
-      y += sy;
-    }
-  }
-}
 
 export function renderChartPng(
   spectra: SpectraPoint[],
@@ -160,11 +130,12 @@ export function renderChartPng(
   const buf = new Uint8Array(w * CHART_H * 3);
   buf.fill(255);
   // grid
-  for (let gx = 0; gx <= w; gx += 80) line(buf, w, gx, 0, gx, CHART_H - 1, [229, 231, 235]);
-  for (let gy = 0; gy < CHART_H; gy += 40) line(buf, w, 0, gy, w - 1, gy, [229, 231, 235]);
+  for (let gx = 0; gx <= w; gx += 80)
+    line(buf, w, CHART_H, gx, 0, gx, CHART_H - 1, [229, 231, 235]);
+  for (let gy = 0; gy < CHART_H; gy += 40) line(buf, w, CHART_H, 0, gy, w - 1, gy, [229, 231, 235]);
   // axes
-  line(buf, w, 40, 0, 40, CHART_H - 30, [17, 24, 39]);
-  line(buf, w, 40, CHART_H - 30, w - 10, CHART_H - 30, [17, 24, 39]);
+  line(buf, w, CHART_H, 40, 0, 40, CHART_H - 30, [17, 24, 39]);
+  line(buf, w, CHART_H, 40, CHART_H - 30, w - 10, CHART_H - 30, [17, 24, 39]);
 
   const pts = downsample(spectra, 400);
   if (pts.length < 2) return encodePng(buf, w, CHART_H);
@@ -189,6 +160,7 @@ export function renderChartPng(
     line(
       buf,
       w,
+      CHART_H,
       px(pts[i - 1].freq),
       py(pts[i - 1].amp),
       px(pts[i].freq),
@@ -200,7 +172,7 @@ export function renderChartPng(
   const cy = py(peak.amp);
   for (let dy = -4; dy <= 4; dy++)
     for (let dx = -4; dx <= 4; dx++) {
-      if (dx * dx + dy * dy <= 16) setPixel(buf, w, cx + dx, cy + dy, 220, 38, 38);
+      if (dx * dx + dy * dy <= 16) setPixel(buf, w, CHART_H, cx + dx, cy + dy, 220, 38, 38);
     }
   return encodePng(buf, w, CHART_H);
 }
@@ -210,88 +182,6 @@ function downsample(spectra: SpectraPoint[], max: number): SpectraPoint[] {
   const step = spectra.length / max;
   const out: SpectraPoint[] = [];
   for (let i = 0; i < max; i++) out.push(spectra[Math.floor(i * step)]);
-  return out;
-}
-
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-
-function crc32(bytes: Uint8Array): number {
-  let c = 0xffffffff;
-  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-function adler32(bytes: Uint8Array): number {
-  let a = 1;
-  let b = 0;
-  for (let i = 0; i < bytes.length; i++) {
-    a = (a + bytes[i]) % 65521;
-    b = (b + a) % 65521;
-  }
-  return ((b << 16) | a) >>> 0;
-}
-
-function chunk(type: string, data: Uint8Array): Uint8Array {
-  const out = new Uint8Array(12 + data.length);
-  const view = new DataView(out.buffer);
-  view.setUint32(0, data.length);
-  for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
-  out.set(data, 8);
-  const crc = crc32(out.subarray(4, 8 + data.length));
-  view.setUint32(8 + data.length, crc);
-  return out;
-}
-
-/** Pure-JS PNG encoder (single IDAT, stored deflate — no zlib dep, WebView-safe). */
-export function encodePng(rgb: Uint8Array, width: number, height: number): Uint8Array {
-  const stride = width * 3;
-  const raw = new Uint8Array((stride + 1) * height);
-  for (let y = 0; y < height; y++) {
-    raw[y * (stride + 1)] = 0;
-    raw.set(rgb.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
-  }
-  // zlib wrapper with stored (uncompressed) blocks
-  const blocks: number[] = [0x78, 0x01];
-  let pos = 0;
-  while (pos < raw.length) {
-    const n = Math.min(65535, raw.length - pos);
-    const final = pos + n >= raw.length ? 1 : 0;
-    blocks.push(final); // BFINAL + BTYPE 00
-    blocks.push(n & 0xff, (n >>> 8) & 0xff, ~n & 0xff, (~n >>> 8) & 0xff);
-    for (let i = 0; i < n; i++) blocks.push(raw[pos + i]);
-    pos += n;
-  }
-  const ad = adler32(raw);
-  blocks.push((ad >>> 24) & 0xff, (ad >>> 16) & 0xff, (ad >>> 8) & 0xff, ad & 0xff);
-  const zlib = new Uint8Array(blocks);
-
-  const ihdr = new Uint8Array(13);
-  const iv = new DataView(ihdr.buffer);
-  iv.setUint32(0, width);
-  iv.setUint32(4, height);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // truecolor RGB
-  ihdr[10] = 0;
-  ihdr[11] = 0;
-  ihdr[12] = 0;
-
-  const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
-  const parts = [sig, chunk("IHDR", ihdr), chunk("IDAT", zlib), chunk("IEND", new Uint8Array(0))];
-  const total = parts.reduce((a, p) => a + p.length, 0);
-  const out = new Uint8Array(total);
-  let o = 0;
-  for (const p of parts) {
-    out.set(p, o);
-    o += p.length;
-  }
   return out;
 }
 
@@ -476,6 +366,25 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
           ...body.map((r) => new TableRow({ children: r.map((c) => mcell(c)) })),
         ],
       })
+    );
+  }
+
+  if (input.trends && input.trends.sampleCount > 0) {
+    const t = input.trends;
+    const trendImg = (data: Uint8Array) =>
+      new Paragraph({
+        children: [
+          new ImageRun({ data, transformation: { width: 600, height: 300 }, type: "png" }),
+        ],
+        alignment: AlignmentType.CENTER,
+      });
+    children.push(
+      new Paragraph({ text: "Vibration trends", heading: HeadingLevel.HEADING_1 }),
+      new Paragraph(`Point ${t.pointLabel} · ${t.window} · ${t.sampleCount} samples.`),
+      new Paragraph({ text: "Velocity RMS trend", heading: HeadingLevel.HEADING_2 }),
+      trendImg(t.velocityPng),
+      new Paragraph({ text: "Acceleration RMS trend", heading: HeadingLevel.HEADING_2 }),
+      trendImg(t.accelPng)
     );
   }
 

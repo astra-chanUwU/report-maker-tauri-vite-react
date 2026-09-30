@@ -108,13 +108,16 @@ export function MeasuringTable({
               <TableHead>Date</TableHead>
               <TableHead>RMS-V</TableHead>
               <TableHead>V Zone</TableHead>
+              <TableHead>RMS-A</TableHead>
+              <TableHead>A Zone</TableHead>
               <TableHead>Peak</TableHead>
               <TableHead>@ Freq</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {shown.map((r) => {
-              const zone = classifyZone(r.rmsV, limits.velocity);
+              const zoneV = classifyZone(r.rmsV, limits.velocity);
+              const zoneA = classifyZone(r.rmsA, limits.acceleration);
               return (
                 <TableRow key={r.index}>
                   <TableCell>{r.index + 1}</TableCell>
@@ -124,7 +127,11 @@ export function MeasuringTable({
                   <TableCell>{formatRowDate(r.measDate)}</TableCell>
                   <TableCell>{r.rmsV || "—"}</TableCell>
                   <TableCell>
-                    <ZoneBadge zone={zone} />
+                    <ZoneBadge zone={zoneV} />
+                  </TableCell>
+                  <TableCell>{r.rmsA || "—"}</TableCell>
+                  <TableCell>
+                    <ZoneBadge zone={zoneA} />
                   </TableCell>
                   <TableCell>{r.peakV || "—"}</TableCell>
                   <TableCell>{r.peakFreq || "—"}</TableCell>

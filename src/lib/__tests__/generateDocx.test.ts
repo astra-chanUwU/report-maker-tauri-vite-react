@@ -8,6 +8,7 @@ import {
   renderChartPng,
 } from "../generateDocx";
 import { parseSp3 } from "../parseSp3";
+import { renderTrendPng } from "../trends";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
 
 const OPTS = {
@@ -74,15 +75,32 @@ describe("buildDocx", () => {
   it("builds the measuring table with legacy zone shading", () => {
     const { header, body } = buildMeasuringTableData(
       [
-        { point: "7 / 1", date: "2025-06-03", rms: "1.2", peak: "0.5", peakFreq: "25" },
-        { point: "9 / 2", date: "2025-06-04", rms: "7.5", peak: "3.1", peakFreq: "30" },
-        { point: "? / ?", date: "—", rms: "", peak: "", peakFreq: "" },
+        {
+          point: "7 / 1",
+          date: "2025-06-03",
+          rms: "1.2",
+          rmsA: "10.5",
+          peak: "0.5",
+          peakFreq: "25",
+        },
+        {
+          point: "9 / 2",
+          date: "2025-06-04",
+          rms: "7.5",
+          rmsA: "40.1",
+          peak: "3.1",
+          peakFreq: "30",
+        },
+        { point: "? / ?", date: "—", rms: "", rmsA: "", peak: "", peakFreq: "" },
       ],
       DEFAULT_ZONE_LIMITS
     );
     expect(header[3]).toBe("V Zone (3.5/7/8.6)");
+    expect(header[5]).toBe("A Zone (14.71/29.4/36.2)");
     expect(body[0][3]).toMatchObject({ text: "A", fill: "2E7D32", color: "FFFFFF" });
+    expect(body[0][5]).toMatchObject({ text: "A", fill: "2E7D32", color: "FFFFFF" });
     expect(body[1][3]).toMatchObject({ text: "U", fill: "F57C00", color: "FFFFFF" });
+    expect(body[1][5]).toMatchObject({ text: "C", fill: "D32F2F", color: "FFFFFF" });
     expect(body[2][3]).toMatchObject({ text: "—", fill: "E0E0E0", color: "333333" });
   });
 
@@ -102,10 +120,40 @@ describe("buildDocx", () => {
       },
       zones: {
         limits: DEFAULT_ZONE_LIMITS,
-        rows: [{ point: "7", date: "2025-06-03", rms: "1.2", peak: "0.5", peakFreq: "25" }],
+        rows: [
+          { point: "7", date: "2025-06-03", rms: "1.2", rmsA: "9.9", peak: "0.5", peakFreq: "25" },
+        ],
       },
     });
     expect(blob.size).toBeGreaterThan(2000);
+  }, 30000);
+
+  it("embeds trend charts into the .docx", async () => {
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n300,1.2\n"), "a.sp3");
+    const samples = [1.2, 2.1, 3.3].map((v, i) => ({
+      dateNum: 45000 + i,
+      dateISO: "2023-01-01",
+      rmsV: v,
+      rmsA: v * 2,
+    }));
+    const withTrends = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: OPTS,
+      trends: {
+        pointLabel: "7 / 1",
+        sampleCount: 3,
+        window: "last 10",
+        velocityPng: renderTrendPng(samples, "rmsV", DEFAULT_ZONE_LIMITS.velocity),
+        accelPng: renderTrendPng(samples, "rmsA", DEFAULT_ZONE_LIMITS.acceleration),
+      },
+    });
+    const without = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: OPTS,
+    });
+    expect(withTrends.size).toBeGreaterThan(without.size);
   }, 30000);
 
   it("detects branding image kinds from magic bytes", () => {

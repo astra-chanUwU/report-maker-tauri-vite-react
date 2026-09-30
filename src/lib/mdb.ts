@@ -87,6 +87,8 @@ export interface CsvRowSummary {
   peakV: string;
   peakFreq: string;
   rmsV: string;
+  rmsA: string;
+  peakA: string;
   unit: string;
   noLines: string;
 }
@@ -109,6 +111,8 @@ function summarize(header: string[], cells: string[], index: number): CsvRowSumm
     peakV: get("ValuePeakMaxV").trim(),
     peakFreq: get("FreqPeakMaxV").trim(),
     rmsV: get("TotalRMSV").trim(),
+    rmsA: get("TotalRMSA").trim(),
+    peakA: get("TotalPeakA").trim(),
     unit: get("Unit").replace(/^"|"$/g, "").trim(),
     noLines: get("NoLines").trim(),
   };

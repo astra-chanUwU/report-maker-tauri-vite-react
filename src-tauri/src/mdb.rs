@@ -248,6 +248,8 @@ pub struct CsvRowSummary {
     pub peak_v: String,
     pub peak_freq: String,
     pub rms_v: String,
+    pub rms_a: String,
+    pub peak_a: String,
     pub unit: String,
     pub no_lines: String,
 }
@@ -354,6 +356,8 @@ pub fn list_csv_rows(path: String, limit: Option<usize>) -> Result<CsvRowList, S
             peak_v: col(&cells, &header, "ValuePeakMaxV"),
             peak_freq: col(&cells, &header, "FreqPeakMaxV"),
             rms_v: col(&cells, &header, "TotalRMSV"),
+            rms_a: col(&cells, &header, "TotalRMSA"),
+            peak_a: col(&cells, &header, "TotalPeakA"),
             unit: col(&cells, &header, "Unit"),
             no_lines: col(&cells, &header, "NoLines"),
         });
