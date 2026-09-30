@@ -1,10 +1,19 @@
 import type { MeasureRow } from "./generateDocx";
 import type { CsvRowSummary } from "./mdb";
 import { oleDateToISO } from "./specdata";
-import { groupHistories, historyStats, renderTrendPng, takeLastHistory, type PointHistory } from "./trends";
+import {
+  groupHistories,
+  historyStats,
+  renderTrendPng,
+  takeLastHistory,
+  type PointHistory,
+} from "./trends";
 import type { ZoneLimitSet } from "./zones";
 
-export function rowsForPoints(rows: CsvRowSummary[], pointIds: string[] | undefined): CsvRowSummary[] {
+export function rowsForPoints(
+  rows: CsvRowSummary[],
+  pointIds: string[] | undefined
+): CsvRowSummary[] {
   if (!pointIds || pointIds.length === 0) return rows;
   const set = new Set(pointIds.map(String));
   return rows.filter((r) => set.has(String(r.pointId)));
@@ -34,7 +43,9 @@ export function buildMeasureRows(
   withSparks = true
 ): MeasureRow[] {
   const histories = groupHistories(rows);
-  const byKey = new Map<string, PointHistory>(histories.map((h) => [`${h.pointId} ${h.directionId}`, h]));
+  const byKey = new Map<string, PointHistory>(
+    histories.map((h) => [`${h.pointId} ${h.directionId}`, h])
+  );
   const latest = latestPerPoint(rows);
   return latest.map((r) => {
     const h = byKey.get(`${r.pointId} ${r.directionId}`);

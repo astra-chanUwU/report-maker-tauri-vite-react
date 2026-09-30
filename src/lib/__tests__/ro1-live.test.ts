@@ -25,7 +25,9 @@ describe.skipIf(!dir)("Motor Pump RO1 live export", () => {
     const labels = machineLabelMap(machine!);
     const pointIds = machine!.points.map((p) => p.pointId);
 
-    const lines = read("Data.csv").split(/\r?\n/).filter((l) => l.trim());
+    const lines = read("Data.csv")
+      .split(/\r?\n/)
+      .filter((l) => l.trim());
     const header = splitCsvLine(lines[0]);
     const col = (cells: string[], name: string) => {
       const i = header.indexOf(name);

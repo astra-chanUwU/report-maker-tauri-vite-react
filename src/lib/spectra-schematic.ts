@@ -34,9 +34,23 @@ export function renderPointSchematic(points: SpectraPoint[]): Uint8Array | null 
     drawText(buf, W, H, cx - 4, shaftY - 28, title, INK, 2);
     const axes = point.directions.map((d) => axisLetter(d.name)).filter(Boolean);
     const label = axes.join(" ");
-    if (label) drawText(buf, W, H, Math.round(cx - (label.length * 6) / 2), shaftY + 28, label, INK, 1);
-    const name = (point.name || "").trim().toUpperCase().replace(/[^0-9AHPV .-]/g, "");
-    if (name) drawText(buf, W, H, Math.round(cx - Math.min(40, name.length * 3)), shaftY - 52, name.slice(0, 8), INK, 1);
+    if (label)
+      drawText(buf, W, H, Math.round(cx - (label.length * 6) / 2), shaftY + 28, label, INK, 1);
+    const name = (point.name || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[^0-9AHPV .-]/g, "");
+    if (name)
+      drawText(
+        buf,
+        W,
+        H,
+        Math.round(cx - Math.min(40, name.length * 3)),
+        shaftY - 52,
+        name.slice(0, 8),
+        INK,
+        1
+      );
   });
   return encodePng(buf, W, H);
 }

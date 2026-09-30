@@ -117,7 +117,7 @@ const FA_LABEL: Record<string, string> = {
   "Machinery Groups 2 and 4": "گروه‌های ۲ و ۴",
   "ISO 10816 - 3": "ISO 10816-3",
   "Rated Power": "توان نامی",
-  "Velocity": "سرعت",
+  Velocity: "سرعت",
   "RMS mm/s": "RMS mm/s",
   "eq. Peak in/s": "eq. Peak in/s",
   Flexible: "انعطاف‌پذیر",
@@ -125,7 +125,10 @@ const FA_LABEL: Record<string, string> = {
   Foundation: "فونداسیون",
 };
 
-export function buildIsoTableData(opts?: { groups?: IsoGroups; language?: "en" | "fa" }): IsoTableData {
+export function buildIsoTableData(opts?: {
+  groups?: IsoGroups;
+  language?: "en" | "fa";
+}): IsoTableData {
   const h = (text: string, span = 1): IsoCell => ({
     text,
     fill: ISO_HEADER_DARK,

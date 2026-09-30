@@ -49,7 +49,10 @@ function splitCsvLine(line: string): string[] {
 }
 
 function rowsOf(csv: string): { header: string[]; rows: string[][] } {
-  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim());
+  const lines = csv
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .filter((l) => l.trim());
   if (lines.length === 0) return { header: [], rows: [] };
   const header = splitCsvLine(lines[0]).map((h) => h.trim());
   return { header, rows: lines.slice(1).map(splitCsvLine) };

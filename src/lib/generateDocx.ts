@@ -51,7 +51,11 @@ function docParagraph(init: string | IParagraphOptions): Paragraph {
 function docRun(init: string | IRunOptions): TextRun {
   if (!paragraphRtl) return new TextRun(init);
   if (typeof init === "string") {
-    return new TextRun({ text: init, rightToLeft: true, language: { value: "fa-IR", bidirectional: "fa-IR" } });
+    return new TextRun({
+      text: init,
+      rightToLeft: true,
+      language: { value: "fa-IR", bidirectional: "fa-IR" },
+    });
   }
   return new TextRun({
     ...init,
@@ -127,7 +131,8 @@ export function buildMeasuringTableData(
   const body = rows.map((r) => {
     const zoneV = classifyZone(r.currV || r.rms, limits.velocity);
     const zoneA = classifyZone(r.currA || r.rmsA, limits.acceleration);
-    const peakList = r.peakList || (r.peak || r.peakFreq ? `${r.peak || "—"} @ ${r.peakFreq || "—"}` : "—");
+    const peakList =
+      r.peakList || (r.peak || r.peakFreq ? `${r.peak || "—"} @ ${r.peakFreq || "—"}` : "—");
     return [
       { text: r.point || "?" },
       { text: "", png: r.sparkV },
@@ -326,30 +331,42 @@ function equipmentSection(
     out.push(docParagraph({ text: name, heading: HeadingLevel.HEADING_2 }));
   }
   if (status) {
-    out.push(headingWithBookmark(sectionTitle(lang, "status"), HeadingLevel.HEADING_2, marks?.status));
+    out.push(
+      headingWithBookmark(sectionTitle(lang, "status"), HeadingLevel.HEADING_2, marks?.status)
+    );
     out.push(docParagraph(status));
   }
   if (specs) {
-    out.push(headingWithBookmark(sectionTitle(lang, "specs"), HeadingLevel.HEADING_2, marks?.specs));
+    out.push(
+      headingWithBookmark(sectionTitle(lang, "specs"), HeadingLevel.HEADING_2, marks?.specs)
+    );
     for (const para of specs.split(/\n\s*\n/)) {
       const t = para.trim();
       if (t) out.push(docParagraph(t));
     }
   }
   if (lastReport) {
-    out.push(docParagraph({ text: sectionTitle(lang, "lastReport"), heading: HeadingLevel.HEADING_2 }));
+    out.push(
+      docParagraph({ text: sectionTitle(lang, "lastReport"), heading: HeadingLevel.HEADING_2 })
+    );
     out.push(docParagraph(lastReport));
   }
   if (problems) {
-    out.push(docParagraph({ text: sectionTitle(lang, "problems"), heading: HeadingLevel.HEADING_2 }));
+    out.push(
+      docParagraph({ text: sectionTitle(lang, "problems"), heading: HeadingLevel.HEADING_2 })
+    );
     out.push(docParagraph(problems));
   }
   if (corrective) {
-    out.push(docParagraph({ text: sectionTitle(lang, "actions"), heading: HeadingLevel.HEADING_2 }));
+    out.push(
+      docParagraph({ text: sectionTitle(lang, "actions"), heading: HeadingLevel.HEADING_2 })
+    );
     out.push(docParagraph(corrective));
   }
   if (schema) {
-    out.push(headingWithBookmark(sectionTitle(lang, "schematic"), HeadingLevel.HEADING_2, marks?.schematic));
+    out.push(
+      headingWithBookmark(sectionTitle(lang, "schematic"), HeadingLevel.HEADING_2, marks?.schematic)
+    );
     out.push(
       docParagraph({
         children: [
@@ -366,7 +383,13 @@ function equipmentSection(
   return out;
 }
 
-const NARRATIVE_KEYS = ["summary", "methodology", "observations", "recommendations", "conclusion"] as const;
+const NARRATIVE_KEYS = [
+  "summary",
+  "methodology",
+  "observations",
+  "recommendations",
+  "conclusion",
+] as const;
 
 type NarrativeSource = {
   summary?: string;
@@ -479,7 +502,12 @@ function tocSection(
           const id = equipmentBookmarkId(r.index);
           const eq = equipments[i];
           const main = new TableRow({
-            children: [textCell(String(r.index)), linkCell(r.name, id), textCell(r.status), pageCell(id)],
+            children: [
+              textCell(String(r.index)),
+              linkCell(r.name, id),
+              textCell(r.status),
+              pageCell(id),
+            ],
           });
           const subs = tocPartsFor(eq).map(
             (part) =>
@@ -510,13 +538,21 @@ function letterheadSection(input: BuildDocxInput, fa: boolean): Paragraph[] {
   const align = fa ? AlignmentType.RIGHT : AlignmentType.LEFT;
   const addr = o.addressBlock?.trim();
   if (addr) {
-    out.push(docParagraph({ children: [docRun({ text: addr, size: 16, color: "737373" })], alignment: align }));
+    out.push(
+      docParagraph({
+        children: [docRun({ text: addr, size: 16, color: "737373" })],
+        alignment: align,
+      })
+    );
   }
   const bits: string[] = [];
-  if (o.reportDate) bits.push(fa && o.jalaliDate ? `تاریخ: ${o.jalaliDate}` : `Date: ${o.reportDate}`);
+  if (o.reportDate)
+    bits.push(fa && o.jalaliDate ? `تاریخ: ${o.jalaliDate}` : `Date: ${o.reportDate}`);
   if (!fa && o.jalaliDate) bits.push(`Jalali: ${o.jalaliDate}`);
-  if (o.letterNo?.trim()) bits.push(fa ? `شماره: ${o.letterNo.trim()}` : `No: ${o.letterNo.trim()}`);
-  if (bits.length > 0) out.push(docParagraph({ children: [docRun(bits.join("    "))] , alignment: align}));
+  if (o.letterNo?.trim())
+    bits.push(fa ? `شماره: ${o.letterNo.trim()}` : `No: ${o.letterNo.trim()}`);
+  if (bits.length > 0)
+    out.push(docParagraph({ children: [docRun(bits.join("    "))], alignment: align }));
   const client = [o.clientName?.trim(), o.clientUnit?.trim()].filter(Boolean).join(" — ");
   if (client) {
     out.push(
@@ -563,9 +599,7 @@ export function buildSignatureBlock(
   return [
     docParagraph({ text: sectionTitle(lang, "approval"), heading: HeadingLevel.HEADING_1 }),
     sigImg(),
-    docParagraph(
-      `Engineer: ${options.engineer || "—"}    Date: ${options.reportDate || "—"}`
-    ),
+    docParagraph(`Engineer: ${options.engineer || "—"}    Date: ${options.reportDate || "—"}`),
   ];
 }
 
@@ -652,7 +686,10 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
       new TableRow({
-        children: [sectionTitle(input.options.language === "fa" ? "fa" : "en", "freq"), sectionTitle(input.options.language === "fa" ? "fa" : "en", "amp")].map(
+        children: [
+          sectionTitle(input.options.language === "fa" ? "fa" : "en", "freq"),
+          sectionTitle(input.options.language === "fa" ? "fa" : "en", "amp"),
+        ].map(
           (t) =>
             new TableCell({
               children: [docParagraph({ children: [docRun({ text: t, bold: true })] })],
@@ -671,10 +708,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   });
 
   const fa = input.options.language === "fa";
-  const children: (Paragraph | Table)[] = [
-    ...letterheadSection(input, fa),
-    ...headerChildren,
-  ];
+  const children: (Paragraph | Table)[] = [...letterheadSection(input, fa), ...headerChildren];
   const multi = input.equipments && input.equipments.length > 0 ? input.equipments : null;
   if (multi && input.options.includeToc !== false) {
     children.push(...tocSection(multi, fa));
@@ -687,7 +721,13 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         docParagraph({
           children: [
             ...(c.png && c.png.length > 8
-              ? [new ImageRun({ data: c.png, transformation: { width: 90, height: 28 }, type: "png" })]
+              ? [
+                  new ImageRun({
+                    data: c.png,
+                    transformation: { width: 90, height: 28 },
+                    type: "png",
+                  }),
+                ]
               : []),
             ...(c.text ? [docRun({ text: c.text, bold: bold || c.bold, color: c.color })] : []),
           ],
@@ -710,24 +750,48 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   };
   const pushTrends = (list: NonNullable<BuildDocxInput["allTrends"]>, bookmarkId?: string) => {
     if (list.length === 0) return;
-    children.push(headingWithBookmark(sectionTitle(lang, "trendsAll"), HeadingLevel.HEADING_1, bookmarkId));
+    children.push(
+      headingWithBookmark(sectionTitle(lang, "trendsAll"), HeadingLevel.HEADING_1, bookmarkId)
+    );
     for (const t of list.slice(0, 40)) {
       children.push(
-        docParagraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
         docParagraph({
-          children: [new ImageRun({ data: t.velocityPng, transformation: { width: 600, height: 300 }, type: "png" })],
+          text: `${t.pointLabel} · ${t.sampleCount} samples`,
+          heading: HeadingLevel.HEADING_2,
+        }),
+        docParagraph({
+          children: [
+            new ImageRun({
+              data: t.velocityPng,
+              transformation: { width: 600, height: 300 },
+              type: "png",
+            }),
+          ],
           alignment: AlignmentType.CENTER,
         }),
         docParagraph({
-          children: [new ImageRun({ data: t.accelPng, transformation: { width: 600, height: 300 }, type: "png" })],
+          children: [
+            new ImageRun({
+              data: t.accelPng,
+              transformation: { width: 600, height: 300 },
+              type: "png",
+            }),
+          ],
           alignment: AlignmentType.CENTER,
         }),
         ...(t.envelopePng
           ? [
-              docParagraph({ text: sectionTitle(lang, "envelope"), heading: HeadingLevel.HEADING_2 }),
+              docParagraph({
+                text: sectionTitle(lang, "envelope"),
+                heading: HeadingLevel.HEADING_2,
+              }),
               docParagraph({
                 children: [
-                  new ImageRun({ data: t.envelopePng, transformation: { width: 600, height: 300 }, type: "png" }),
+                  new ImageRun({
+                    data: t.envelopePng,
+                    transformation: { width: 600, height: 300 },
+                    type: "png",
+                  }),
                 ],
                 alignment: AlignmentType.CENTER,
               }),
@@ -736,14 +800,23 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       );
     }
   };
-  const pushFft = (list: NonNullable<BuildDocxInput["fftGallery"]>, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1, bookmarkId?: string) => {
+  const pushFft = (
+    list: NonNullable<BuildDocxInput["fftGallery"]>,
+    level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1,
+    bookmarkId?: string
+  ) => {
     if (list.length === 0) return;
     children.push(headingWithBookmark(sectionTitle(lang, "fft"), level, bookmarkId));
     for (const g of list.slice(0, 24)) {
       children.push(
-        docParagraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
         docParagraph({
-          children: [new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" })],
+          text: g.peak ? `${g.label} · peak ${g.peak}` : g.label,
+          heading: HeadingLevel.HEADING_2,
+        }),
+        docParagraph({
+          children: [
+            new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" }),
+          ],
           alignment: AlignmentType.CENTER,
         })
       );
@@ -787,7 +860,8 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     children.push(
       docParagraph({ text: sectionTitle(lang, "summary"), heading: HeadingLevel.HEADING_1 }),
       docParagraph(
-        d?.summary ?? `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
+        d?.summary ??
+          `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
       )
     );
   }
@@ -809,13 +883,24 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
-          new TableRow({ children: [cell(sectionTitle(lang, "metric"), true), cell(sectionTitle(lang, "value"), true)] }),
+          new TableRow({
+            children: [
+              cell(sectionTitle(lang, "metric"), true),
+              cell(sectionTitle(lang, "value"), true),
+            ],
+          }),
           ...[
             [sectionTitle(lang, "unit"), overall.unit || "—"],
             [sectionTitle(lang, "measured"), overall.measDate || "—"],
-            [sectionTitle(lang, "pointDir"), `${overall.pointId || "—"} / ${overall.directionId || "—"}`],
+            [
+              sectionTitle(lang, "pointDir"),
+              `${overall.pointId || "—"} / ${overall.directionId || "—"}`,
+            ],
             [sectionTitle(lang, "rmsDva"), `${overall.rmsD} / ${overall.rmsV} / ${overall.rmsA}`],
-            [sectionTitle(lang, "peakDva"), `${overall.peakD} / ${overall.peakV} / ${overall.peakA}`],
+            [
+              sectionTitle(lang, "peakDva"),
+              `${overall.peakD} / ${overall.peakV} / ${overall.peakA}`,
+            ],
             [sectionTitle(lang, "peakFreq"), String(overall.peakFreq)],
             [sectionTitle(lang, "freqLines"), `${overall.freqRange} / ${overall.noLines}`],
             ...extraRows,
@@ -843,7 +928,10 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       ],
       alignment: AlignmentType.CENTER,
     }),
-    docParagraph({ text: `${sectionTitle(lang, "data")} (${rows.length})`, heading: HeadingLevel.HEADING_1 }),
+    docParagraph({
+      text: `${sectionTitle(lang, "data")} (${rows.length})`,
+      heading: HeadingLevel.HEADING_1,
+    }),
     table
   );
 
@@ -876,21 +964,43 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     );
     for (const t of input.allTrends.slice(0, 40)) {
       children.push(
-        docParagraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
         docParagraph({
-          children: [new ImageRun({ data: t.velocityPng, transformation: { width: 600, height: 300 }, type: "png" })],
+          text: `${t.pointLabel} · ${t.sampleCount} samples`,
+          heading: HeadingLevel.HEADING_2,
+        }),
+        docParagraph({
+          children: [
+            new ImageRun({
+              data: t.velocityPng,
+              transformation: { width: 600, height: 300 },
+              type: "png",
+            }),
+          ],
           alignment: AlignmentType.CENTER,
         }),
         docParagraph({
-          children: [new ImageRun({ data: t.accelPng, transformation: { width: 600, height: 300 }, type: "png" })],
+          children: [
+            new ImageRun({
+              data: t.accelPng,
+              transformation: { width: 600, height: 300 },
+              type: "png",
+            }),
+          ],
           alignment: AlignmentType.CENTER,
         }),
         ...(t.envelopePng
           ? [
-              docParagraph({ text: sectionTitle(lang, "envelope"), heading: HeadingLevel.HEADING_2 }),
+              docParagraph({
+                text: sectionTitle(lang, "envelope"),
+                heading: HeadingLevel.HEADING_2,
+              }),
               docParagraph({
                 children: [
-                  new ImageRun({ data: t.envelopePng, transformation: { width: 600, height: 300 }, type: "png" }),
+                  new ImageRun({
+                    data: t.envelopePng,
+                    transformation: { width: 600, height: 300 },
+                    type: "png",
+                  }),
                 ],
                 alignment: AlignmentType.CENTER,
               }),
@@ -900,15 +1010,24 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     }
   }
 
-  if (input.fftGallery && input.fftGallery.length > 0 && !multi?.some((e) => e.vib?.fft && e.vib.fft.length > 0)) {
+  if (
+    input.fftGallery &&
+    input.fftGallery.length > 0 &&
+    !multi?.some((e) => e.vib?.fft && e.vib.fft.length > 0)
+  ) {
     children.push(
       docParagraph({ text: sectionTitle(lang, "fft"), heading: HeadingLevel.HEADING_1 })
     );
     for (const g of input.fftGallery.slice(0, 24)) {
       children.push(
-        docParagraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
         docParagraph({
-          children: [new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" })],
+          text: g.peak ? `${g.label} · peak ${g.peak}` : g.label,
+          heading: HeadingLevel.HEADING_2,
+        }),
+        docParagraph({
+          children: [
+            new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" }),
+          ],
           alignment: AlignmentType.CENTER,
         })
       );
@@ -921,7 +1040,10 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       docParagraph(d.methodology),
       docParagraph({ text: sectionTitle(lang, "observations"), heading: HeadingLevel.HEADING_1 }),
       docParagraph(d.observations),
-      docParagraph({ text: sectionTitle(lang, "recommendations"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph({
+        text: sectionTitle(lang, "recommendations"),
+        heading: HeadingLevel.HEADING_1,
+      }),
       docParagraph(d.recommendations),
       docParagraph({ text: sectionTitle(lang, "conclusion"), heading: HeadingLevel.HEADING_1 }),
       docParagraph(d.conclusion)
@@ -972,7 +1094,10 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 }
 
 /** ISO 10816-3 severity reference table (mirrors the legacy appendix). */
-function buildIsoSection(lang: "en" | "fa" = "en", groups?: "all" | "1+3" | "2+4"): (Paragraph | Table)[] {
+function buildIsoSection(
+  lang: "en" | "fa" = "en",
+  groups?: "all" | "1+3" | "2+4"
+): (Paragraph | Table)[] {
   const { rows } = buildIsoTableData({ language: lang, groups });
   const cell = (c: IsoCell, bold = false) =>
     new TableCell({

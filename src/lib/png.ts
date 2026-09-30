@@ -178,7 +178,16 @@ export function drawText(
         if ((bits & (1 << (4 - col))) === 0) continue;
         for (let sy = 0; sy < scale; sy++)
           for (let sx = 0; sx < scale; sx++)
-            setPixel(buf, w, h, cx + col * scale + sx, y + row * scale + sy, rgb[0], rgb[1], rgb[2]);
+            setPixel(
+              buf,
+              w,
+              h,
+              cx + col * scale + sx,
+              y + row * scale + sy,
+              rgb[0],
+              rgb[1],
+              rgb[2]
+            );
       }
     }
     cx += (5 + 1) * scale;

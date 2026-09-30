@@ -92,7 +92,9 @@ export function saveEquipments(list: EquipmentItem[]): void {
 }
 
 /** TOC rows: index + name + status. */
-export function buildTocData(list: EquipmentItem[]): { index: number; name: string; status: string }[] {
+export function buildTocData(
+  list: EquipmentItem[]
+): { index: number; name: string; status: string }[] {
   return list.map((e, i) => ({
     index: i + 1,
     name: e.name.trim() || `Equipment ${i + 1}`,

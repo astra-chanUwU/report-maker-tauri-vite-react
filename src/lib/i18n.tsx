@@ -10,7 +10,8 @@ const EN: Record<string, string> = {
   tabHistory: "History",
   tabSettings: "Settings",
   tabDesign: "Design",
-  helpHint: "Need help? See README → “Importing real data” for mdb-export install, and History for past reports.",
+  helpHint:
+    "Need help? See README → “Importing real data” for mdb-export install, and History for past reports.",
   reportDetails: "Report details",
   reportDetailsHint: "Defaults persist across reloads.",
   projectName: "Project name *",
@@ -35,7 +36,8 @@ const EN: Record<string, string> = {
   recommendations: "Recommendations",
   conclusion: "Conclusion",
   export: "Export",
-  exportHint: "One click → editable Word file. Tauri save dialog when available, download fallback.",
+  exportHint:
+    "One click → editable Word file. Tauri save dialog when available, download fallback.",
   generate: "Generate report",
   generating: "Generating report",
   reveal: "Show in folder",
@@ -64,7 +66,8 @@ const EN: Record<string, string> = {
   acceleration: "Acceleration",
   envelope: "Envelope",
   onboardingTitle: "Get started in 30 seconds",
-  onboardingHint: "No file yet — try the tour or drop a real export. Works 100% offline; data never leaves this device.",
+  onboardingHint:
+    "No file yet — try the tour or drop a real export. Works 100% offline; data never leaves this device.",
   downloadSample: "Download sample CSV",
   ingestTitle: "Ingest .sp3",
   measuringTitle: "Measuring results",

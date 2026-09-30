@@ -26,7 +26,12 @@ const direction = `DirectionID,PointID,Name\n1,1,"V1"\n2,1,"H1"\n3,2,"A2"\n`;
 
 describe("spectra catalog", () => {
   it("joins machines, bearings, and axis labels", () => {
-    const machines = joinCatalog({ plantCsv: plant, machineCsv: machine, pointCsv: point, directionCsv: direction });
+    const machines = joinCatalog({
+      plantCsv: plant,
+      machineCsv: machine,
+      pointCsv: point,
+      directionCsv: direction,
+    });
     expect(machines).toHaveLength(1);
     expect(machines[0].name).toBe("HHP-101A");
     expect(machines[0].plantName).toBe("Motor Pump RO1");
@@ -172,8 +177,32 @@ describe("brochure polish", () => {
   it("measuring rows carry avg/prev and ISO/FA options", () => {
     const rows = buildMeasureRows(
       [
-        { index: 0, pointId: "1", directionId: "1", measDate: "45000", peakV: "0.5", peakFreq: "25", rmsV: "1", rmsA: "2", peakA: "", unit: "", noLines: "" },
-        { index: 1, pointId: "1", directionId: "1", measDate: "45001", peakV: "0.6", peakFreq: "26", rmsV: "3", rmsA: "4", peakA: "", unit: "", noLines: "" },
+        {
+          index: 0,
+          pointId: "1",
+          directionId: "1",
+          measDate: "45000",
+          peakV: "0.5",
+          peakFreq: "25",
+          rmsV: "1",
+          rmsA: "2",
+          peakA: "",
+          unit: "",
+          noLines: "",
+        },
+        {
+          index: 1,
+          pointId: "1",
+          directionId: "1",
+          measDate: "45001",
+          peakV: "0.6",
+          peakFreq: "26",
+          rmsV: "3",
+          rmsA: "4",
+          peakA: "",
+          unit: "",
+          noLines: "",
+        },
       ],
       DEFAULT_ZONE_LIMITS,
       "all",
@@ -200,9 +229,7 @@ describe("brochure polish", () => {
       { pointId: "1", measDate: "45000", envelopeRms: undefined as string | undefined },
       { pointId: "9", measDate: "45000", envelopeRms: undefined as string | undefined },
     ];
-    expect(
-      applyEnvelopeSamples(joined, [{ pointId: "1", measDate: "45000", rms: "0.2" }])
-    ).toBe(1);
+    expect(applyEnvelopeSamples(joined, [{ pointId: "1", measDate: "45000", rms: "0.2" }])).toBe(1);
     expect(joined[0].envelopeRms).toBe("0.2");
     expect(joined[1].envelopeRms).toBeUndefined();
   });

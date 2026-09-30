@@ -10,11 +10,7 @@ export interface DominantPeak {
  * Top-N local maxima, at least `minHz` apart (highest amplitude wins).
  * Default N=5 matches the brochure FFT callouts.
  */
-export function findDominantPeaks(
-  spectra: SpectraPoint[],
-  n = 5,
-  minHz = 0
-): DominantPeak[] {
+export function findDominantPeaks(spectra: SpectraPoint[], n = 5, minHz = 0): DominantPeak[] {
   if (spectra.length === 0 || n <= 0) return [];
   const local: DominantPeak[] = [];
   for (let i = 1; i < spectra.length - 1; i++) {

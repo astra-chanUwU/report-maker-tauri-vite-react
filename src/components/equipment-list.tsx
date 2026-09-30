@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { bytesToBase64, buildMachineSpecs, joinCatalog, machineLabelMap, type SpectraMachine } from "../lib/spectra-catalog";
+import {
+  bytesToBase64,
+  buildMachineSpecs,
+  joinCatalog,
+  machineLabelMap,
+  type SpectraMachine,
+} from "../lib/spectra-catalog";
 import { renderPointSchematic } from "../lib/spectra-schematic";
 import { chooseSchematic, linesForMachine, renderGMachinePng } from "../lib/spectra-gmachine";
 import { fetchMachinePicture, fetchSpectraCatalog, pickSp3Path } from "../lib/mdb";
@@ -114,7 +120,9 @@ export function EquipmentList({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">{t("equipments")} ({items.length})</CardTitle>
+        <CardTitle className="text-base">
+          {t("equipments")} ({items.length})
+        </CardTitle>
         <CardDescription>{t("equipmentsHint")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2">
@@ -128,7 +136,13 @@ export function EquipmentList({
               >
                 {i + 1}. {e.name || t("untitled")} {e.status ? `· ${e.status}` : ""}
               </button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => remove(e.id)} aria-label={`Remove ${e.name}`}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => remove(e.id)}
+                aria-label={`Remove ${e.name}`}
+              >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
@@ -156,40 +170,76 @@ export function EquipmentList({
                   </div>
                   <div className="grid gap-1">
                     <Label>{t("lastReport")}</Label>
-                    <Input value={e.lastReport} onChange={(ev) => patch(e.id, { lastReport: ev.target.value })} placeholder="2026-…: OK" />
+                    <Input
+                      value={e.lastReport}
+                      onChange={(ev) => patch(e.id, { lastReport: ev.target.value })}
+                      placeholder="2026-…: OK"
+                    />
                   </div>
                 </div>
                 <div className="grid gap-1">
                   <Label>{t("specs")}</Label>
-                  <Textarea value={e.specs} onChange={(ev) => patch(e.id, { specs: ev.target.value })} rows={2} />
+                  <Textarea
+                    value={e.specs}
+                    onChange={(ev) => patch(e.id, { specs: ev.target.value })}
+                    rows={2}
+                  />
                 </div>
                 <div className="grid gap-1">
                   <Label>{t("problems")}</Label>
-                  <Textarea value={e.problems} onChange={(ev) => patch(e.id, { problems: ev.target.value })} rows={2} />
+                  <Textarea
+                    value={e.problems}
+                    onChange={(ev) => patch(e.id, { problems: ev.target.value })}
+                    rows={2}
+                  />
                 </div>
                 <div className="grid gap-1">
                   <Label>{t("actions")}</Label>
-                  <Textarea value={e.corrective} onChange={(ev) => patch(e.id, { corrective: ev.target.value })} rows={2} />
+                  <Textarea
+                    value={e.corrective}
+                    onChange={(ev) => patch(e.id, { corrective: ev.target.value })}
+                    rows={2}
+                  />
                 </div>
                 <div className="grid gap-1">
                   <Label>{t("summary")}</Label>
-                  <Textarea value={e.summary ?? ""} onChange={(ev) => patch(e.id, { summary: ev.target.value })} rows={2} />
+                  <Textarea
+                    value={e.summary ?? ""}
+                    onChange={(ev) => patch(e.id, { summary: ev.target.value })}
+                    rows={2}
+                  />
                 </div>
                 <div className="grid gap-1">
                   <Label>{t("methodology")}</Label>
-                  <Textarea value={e.methodology ?? ""} onChange={(ev) => patch(e.id, { methodology: ev.target.value })} rows={2} />
+                  <Textarea
+                    value={e.methodology ?? ""}
+                    onChange={(ev) => patch(e.id, { methodology: ev.target.value })}
+                    rows={2}
+                  />
                 </div>
                 <div className="grid gap-1">
                   <Label>{t("observations")}</Label>
-                  <Textarea value={e.observations ?? ""} onChange={(ev) => patch(e.id, { observations: ev.target.value })} rows={2} />
+                  <Textarea
+                    value={e.observations ?? ""}
+                    onChange={(ev) => patch(e.id, { observations: ev.target.value })}
+                    rows={2}
+                  />
                 </div>
                 <div className="grid gap-1">
                   <Label>{t("recommendations")}</Label>
-                  <Textarea value={e.recommendations ?? ""} onChange={(ev) => patch(e.id, { recommendations: ev.target.value })} rows={2} />
+                  <Textarea
+                    value={e.recommendations ?? ""}
+                    onChange={(ev) => patch(e.id, { recommendations: ev.target.value })}
+                    rows={2}
+                  />
                 </div>
                 <div className="grid gap-1">
                   <Label>{t("conclusion")}</Label>
-                  <Textarea value={e.conclusion ?? ""} onChange={(ev) => patch(e.id, { conclusion: ev.target.value })} rows={2} />
+                  <Textarea
+                    value={e.conclusion ?? ""}
+                    onChange={(ev) => patch(e.id, { conclusion: ev.target.value })}
+                    rows={2}
+                  />
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -198,8 +248,12 @@ export function EquipmentList({
                     size="sm"
                     onClick={() =>
                       fillFromCurrent(e.id, {
-                        name: (document.getElementById("opt-equipment") as HTMLInputElement)?.value ?? "",
-                        specs: (document.getElementById("opt-specs") as HTMLTextAreaElement)?.value ?? "",
+                        name:
+                          (document.getElementById("opt-equipment") as HTMLInputElement)?.value ??
+                          "",
+                        specs:
+                          (document.getElementById("opt-specs") as HTMLTextAreaElement)?.value ??
+                          "",
                       })
                     }
                   >
@@ -214,13 +268,21 @@ export function EquipmentList({
           <Button type="button" variant="outline" size="sm" onClick={add}>
             <Plus className="h-4 w-4" /> {t("addEquipment")}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => void importCatalog()} disabled={busy}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void importCatalog()}
+            disabled={busy}
+          >
             {busy ? t("reading") : t("importSpectra")}
           </Button>
         </div>
         {catalog ? (
           <div className="grid gap-1">
-            <Label>{t("machinesIn")} {catalog.path.split(/[/\\]/).pop()}</Label>
+            <Label>
+              {t("machinesIn")} {catalog.path.split(/[/\\]/).pop()}
+            </Label>
             <div className="max-h-40 overflow-auto rounded-md border">
               {catalog.machines.map((m) => (
                 <button
@@ -230,7 +292,10 @@ export function EquipmentList({
                   onClick={() => void addFromMachine(m)}
                 >
                   {m.name || m.machineId}
-                  <span className="text-muted-foreground"> · {m.points.length} {t("points")}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {m.points.length} {t("points")}
+                  </span>
                 </button>
               ))}
             </div>

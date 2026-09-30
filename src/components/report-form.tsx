@@ -335,13 +335,20 @@ export function ReportForm({
                   key={l}
                   type="button"
                   aria-pressed={options.language === l || (!options.language && l === "en")}
-                  variant={options.language === l || (!options.language && l === "en") ? "default" : "outline"}
+                  variant={
+                    options.language === l || (!options.language && l === "en")
+                      ? "default"
+                      : "outline"
+                  }
                   size="sm"
                   onClick={() => {
                     const jalali = l === "fa" ? isoToJalaliFa(options.reportDate) : "";
                     set({ language: l, jalaliDate: jalali });
                   }}
-                  className={cn((options.language === l || (!options.language && l === "en")) && "pointer-events-none")}
+                  className={cn(
+                    (options.language === l || (!options.language && l === "en")) &&
+                      "pointer-events-none"
+                  )}
                 >
                   {l === "en" ? "EN" : "فا"}
                 </Button>

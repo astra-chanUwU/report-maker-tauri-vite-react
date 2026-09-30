@@ -5,7 +5,13 @@ import { fallbackDraft } from "../lib/ai";
 import type { EquipmentItem } from "../lib/equipment";
 import { isoToJalaliFa } from "../lib/fa";
 import { findLastReportFor } from "../lib/history";
-import { applyEnvelopeSamples, fetchEnvelopeSamples, loadFileRow, loadTauriRow, type CsvRowSummary } from "../lib/mdb";
+import {
+  applyEnvelopeSamples,
+  fetchEnvelopeSamples,
+  loadFileRow,
+  loadTauriRow,
+  type CsvRowSummary,
+} from "../lib/mdb";
 import { buildMeasureRows, latestPerPoint, rowsForPoints } from "../lib/report-slices";
 import { computeStats, type ParseResult, type ReportOptions } from "../lib/parseSp3";
 import { base64ToBytes, validateReportOptions, type Branding } from "../lib/settings";
@@ -136,12 +142,27 @@ export function ExportCard({
       const includeEnvelope =
         envelopeHits > 0 ||
         (askedEnvelope &&
-          (measureRows ?? []).some((r) => r.envelopeRms != null && Number.isFinite(Number(r.envelopeRms))));
+          (measureRows ?? []).some(
+            (r) => r.envelopeRms != null && Number.isFinite(Number(r.envelopeRms))
+          ));
       // All-points trends (brochure p.6)
-      let allTrends: { pointLabel: string; sampleCount: number; velocityPng: Uint8Array; accelPng: Uint8Array }[] | undefined;
+      let allTrends:
+        | {
+            pointLabel: string;
+            sampleCount: number;
+            velocityPng: Uint8Array;
+            accelPng: Uint8Array;
+          }[]
+        | undefined;
       if (options.trendAllPoints !== false && limits && measureRows && measureRows.length > 1) {
         try {
-          allTrends = buildAllTrendSnapshots(groupHistories(measureRows), limits, win, 40, includeEnvelope);
+          allTrends = buildAllTrendSnapshots(
+            groupHistories(measureRows),
+            limits,
+            win,
+            40,
+            includeEnvelope
+          );
           // single-point mode already covers it — skip duplicate
           if (allTrends.length <= 1) allTrends = undefined;
         } catch {
@@ -232,7 +253,10 @@ export function ExportCard({
                   (limits && slice.length > 0) || (fft && fft.length > 0)
                     ? {
                         limits: limits ?? DEFAULT_ZONE_LIMITS,
-                        rows: limits && slice.length > 0 ? buildMeasureRows(slice, limits, win, e.labels) : [],
+                        rows:
+                          limits && slice.length > 0
+                            ? buildMeasureRows(slice, limits, win, e.labels)
+                            : [],
                         trends:
                           limits && slice.length > 0
                             ? buildAllTrendSnapshots(
@@ -254,7 +278,8 @@ export function ExportCard({
                   specs: e.specs,
                   schematic: toBrandImage(e.schematicBase64),
                   status: e.status,
-                  lastReport: e.lastReport || (e.name === options.equipmentName ? lastReport : e.lastReport),
+                  lastReport:
+                    e.lastReport || (e.name === options.equipmentName ? lastReport : e.lastReport),
                   problems: e.problems || draft.observations,
                   corrective: e.corrective || draft.recommendations,
                   summary: e.summary,

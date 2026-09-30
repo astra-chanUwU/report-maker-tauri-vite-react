@@ -130,148 +130,148 @@ function App() {
 
   return (
     <UiProvider lang={uiLang}>
-    <>
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
-      >
-        {translate(uiLang, "skip")}
-      </a>
-      <main id="main" className="mx-auto max-w-3xl space-y-4 p-6">
-        <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">{translate(uiLang, "appTitle")}</h1>
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              {effective
-                ? `${effective.meta.filename} · ${effective.stats.spectra_points} pts · peak ${effective.stats.peak.amp} @ ${effective.stats.peak.freq}`
-                : translate(uiLang, "dropToBegin")}
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setDark((d) => !d)}
-            aria-label={translate(uiLang, dark ? "lightMode" : "darkMode")}
-            aria-pressed={dark}
-          >
-            {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
-          </Button>
-        </header>
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="report">{translate(uiLang, "tabReport")}</TabsTrigger>
-            <TabsTrigger value="history">{translate(uiLang, "tabHistory")}</TabsTrigger>
-            <TabsTrigger value="settings">{translate(uiLang, "tabSettings")}</TabsTrigger>
-            <TabsTrigger value="design">{translate(uiLang, "tabDesign")}</TabsTrigger>
-          </TabsList>
-          <TabsContent value="report" className="grid gap-4">
-            {!effective ? <Onboarding /> : null}
-            <MdbImportCard onConverted={handleParsed} />
-            <div id="ingest">
-              <Ingest onParsed={handleParsed} limits={zoneLimits} />
+      <>
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
+        >
+          {translate(uiLang, "skip")}
+        </a>
+        <main id="main" className="mx-auto max-w-3xl space-y-4 p-6">
+          <header className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-semibold">{translate(uiLang, "appTitle")}</h1>
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                {effective
+                  ? `${effective.meta.filename} · ${effective.stats.spectra_points} pts · peak ${effective.stats.peak.amp} @ ${effective.stats.peak.freq}`
+                  : translate(uiLang, "dropToBegin")}
+              </p>
             </div>
-            {effective &&
-            (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
-              <MeasurementPicker
-                tauriPath={effective.meta.csvPath ?? null}
-                file={effective.meta.csvPath ? null : csvFile}
-                filename={effective.meta.filename}
-                current={
-                  effective.meta.overall
-                    ? {
-                        pointId: effective.meta.overall.pointId,
-                        measDate: effective.meta.overall.measDate,
-                      }
-                    : null
-                }
-                onSelect={handlePicked}
-              />
-            ) : null}
-            {effective &&
-            (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
-              <>
-                <MeasuringTable
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setDark((d) => !d)}
+              aria-label={translate(uiLang, dark ? "lightMode" : "darkMode")}
+              aria-pressed={dark}
+            >
+              {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+            </Button>
+          </header>
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="report">{translate(uiLang, "tabReport")}</TabsTrigger>
+              <TabsTrigger value="history">{translate(uiLang, "tabHistory")}</TabsTrigger>
+              <TabsTrigger value="settings">{translate(uiLang, "tabSettings")}</TabsTrigger>
+              <TabsTrigger value="design">{translate(uiLang, "tabDesign")}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="report" className="grid gap-4">
+              {!effective ? <Onboarding /> : null}
+              <MdbImportCard onConverted={handleParsed} />
+              <div id="ingest">
+                <Ingest onParsed={handleParsed} limits={zoneLimits} />
+              </div>
+              {effective &&
+              (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
+                <MeasurementPicker
                   tauriPath={effective.meta.csvPath ?? null}
                   file={effective.meta.csvPath ? null : csvFile}
-                  limits={zoneLimits}
-                  onRows={setMeasureRows}
+                  filename={effective.meta.filename}
+                  current={
+                    effective.meta.overall
+                      ? {
+                          pointId: effective.meta.overall.pointId,
+                          measDate: effective.meta.overall.measDate,
+                        }
+                      : null
+                  }
+                  onSelect={handlePicked}
                 />
-                {measureRows && measureRows.length > 0 ? (
-                  <TrendCard rows={measureRows} limits={zoneLimits} onSnapshot={setTrendSnap} />
-                ) : null}
-              </>
-            ) : null}
-            <ReportForm options={options} onChange={setOptions} />
-            <EquipmentList
-              items={equipments}
-              onChange={(n) => {
-                setEquipments(n);
-                saveEquipments(n);
-              }}
-            />
-            <ClientProfiles
-              options={options}
-              onOptions={setOptions}
-              onLogo={(logoBase64) => setBranding({ ...branding, logoBase64 })}
-            />
-            <AiDraftCard
-              parsed={effective}
-              options={options}
-              draft={aiDraft}
-              onChange={setAiDraft}
-            />
-            {effective ? (
-              <ChartEditor
-                spectra={effective.spectra}
-                onChange={setEdited}
+              ) : null}
+              {effective &&
+              (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
+                <>
+                  <MeasuringTable
+                    tauriPath={effective.meta.csvPath ?? null}
+                    file={effective.meta.csvPath ? null : csvFile}
+                    limits={zoneLimits}
+                    onRows={setMeasureRows}
+                  />
+                  {measureRows && measureRows.length > 0 ? (
+                    <TrendCard rows={measureRows} limits={zoneLimits} onSnapshot={setTrendSnap} />
+                  ) : null}
+                </>
+              ) : null}
+              <ReportForm options={options} onChange={setOptions} />
+              <EquipmentList
+                items={equipments}
+                onChange={(n) => {
+                  setEquipments(n);
+                  saveEquipments(n);
+                }}
+              />
+              <ClientProfiles
                 options={options}
                 onOptions={setOptions}
+                onLogo={(logoBase64) => setBranding({ ...branding, logoBase64 })}
               />
-            ) : null}
-            <BrandingCard
-              options={options}
-              onOptions={setOptions}
-              branding={branding}
-              onBranding={setBranding}
-            />
-            <ExportCard
-              parsed={effective}
-              options={options}
-              branding={branding}
-              aiDraft={aiDraft}
-              onExported={handleExported}
-              limits={zoneLimits}
-              measureRows={measureRows ?? undefined}
-              trendSnap={trendSnap}
-              equipments={equipments}
-              tauriPath={effective?.meta.csvPath ?? null}
-              csvFile={effective?.meta.csvPath ? null : csvFile}
-            />
-            {!effective ? (
-              <p className="text-xs text-muted-foreground">{translate(uiLang, "helpHint")}</p>
-            ) : null}
-          </TabsContent>
-          <TabsContent value="history">
-            <HistoryTab
-              key={historyTick}
-              onReopen={(o) => {
-                setOptions(o);
-                setTab("report");
-              }}
-            />
-          </TabsContent>
-          <TabsContent value="design">
-            <DesignDemo />
-          </TabsContent>
-          <TabsContent value="settings" className="grid gap-4">
-            <LicenseCard />
-            <ZoneLimitsCard limits={zoneLimits} onChange={setZoneLimits} />
-            <AiSettingsCard />
-            <TelemetryCard />
-          </TabsContent>
-        </Tabs>
-      </main>
-    </>
+              <AiDraftCard
+                parsed={effective}
+                options={options}
+                draft={aiDraft}
+                onChange={setAiDraft}
+              />
+              {effective ? (
+                <ChartEditor
+                  spectra={effective.spectra}
+                  onChange={setEdited}
+                  options={options}
+                  onOptions={setOptions}
+                />
+              ) : null}
+              <BrandingCard
+                options={options}
+                onOptions={setOptions}
+                branding={branding}
+                onBranding={setBranding}
+              />
+              <ExportCard
+                parsed={effective}
+                options={options}
+                branding={branding}
+                aiDraft={aiDraft}
+                onExported={handleExported}
+                limits={zoneLimits}
+                measureRows={measureRows ?? undefined}
+                trendSnap={trendSnap}
+                equipments={equipments}
+                tauriPath={effective?.meta.csvPath ?? null}
+                csvFile={effective?.meta.csvPath ? null : csvFile}
+              />
+              {!effective ? (
+                <p className="text-xs text-muted-foreground">{translate(uiLang, "helpHint")}</p>
+              ) : null}
+            </TabsContent>
+            <TabsContent value="history">
+              <HistoryTab
+                key={historyTick}
+                onReopen={(o) => {
+                  setOptions(o);
+                  setTab("report");
+                }}
+              />
+            </TabsContent>
+            <TabsContent value="design">
+              <DesignDemo />
+            </TabsContent>
+            <TabsContent value="settings" className="grid gap-4">
+              <LicenseCard />
+              <ZoneLimitsCard limits={zoneLimits} onChange={setZoneLimits} />
+              <AiSettingsCard />
+              <TelemetryCard />
+            </TabsContent>
+          </Tabs>
+        </main>
+      </>
     </UiProvider>
   );
 }

@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { useUi } from "../lib/i18n";
 import { Plus, Trash2 } from "lucide-react";
-import {
-  loadClients,
-  makeClient,
-  saveClients,
-  type ClientProfile,
-} from "../lib/equipment";
+import { loadClients, makeClient, saveClients, type ClientProfile } from "../lib/equipment";
 import { DEFAULT_ADDRESS_BLOCK_EN, DEFAULT_ADDRESS_BLOCK_FA } from "../lib/fa";
 import type { ReportOptions } from "../lib/parseSp3";
 import { Button } from "./ui/button";
@@ -65,15 +60,29 @@ export function ClientProfiles({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">{t("clientsTitle")} ({clients.length})</CardTitle>
+        <CardTitle className="text-base">
+          {t("clientsTitle")} ({clients.length})
+        </CardTitle>
         <CardDescription>Save letterhead once, apply to the form.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2">
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => onOptions({ ...options, addressBlock: DEFAULT_ADDRESS_BLOCK_EN })}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onOptions({ ...options, addressBlock: DEFAULT_ADDRESS_BLOCK_EN })}
+          >
             EN letterhead
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOptions({ ...options, addressBlock: DEFAULT_ADDRESS_BLOCK_FA, language: "fa" })}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              onOptions({ ...options, addressBlock: DEFAULT_ADDRESS_BLOCK_FA, language: "fa" })
+            }
+          >
             FA letterhead
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={addCurrent}>
@@ -84,7 +93,9 @@ export function ClientProfiles({
           <div key={c.id} className="flex items-center gap-2 rounded-md border p-2">
             <button type="button" className="flex-1 text-left text-sm" onClick={() => apply(c)}>
               <span className="font-medium">{c.clientName || "(no name)"}</span>
-              {c.clientUnit ? <span className="text-muted-foreground"> — {c.clientUnit}</span> : null}
+              {c.clientUnit ? (
+                <span className="text-muted-foreground"> — {c.clientUnit}</span>
+              ) : null}
               <span className="block truncate text-xs text-muted-foreground">{c.addressBlock}</span>
             </button>
             <input
@@ -99,14 +110,26 @@ export function ClientProfiles({
               value={c.isoGroups ?? "all"}
               aria-label="ISO groups"
               onChange={(e) =>
-                save(clients.map((x) => (x.id === c.id ? { ...x, isoGroups: e.target.value as ClientProfile["isoGroups"] } : x)))
+                save(
+                  clients.map((x) =>
+                    x.id === c.id
+                      ? { ...x, isoGroups: e.target.value as ClientProfile["isoGroups"] }
+                      : x
+                  )
+                )
               }
             >
               <option value="all">ISO all</option>
               <option value="1+3">1+3</option>
               <option value="2+4">2+4</option>
             </select>
-            <Button type="button" variant="ghost" size="sm" onClick={() => save(clients.filter((x) => x.id !== c.id))} aria-label="Delete client">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => save(clients.filter((x) => x.id !== c.id))}
+              aria-label="Delete client"
+            >
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>

@@ -359,7 +359,10 @@ export async function fetchEnvelopeSamples(
 
 /** PointID|MeasDate → envelope RMS from an EnvelopeData CSV (strip mode). */
 export function indexEnvelopeCsv(csv: string): Map<string, string> {
-  const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim());
+  const lines = csv
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .filter((l) => l.trim());
   const map = new Map<string, string>();
   if (lines.length < 2) return map;
   const header = lines[0].split(",").map((h) => h.replace(/^"|"$/g, "").trim());

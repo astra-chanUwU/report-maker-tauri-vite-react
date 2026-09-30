@@ -15,14 +15,22 @@ export async function applyWordRtl(blob: Blob): Promise<Blob> {
   await touch("word/settings.xml", (xml) => {
     if (xml.includes("w:themeFontLang")) {
       return xml.replace(/<w:themeFontLang\b([^>]*)\/>/g, (_m, attrs: string) => {
-        const cleaned = String(attrs).replace(/\sw:bidi="[^"]*"/g, "").replace(/\sw:val="[^"]*"/g, "");
+        const cleaned = String(attrs)
+          .replace(/\sw:bidi="[^"]*"/g, "")
+          .replace(/\sw:val="[^"]*"/g, "");
         return `<w:themeFontLang${cleaned} w:val="fa-IR" w:bidi="fa-IR"/>`;
       });
     }
-    return xml.replace("</w:settings>", '<w:themeFontLang w:val="fa-IR" w:bidi="fa-IR"/></w:settings>');
+    return xml.replace(
+      "</w:settings>",
+      '<w:themeFontLang w:val="fa-IR" w:bidi="fa-IR"/></w:settings>'
+    );
   });
   const bytes = await zip.generateAsync({ type: "uint8array" });
-  const raw = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const raw = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
   return new Blob([raw], {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });

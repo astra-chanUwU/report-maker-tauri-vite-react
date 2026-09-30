@@ -77,7 +77,10 @@ function fmtStat(v: number | null | undefined): string {
 }
 
 /** Brochure columns: Total = latest overall, Avg, Prev, Curr. */
-export function historyStats(samples: TrendSample[], metric: "rmsV" | "rmsA" | "envelope"): HistoryStat {
+export function historyStats(
+  samples: TrendSample[],
+  metric: "rmsV" | "rmsA" | "envelope"
+): HistoryStat {
   const vals = samples
     .map((s) => (metric === "envelope" ? (s.envelope ?? null) : s[metric]))
     .filter((v): v is number => v !== null && Number.isFinite(v));

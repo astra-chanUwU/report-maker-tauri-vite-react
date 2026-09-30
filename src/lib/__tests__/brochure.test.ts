@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildTocData, makeClient, makeEquipment } from "../equipment";
 import { gregorianToJalali, isoToJalali, isoToJalaliFa, toFaDigits } from "../fa";
-import { buildTocRows, buildDocx, buildSignatureBlock, equipmentBookmarkId, sectionBookmarkId, tocPartsFor, renderChartPng } from "../generateDocx";
+import {
+  buildTocRows,
+  buildDocx,
+  buildSignatureBlock,
+  equipmentBookmarkId,
+  sectionBookmarkId,
+  tocPartsFor,
+  renderChartPng,
+} from "../generateDocx";
 import { parseSp3 } from "../parseSp3";
 import { buildAllTrendSnapshots, groupHistories } from "../trends";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
@@ -49,7 +57,14 @@ describe("equipments + toc", () => {
       spectra: parsed.spectra,
       options: { ...base, includeToc: true },
       equipments: [
-        { name: "Pump A", specs: "15kW", status: "Alert", lastReport: "prev ok", problems: "unbalance", corrective: "balance" },
+        {
+          name: "Pump A",
+          specs: "15kW",
+          status: "Alert",
+          lastReport: "prev ok",
+          problems: "unbalance",
+          corrective: "balance",
+        },
         { name: "Fan B", specs: "30kW", status: "Healthy" },
       ],
     });
@@ -156,7 +171,11 @@ describe("equipments + toc", () => {
       ],
     });
     const JSZip = (await import("jszip")).default;
-    const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file("word/document.xml")!.async("string");
+    const xml = await (
+      await JSZip.loadAsync(await blob.arrayBuffer())
+    )
+      .file("word/document.xml")!
+      .async("string");
     const count = (token: string) => xml.split(token).length - 1;
     const a = xml.indexOf("only-on-a");
     const narr = xml.indexOf("NARR-M1-OBS");
@@ -220,7 +239,11 @@ describe("equipments + toc", () => {
       ],
     });
     const JSZip = (await import("jszip")).default;
-    const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file("word/document.xml")!.async("string");
+    const xml = await (
+      await JSZip.loadAsync(await blob.arrayBuffer())
+    )
+      .file("word/document.xml")!
+      .async("string");
     const count = (token: string) => xml.split(token).length - 1;
     const a = xml.indexOf("only-on-a");
     const summary = xml.indexOf("SOLE-SUMMARY");
@@ -251,13 +274,31 @@ describe("equipments + toc", () => {
     const bare = await buildDocx({ meta: parsed.meta, spectra: parsed.spectra, options: base });
     const { renderTrendPng } = await import("../trends");
     const { renderChartPng } = await import("../generateDocx");
-    const samples = [1, 2, 3].map((v, i) => ({ dateNum: 45000 + i, dateISO: "2023-01-01", rmsV: v, rmsA: v * 2 }));
+    const samples = [1, 2, 3].map((v, i) => ({
+      dateNum: 45000 + i,
+      dateISO: "2023-01-01",
+      rmsV: v,
+      rmsA: v * 2,
+    }));
     const full = await buildDocx({
       meta: parsed.meta,
       spectra: parsed.spectra,
-      options: { ...base, language: "fa" as const, jalaliDate: isoToJalaliFa("2026-09-30"), letterNo: "405", clientName: "C", clientUnit: "U", addressBlock: "addr" },
+      options: {
+        ...base,
+        language: "fa" as const,
+        jalaliDate: isoToJalaliFa("2026-09-30"),
+        letterNo: "405",
+        clientName: "C",
+        clientUnit: "U",
+        addressBlock: "addr",
+      },
       allTrends: [
-        { pointLabel: "7 / 1", sampleCount: 3, velocityPng: renderTrendPng(samples, "rmsV", DEFAULT_ZONE_LIMITS.velocity), accelPng: renderTrendPng(samples, "rmsA", DEFAULT_ZONE_LIMITS.acceleration) },
+        {
+          pointLabel: "7 / 1",
+          sampleCount: 3,
+          velocityPng: renderTrendPng(samples, "rmsV", DEFAULT_ZONE_LIMITS.velocity),
+          accelPng: renderTrendPng(samples, "rmsA", DEFAULT_ZONE_LIMITS.acceleration),
+        },
       ],
       fftGallery: [{ label: "7 / 1", png: renderChartPng(parsed.spectra), peak: "1 @ 2" }],
     });
@@ -265,7 +306,11 @@ describe("equipments + toc", () => {
     const JSZip = (await import("jszip")).default;
     const faZip = await JSZip.loadAsync(await full.arrayBuffer());
     const faXml = await faZip.file("word/document.xml")!.async("string");
-    const enXml = await (await JSZip.loadAsync(await bare.arrayBuffer())).file("word/document.xml")!.async("string");
+    const enXml = await (
+      await JSZip.loadAsync(await bare.arrayBuffer())
+    )
+      .file("word/document.xml")!
+      .async("string");
     expect(faXml).toContain("<w:bidi/>");
     expect(faXml).toContain("bidiVisual");
     expect(faXml).toContain("fa-IR");
@@ -275,11 +320,48 @@ describe("equipments + toc", () => {
   }, 30000);
 });
 
-describe("all trends", () => {  it("builds one snapshot per point", () => {
+describe("all trends", () => {
+  it("builds one snapshot per point", () => {
     const rows = [
-      { index: 0, pointId: "7", directionId: "1", measDate: "45000", peakV: "", peakFreq: "", rmsV: "1.2", rmsA: "10", peakA: "", unit: "", noLines: "" },
-      { index: 1, pointId: "7", directionId: "1", measDate: "45001", peakV: "", peakFreq: "", rmsV: "2.2", rmsA: "12", peakA: "", unit: "", noLines: "" },
-      { index: 2, pointId: "9", directionId: "2", measDate: "45000", peakV: "", peakFreq: "", rmsV: "3.2", rmsA: "14", peakA: "", unit: "", noLines: "" },
+      {
+        index: 0,
+        pointId: "7",
+        directionId: "1",
+        measDate: "45000",
+        peakV: "",
+        peakFreq: "",
+        rmsV: "1.2",
+        rmsA: "10",
+        peakA: "",
+        unit: "",
+        noLines: "",
+      },
+      {
+        index: 1,
+        pointId: "7",
+        directionId: "1",
+        measDate: "45001",
+        peakV: "",
+        peakFreq: "",
+        rmsV: "2.2",
+        rmsA: "12",
+        peakA: "",
+        unit: "",
+        noLines: "",
+      },
+      {
+        index: 2,
+        pointId: "9",
+        directionId: "2",
+        measDate: "45000",
+        peakV: "",
+        peakFreq: "",
+        rmsV: "3.2",
+        rmsA: "14",
+        peakA: "",
+        unit: "",
+        noLines: "",
+      },
     ];
     const histories = groupHistories(rows);
     expect(histories).toHaveLength(2);
@@ -302,7 +384,12 @@ describe("signature layouts", () => {
   it("en layout: Approval + Engineer/Date, fa layout: با سپاس + name/role", async () => {
     const en = buildSignatureBlock({ ...base, signatureLayout: "en" }, sig);
     const fa = buildSignatureBlock(
-      { ...base, signatureLayout: "fa", signatureName: "محسن مردانه", signatureRole: "سرپرست کارگاه" },
+      {
+        ...base,
+        signatureLayout: "fa",
+        signatureName: "محسن مردانه",
+        signatureRole: "سرپرست کارگاه",
+      },
       sig
     );
     expect(en.length).toBeGreaterThan(0);
