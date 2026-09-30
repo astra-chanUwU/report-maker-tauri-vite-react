@@ -122,3 +122,15 @@ export async function clearHistory(): Promise<HistoryEntry[]> {
   await persistHistory([]);
   return [];
 }
+
+/** Last report summary for one equipment name (brochure p.5: "last sent report"). */
+export async function findLastReportFor(equipmentName: string): Promise<HistoryEntry | null> {
+  const name = equipmentName.trim().toLowerCase();
+  if (!name) return null;
+  const all = await loadHistory();
+  for (const e of all) {
+    const optName = (e.options.equipmentName ?? "").trim().toLowerCase();
+    if (optName && (optName === name || optName.includes(name) || name.includes(optName))) return e;
+  }
+  return null;
+}

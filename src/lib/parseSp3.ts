@@ -71,6 +71,28 @@ export interface ReportOptions {
   equipmentSpecs?: string;
   /** Schematic image (PNG/JPEG base64, no prefix). Null/undefined = none. */
   schematicBase64?: string | null;
+  /** Per-equipment condition + AI editable fields (brochure p.5). */
+  equipmentStatus?: string;
+  equipmentLastReport?: string;
+  equipmentProblems?: string;
+  equipmentCorrective?: string;
+  /** Multi-equipment TOC (brochure p.4). Default true when equipments supplied. */
+  includeToc?: boolean;
+  /** Export all points: FFT gallery + all trends (brochure p.6-7). Defaults true. */
+  exportAllPoints?: boolean;
+  fftAllPoints?: boolean;
+  trendAllPoints?: boolean;
+  /** Extra trend metrics beyond V/A (e.g. envelope). */
+  trendMetrics?: string[];
+  /** Localization: en (default) or fa. */
+  language?: "en" | "fa";
+  /** Jalali display date (auto-derived when language=fa). */
+  jalaliDate?: string;
+  /** Official letter fields. */
+  letterNo?: string;
+  clientName?: string;
+  clientUnit?: string;
+  addressBlock?: string;
 }
 
 export interface AiDraft {

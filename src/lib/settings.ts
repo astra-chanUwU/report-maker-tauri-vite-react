@@ -23,6 +23,21 @@ export function defaultReportOptions(): ReportOptions {
     equipmentName: "",
     equipmentSpecs: "",
     schematicBase64: null,
+    equipmentStatus: "",
+    equipmentLastReport: "",
+    equipmentProblems: "",
+    equipmentCorrective: "",
+    includeToc: true,
+    exportAllPoints: true,
+    fftAllPoints: true,
+    trendAllPoints: true,
+    trendMetrics: ["rmsV", "rmsA"],
+    language: "en",
+    jalaliDate: "",
+    letterNo: "",
+    clientName: "",
+    clientUnit: "",
+    addressBlock: "",
   };
 }
 
@@ -32,6 +47,8 @@ export function loadReportOptions(): ReportOptions {
     const raw = localStorage.getItem(KEY);
     if (!raw) return base;
     const o = JSON.parse(raw) as Partial<ReportOptions>;
+    const str = (v: unknown, fb = ""): string => (typeof v === "string" ? v : fb);
+    const bool = (v: unknown, fb: boolean): boolean => (typeof v === "boolean" ? v : fb);
     return {
       projectName: typeof o.projectName === "string" ? o.projectName : "",
       engineer: typeof o.engineer === "string" ? o.engineer : "",
@@ -48,6 +65,21 @@ export function loadReportOptions(): ReportOptions {
       equipmentName: typeof o.equipmentName === "string" ? o.equipmentName : "",
       equipmentSpecs: typeof o.equipmentSpecs === "string" ? o.equipmentSpecs : "",
       schematicBase64: typeof o.schematicBase64 === "string" ? o.schematicBase64 : null,
+      equipmentStatus: str(o.equipmentStatus),
+      equipmentLastReport: str(o.equipmentLastReport),
+      equipmentProblems: str(o.equipmentProblems),
+      equipmentCorrective: str(o.equipmentCorrective),
+      includeToc: bool(o.includeToc, true),
+      exportAllPoints: bool(o.exportAllPoints, true),
+      fftAllPoints: bool(o.fftAllPoints, true),
+      trendAllPoints: bool(o.trendAllPoints, true),
+      trendMetrics: Array.isArray(o.trendMetrics) ? (o.trendMetrics as string[]) : ["rmsV", "rmsA"],
+      language: o.language === "fa" ? "fa" : "en",
+      jalaliDate: str(o.jalaliDate),
+      letterNo: str(o.letterNo),
+      clientName: str(o.clientName),
+      clientUnit: str(o.clientUnit),
+      addressBlock: str(o.addressBlock),
     };
   } catch {
     return base;
