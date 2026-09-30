@@ -93,6 +93,10 @@ export interface ReportOptions {
   clientName?: string;
   clientUnit?: string;
   addressBlock?: string;
+  /** Signature block style: en (Approval + Engineer/Date) or fa (centered با سپاس + name/role). */
+  signatureLayout?: "en" | "fa";
+  signatureName?: string;
+  signatureRole?: string;
 }
 
 export interface AiDraft {

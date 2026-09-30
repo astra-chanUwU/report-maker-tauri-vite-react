@@ -330,6 +330,44 @@ function letterheadSection(input: BuildDocxInput, fa: boolean): Paragraph[] {
   return out;
 }
 
+/** Signature/approval block: en (Approval + Engineer/Date) or fa (centered با سپاس + stamp + name/role). */
+export function buildSignatureBlock(
+  options: ReportOptions,
+  signature?: BrandImage
+): (Paragraph | Table)[] {
+  if (!signature || signature.data.length === 0) return [];
+  const sigImg = (alignment?: (typeof AlignmentType)[keyof typeof AlignmentType]) =>
+    new Paragraph({
+      ...(alignment ? { alignment } : {}),
+      children: [
+        new ImageRun({
+          data: (signature as BrandImage).data,
+          transformation: { width: 200, height: 200 },
+          type: signature.kind ?? detectImageKind(signature.data),
+        }),
+      ],
+    });
+  if (options.signatureLayout === "fa") {
+    const name = options.signatureName?.trim() || options.engineer || "—";
+    const role = options.signatureRole?.trim() || "";
+    const center = AlignmentType.CENTER;
+    const out: Paragraph[] = [
+      new Paragraph({ text: "با سپاس", alignment: center }),
+      sigImg(center),
+      new Paragraph({ text: name, alignment: center }),
+    ];
+    if (role) out.push(new Paragraph({ text: role, alignment: center }));
+    return out;
+  }
+  return [
+    new Paragraph({ text: "Approval", heading: HeadingLevel.HEADING_1 }),
+    sigImg(),
+    new Paragraph(
+      `Engineer: ${options.engineer || "—"}    Date: ${options.reportDate || "—"}`
+    ),
+  ];
+}
+
 export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const stats = computeStats(input.spectra);
   const limit = input.options.pointLimit ?? 120;
@@ -609,22 +647,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   }
 
   if (input.branding?.signature && input.branding.signature.data.length > 0) {
-    const sig = input.branding.signature;
-    children.push(
-      new Paragraph({ text: "Approval", heading: HeadingLevel.HEADING_1 }),
-      new Paragraph({
-        children: [
-          new ImageRun({
-            data: sig.data,
-            transformation: { width: 200, height: 200 },
-            type: sig.kind ?? detectImageKind(sig.data),
-          }),
-        ],
-      }),
-      new Paragraph(
-        `Engineer: ${input.options.engineer || "—"}    Date: ${input.options.reportDate || "—"}`
-      )
-    );
+    children.push(...buildSignatureBlock(input.options, input.branding.signature));
   }
 
   const doc = input.branding?.cover?.data?.length

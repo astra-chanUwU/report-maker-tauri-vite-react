@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildTocData, makeClient, makeEquipment } from "../equipment";
 import { gregorianToJalali, isoToJalali, isoToJalaliFa, toFaDigits } from "../fa";
-import { buildTocRows, buildDocx } from "../generateDocx";
+import { buildTocRows, buildDocx, buildSignatureBlock } from "../generateDocx";
 import { parseSp3 } from "../parseSp3";
 import { buildAllTrendSnapshots, groupHistories } from "../trends";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
@@ -79,8 +79,7 @@ describe("equipments + toc", () => {
   }, 30000);
 });
 
-describe("all trends", () => {
-  it("builds one snapshot per point", () => {
+describe("all trends", () => {  it("builds one snapshot per point", () => {
     const rows = [
       { index: 0, pointId: "7", directionId: "1", measDate: "45000", peakV: "", peakFreq: "", rmsV: "1.2", rmsA: "10", peakA: "", unit: "", noLines: "" },
       { index: 1, pointId: "7", directionId: "1", measDate: "45001", peakV: "", peakFreq: "", rmsV: "2.2", rmsA: "12", peakA: "", unit: "", noLines: "" },
@@ -91,5 +90,45 @@ describe("all trends", () => {
     const snaps = buildAllTrendSnapshots(histories, DEFAULT_ZONE_LIMITS, 10);
     expect(snaps).toHaveLength(2);
     expect(snaps[0].velocityPng[0]).toBe(137);
+  });
+});
+
+describe("signature layouts", () => {
+  const sig = { data: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]), kind: "png" as const };
+  const base = {
+    projectName: "P",
+    engineer: "A. Chan",
+    reportDate: "2026-09-30",
+    units: "SI",
+    norm: "Default",
+    notes: "",
+  };
+  it("en layout: Approval + Engineer/Date, fa layout: با سپاس + name/role", async () => {
+    const en = buildSignatureBlock({ ...base, signatureLayout: "en" }, sig);
+    const fa = buildSignatureBlock(
+      { ...base, signatureLayout: "fa", signatureName: "محسن مردانه", signatureRole: "سرپرست کارگاه" },
+      sig
+    );
+    expect(en.length).toBeGreaterThan(0);
+    expect(fa.length).toBe(4);
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n"), "a.sp3");
+    const enDoc = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: { ...base, signatureLayout: "en" },
+      branding: { signature: sig },
+    });
+    const faDoc = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: { ...base, signatureLayout: "fa", signatureName: "محسن مردانه" },
+      branding: { signature: sig },
+    });
+    expect(enDoc.size).toBeGreaterThan(2000);
+    expect(faDoc.size).toBeGreaterThan(2000);
+  });
+  it("empty signature → no block", () => {
+    expect(buildSignatureBlock({ ...base }, undefined)).toHaveLength(0);
+    expect(buildSignatureBlock({ ...base }, { data: new Uint8Array(0) })).toHaveLength(0);
   });
 });

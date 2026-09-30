@@ -5,6 +5,8 @@ import { TEMPLATES } from "../lib/templates";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import { toast } from "./ui/sonner";
 
 const MAX_LOGO_BYTES = 500 * 1024;
@@ -116,6 +118,51 @@ export function BrandingCard({
               : null
           }
         />
+        <div className="grid gap-2 rounded-md border p-2">
+          <Label>Signature style</Label>
+          <div className="flex gap-2" role="group" aria-label="Signature style">
+            {(
+              [
+                { id: "en", label: "English — Approval + Engineer/Date" },
+                { id: "fa", label: "فارسی — با سپاس + نام/سمت" },
+              ] as const
+            ).map((s) => (
+              <Button
+                key={s.id}
+                type="button"
+                aria-pressed={(options.signatureLayout ?? "en") === s.id}
+                variant={(options.signatureLayout ?? "en") === s.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => onOptions({ ...options, signatureLayout: s.id })}
+                className={cn((options.signatureLayout ?? "en") === s.id && "pointer-events-none")}
+              >
+                {s.label}
+              </Button>
+            ))}
+          </div>
+          {(options.signatureLayout ?? "en") === "fa" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-1">
+                <Label htmlFor="sig-name">Name (نام)</Label>
+                <Input
+                  id="sig-name"
+                  value={options.signatureName ?? ""}
+                  placeholder="محسن مردانه"
+                  onChange={(e) => onOptions({ ...options, signatureName: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-1">
+                <Label htmlFor="sig-role">Role (سمت)</Label>
+                <Input
+                  id="sig-role"
+                  value={options.signatureRole ?? ""}
+                  placeholder="سرپرست کارگاه"
+                  onChange={(e) => onOptions({ ...options, signatureRole: e.target.value })}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

@@ -38,6 +38,9 @@ export function defaultReportOptions(): ReportOptions {
     clientName: "",
     clientUnit: "",
     addressBlock: "",
+    signatureLayout: "en",
+    signatureName: "",
+    signatureRole: "",
   };
 }
 
@@ -80,6 +83,9 @@ export function loadReportOptions(): ReportOptions {
       clientName: str(o.clientName),
       clientUnit: str(o.clientUnit),
       addressBlock: str(o.addressBlock),
+      signatureLayout: o.signatureLayout === "fa" ? "fa" : "en",
+      signatureName: str(o.signatureName),
+      signatureRole: str(o.signatureRole),
     };
   } catch {
     return base;
