@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { bytesToBase64, buildMachineSpecs, joinCatalog, machineLabelMap, type SpectraMachine } from "../lib/spectra-catalog";
+import { renderPointSchematic } from "../lib/spectra-schematic";
 import { fetchMachinePicture, fetchSpectraCatalog, pickSp3Path } from "../lib/mdb";
 import {
   EQUIPMENT_STATUSES,
@@ -46,7 +47,9 @@ export function EquipmentList({
 
   const addFromMachine = async (m: SpectraMachine) => {
     let schematicBase64: string | null = null;
-    if (catalog) {
+    const drawn = renderPointSchematic(m.points);
+    if (drawn) schematicBase64 = bytesToBase64(drawn);
+    else if (catalog) {
       try {
         const jpeg = await fetchMachinePicture(catalog.path, m.machineId);
         if (jpeg.length > 8) schematicBase64 = bytesToBase64(jpeg);

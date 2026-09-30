@@ -12,6 +12,8 @@ import { historyStats, renderTrendPng } from "../trends";
 import { buildIsoTableData } from "../iso10816";
 import { sectionTitle } from "../fa";
 import { DEFAULT_ZONE_LIMITS } from "../zones";
+import { renderPointSchematic } from "../spectra-schematic";
+import type { SpectraPoint } from "../spectra-catalog";
 import { buildMeasureRows } from "../report-slices";
 import { indexEnvelopeCsv } from "../mdb";
 
@@ -74,6 +76,30 @@ describe("dominant peaks", () => {
     }
     expect(red).toBeGreaterThan(200);
     expect(boxedWhite).toBeGreaterThan(8);
+  });
+});
+
+describe("point schematic", () => {
+  it("draws one station per point instead of a photo", () => {
+    const points: SpectraPoint[] = [1, 2, 3, 4].map((n) => ({
+      pointId: String(n),
+      machineId: "1",
+      name: `P${n}`,
+      bearings: [],
+      directions: [
+        { directionId: "1", pointId: String(n), name: "V1" },
+        { directionId: "2", pointId: String(n), name: "H1" },
+      ],
+    }));
+    const png = renderPointSchematic(points);
+    expect(png).not.toBeNull();
+    const rgb = inflateStoredPng(png!, 720, 240);
+    let ink = 0;
+    for (let i = 0; i < rgb.length; i += 3) {
+      if (rgb[i] === 17 && rgb[i + 1] === 24 && rgb[i + 2] === 39) ink++;
+    }
+    expect(ink).toBeGreaterThan(400);
+    expect(renderPointSchematic([])).toBeNull();
   });
 });
 
