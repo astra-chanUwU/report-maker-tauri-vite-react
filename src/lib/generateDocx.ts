@@ -14,6 +14,8 @@ import {
   TableRow,
   TextRun,
   WidthType,
+  type IParagraphOptions,
+  type IRunOptions,
 } from "docx";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
 import { sectionTitle } from "./fa";
@@ -29,6 +31,33 @@ import {
   ZONE_TEXT,
   type ZoneLimitSet,
 } from "./zones";
+
+/** Persian reports set paragraph base direction and run language. Cleared at the start of each build. */
+let paragraphRtl = false;
+
+function docParagraph(init: string | IParagraphOptions): Paragraph {
+  if (!paragraphRtl) return new Paragraph(init);
+  if (typeof init === "string") {
+    return new Paragraph({ text: init, bidirectional: true, alignment: AlignmentType.RIGHT });
+  }
+  return new Paragraph({
+    ...init,
+    bidirectional: true,
+    alignment: init.alignment ?? AlignmentType.RIGHT,
+  });
+}
+
+function docRun(init: string | IRunOptions): TextRun {
+  if (!paragraphRtl) return new TextRun(init);
+  if (typeof init === "string") {
+    return new TextRun({ text: init, rightToLeft: true, language: { value: "fa-IR", bidirectional: "fa-IR" } });
+  }
+  return new TextRun({
+    ...init,
+    rightToLeft: true,
+    language: { value: "fa-IR", bidirectional: "fa-IR" },
+  });
+}
 
 export interface BrandImage {
   data: Uint8Array;
@@ -266,36 +295,36 @@ function equipmentSection(eq?: BuildDocxInput["equipment"], lang: "en" | "fa" = 
   const corrective = eq?.corrective?.trim() ?? "";
   if (!name && !specs && !schema && !status && !lastReport && !problems && !corrective) return [];
   const out: (Paragraph | Table)[] = [
-    new Paragraph({ text: sectionTitle(lang, "equipment"), heading: HeadingLevel.HEADING_1 }),
+    docParagraph({ text: sectionTitle(lang, "equipment"), heading: HeadingLevel.HEADING_1 }),
   ];
   if (name) {
-    out.push(new Paragraph({ text: name, heading: HeadingLevel.HEADING_2 }));
+    out.push(docParagraph({ text: name, heading: HeadingLevel.HEADING_2 }));
   }
   if (status) {
-    out.push(new Paragraph(`${sectionTitle(lang, "status")}: ${status}`));
+    out.push(docParagraph(`${sectionTitle(lang, "status")}: ${status}`));
   }
   if (specs) {
-    out.push(new Paragraph({ text: sectionTitle(lang, "specs"), heading: HeadingLevel.HEADING_2 }));
+    out.push(docParagraph({ text: sectionTitle(lang, "specs"), heading: HeadingLevel.HEADING_2 }));
     for (const para of specs.split(/\n\s*\n/)) {
       const t = para.trim();
-      if (t) out.push(new Paragraph(t));
+      if (t) out.push(docParagraph(t));
     }
   }
   if (lastReport) {
-    out.push(new Paragraph({ text: sectionTitle(lang, "lastReport"), heading: HeadingLevel.HEADING_2 }));
-    out.push(new Paragraph(lastReport));
+    out.push(docParagraph({ text: sectionTitle(lang, "lastReport"), heading: HeadingLevel.HEADING_2 }));
+    out.push(docParagraph(lastReport));
   }
   if (problems) {
-    out.push(new Paragraph({ text: sectionTitle(lang, "problems"), heading: HeadingLevel.HEADING_2 }));
-    out.push(new Paragraph(problems));
+    out.push(docParagraph({ text: sectionTitle(lang, "problems"), heading: HeadingLevel.HEADING_2 }));
+    out.push(docParagraph(problems));
   }
   if (corrective) {
-    out.push(new Paragraph({ text: sectionTitle(lang, "actions"), heading: HeadingLevel.HEADING_2 }));
-    out.push(new Paragraph(corrective));
+    out.push(docParagraph({ text: sectionTitle(lang, "actions"), heading: HeadingLevel.HEADING_2 }));
+    out.push(docParagraph(corrective));
   }
   if (schema) {
     out.push(
-      new Paragraph({
+      docParagraph({
         children: [
           new ImageRun({
             data: schema.data,
@@ -334,9 +363,9 @@ function tocSection(
   const rows = buildTocRows(equipments);
   const cell = (children: Paragraph[]) => new TableCell({ children });
   const textCell = (t: string, bold = false) =>
-    cell([new Paragraph({ children: [new TextRun({ text: t, bold })] })]);
+    cell([docParagraph({ children: [docRun({ text: t, bold })] })]);
   return [
-    new Paragraph({ text: sectionTitle(fa ? "fa" : "en", "toc"), heading: HeadingLevel.HEADING_1 }),
+    docParagraph({ text: sectionTitle(fa ? "fa" : "en", "toc"), heading: HeadingLevel.HEADING_1 }),
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       rows: [
@@ -354,18 +383,18 @@ function tocSection(
             children: [
               textCell(String(r.index)),
               cell([
-                new Paragraph({
+                docParagraph({
                   children: [
                     new InternalHyperlink({
                       anchor: id,
-                      children: [new TextRun({ text: r.name, style: "Hyperlink" })],
+                      children: [docRun({ text: r.name, style: "Hyperlink" })],
                     }),
                   ],
                 }),
               ]),
               textCell(r.status),
               cell([
-                new Paragraph({
+                docParagraph({
                   children: [new PageReference(id, { hyperlink: true })],
                 }),
               ]),
@@ -374,7 +403,7 @@ function tocSection(
         }),
       ],
     }),
-    new Paragraph(
+    docParagraph(
       fa
         ? "شماره صفحات با باز شدن فایل در Word به‌روز می‌شود."
         : "Page numbers update when the file is opened in Word."
@@ -388,18 +417,18 @@ function letterheadSection(input: BuildDocxInput, fa: boolean): Paragraph[] {
   const align = fa ? AlignmentType.RIGHT : AlignmentType.LEFT;
   const addr = o.addressBlock?.trim();
   if (addr) {
-    out.push(new Paragraph({ children: [new TextRun({ text: addr, size: 16, color: "737373" })], alignment: align }));
+    out.push(docParagraph({ children: [docRun({ text: addr, size: 16, color: "737373" })], alignment: align }));
   }
   const bits: string[] = [];
   if (o.reportDate) bits.push(fa && o.jalaliDate ? `تاریخ: ${o.jalaliDate}` : `Date: ${o.reportDate}`);
   if (!fa && o.jalaliDate) bits.push(`Jalali: ${o.jalaliDate}`);
   if (o.letterNo?.trim()) bits.push(fa ? `شماره: ${o.letterNo.trim()}` : `No: ${o.letterNo.trim()}`);
-  if (bits.length > 0) out.push(new Paragraph({ children: [new TextRun(bits.join("    "))] , alignment: align}));
+  if (bits.length > 0) out.push(docParagraph({ children: [docRun(bits.join("    "))] , alignment: align}));
   const client = [o.clientName?.trim(), o.clientUnit?.trim()].filter(Boolean).join(" — ");
   if (client) {
     out.push(
-      new Paragraph({
-        children: [new TextRun({ text: fa ? `کارفرما: ${client}` : `Client: ${client}`, bold: true })],
+      docParagraph({
+        children: [docRun({ text: fa ? `کارفرما: ${client}` : `Client: ${client}`, bold: true })],
         alignment: align,
       })
     );
@@ -412,9 +441,10 @@ export function buildSignatureBlock(
   options: ReportOptions,
   signature?: BrandImage
 ): (Paragraph | Table)[] {
+  paragraphRtl = options.language === "fa";
   if (!signature || signature.data.length === 0) return [];
   const sigImg = (alignment?: (typeof AlignmentType)[keyof typeof AlignmentType]) =>
-    new Paragraph({
+    docParagraph({
       ...(alignment ? { alignment } : {}),
       children: [
         new ImageRun({
@@ -430,23 +460,24 @@ export function buildSignatureBlock(
     const role = options.signatureRole?.trim() || "";
     const center = AlignmentType.CENTER;
     const out: Paragraph[] = [
-      new Paragraph({ text: "با سپاس", alignment: center }),
+      docParagraph({ text: "با سپاس", alignment: center }),
       sigImg(center),
-      new Paragraph({ text: name, alignment: center }),
+      docParagraph({ text: name, alignment: center }),
     ];
-    if (role) out.push(new Paragraph({ text: role, alignment: center }));
+    if (role) out.push(docParagraph({ text: role, alignment: center }));
     return out;
   }
   return [
-    new Paragraph({ text: sectionTitle(lang, "approval"), heading: HeadingLevel.HEADING_1 }),
+    docParagraph({ text: sectionTitle(lang, "approval"), heading: HeadingLevel.HEADING_1 }),
     sigImg(),
-    new Paragraph(
+    docParagraph(
       `Engineer: ${options.engineer || "—"}    Date: ${options.reportDate || "—"}`
     ),
   ];
 }
 
 export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
+  paragraphRtl = input.options.language === "fa";
   const stats = computeStats(input.spectra);
   const limit = input.options.pointLimit ?? 120;
   const rows = input.spectra.slice(0, Math.max(1, Math.min(limit, input.spectra.length)));
@@ -464,7 +495,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const headerChildren: Paragraph[] = [];
   if (input.branding?.logoPng && input.branding.logoPng.length > 0) {
     headerChildren.push(
-      new Paragraph({
+      docParagraph({
         children: [
           new ImageRun({
             data: input.branding.logoPng,
@@ -477,9 +508,9 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     );
   }
   headerChildren.push(
-    new Paragraph({
+    docParagraph({
       children: [
-        new TextRun({
+        docRun({
           text: input.options.projectName || "Untitled report",
           bold: true,
           size: 56,
@@ -489,26 +520,26 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       heading: HeadingLevel.TITLE,
       alignment: align,
     }),
-    new Paragraph({
+    docParagraph({
       children: [
-        new TextRun({
+        docRun({
           text: `${template.name} template · ${input.options.reportDate || "—"}`,
           color: template.accentHex,
         }),
       ],
       alignment: align,
     }),
-    new Paragraph({
+    docParagraph({
       children: [
-        new TextRun(
+        docRun(
           `Engineer: ${input.options.engineer || "—"}    Date: ${input.options.reportDate || "—"}    Units: ${input.options.units || "SI"}`
         ),
       ],
       alignment: align,
     }),
-    new Paragraph({
+    docParagraph({
       children: [
-        new TextRun(
+        docRun(
           `Source: ${input.meta.filename} (${input.meta.source}) · ${stats.spectra_points} points · peak ${stats.peak.amp} @ ${stats.peak.freq}`
         ),
       ],
@@ -517,8 +548,8 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   );
   if (template.coverStyle === "minimal") {
     headerChildren.push(
-      new Paragraph({
-        children: [new TextRun({ text: "—", color: template.accentHex })],
+      docParagraph({
+        children: [docRun({ text: "—", color: template.accentHex })],
         alignment: align,
       })
     );
@@ -531,7 +562,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         children: ["Freq", "Amp"].map(
           (t) =>
             new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text: t, bold: true })] })],
+              children: [docParagraph({ children: [docRun({ text: t, bold: true })] })],
             })
         ),
       }),
@@ -539,7 +570,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         (p) =>
           new TableRow({
             children: [String(p.freq), String(p.amp)].map(
-              (t) => new TableCell({ children: [new Paragraph(t)] })
+              (t) => new TableCell({ children: [docParagraph(t)] })
             ),
           })
       ),
@@ -560,12 +591,12 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     new TableCell({
       ...(c.fill ? { shading: { type: ShadingType.CLEAR, fill: c.fill, color: "auto" } } : {}),
       children: [
-        new Paragraph({
+        docParagraph({
           children: [
             ...(c.png && c.png.length > 8
               ? [new ImageRun({ data: c.png, transformation: { width: 90, height: 28 }, type: "png" })]
               : []),
-            ...(c.text ? [new TextRun({ text: c.text, bold: bold || c.bold, color: c.color })] : []),
+            ...(c.text ? [docRun({ text: c.text, bold: bold || c.bold, color: c.color })] : []),
           ],
         }),
       ],
@@ -574,7 +605,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     if (rows.length === 0) return;
     const { header, body } = buildMeasuringTableData(rows, limits);
     children.push(
-      new Paragraph({ text: sectionTitle(lang, "measuring"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph({ text: sectionTitle(lang, "measuring"), heading: HeadingLevel.HEADING_1 }),
       new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
@@ -586,22 +617,22 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   };
   const pushTrends = (list: NonNullable<BuildDocxInput["allTrends"]>) => {
     if (list.length === 0) return;
-    children.push(new Paragraph({ text: sectionTitle(lang, "trendsAll"), heading: HeadingLevel.HEADING_1 }));
+    children.push(docParagraph({ text: sectionTitle(lang, "trendsAll"), heading: HeadingLevel.HEADING_1 }));
     for (const t of list.slice(0, 40)) {
       children.push(
-        new Paragraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({
+        docParagraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
+        docParagraph({
           children: [new ImageRun({ data: t.velocityPng, transformation: { width: 600, height: 300 }, type: "png" })],
           alignment: AlignmentType.CENTER,
         }),
-        new Paragraph({
+        docParagraph({
           children: [new ImageRun({ data: t.accelPng, transformation: { width: 600, height: 300 }, type: "png" })],
           alignment: AlignmentType.CENTER,
         }),
         ...(t.envelopePng
           ? [
-              new Paragraph({ text: sectionTitle(lang, "envelope"), heading: HeadingLevel.HEADING_2 }),
-              new Paragraph({
+              docParagraph({ text: sectionTitle(lang, "envelope"), heading: HeadingLevel.HEADING_2 }),
+              docParagraph({
                 children: [
                   new ImageRun({ data: t.envelopePng, transformation: { width: 600, height: 300 }, type: "png" }),
                 ],
@@ -614,11 +645,11 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   };
   const pushFft = (list: NonNullable<BuildDocxInput["fftGallery"]>, level: (typeof HeadingLevel)[keyof typeof HeadingLevel] = HeadingLevel.HEADING_1) => {
     if (list.length === 0) return;
-    children.push(new Paragraph({ text: sectionTitle(lang, "fft"), heading: level }));
+    children.push(docParagraph({ text: sectionTitle(lang, "fft"), heading: level }));
     for (const g of list.slice(0, 24)) {
       children.push(
-        new Paragraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({
+        docParagraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
+        docParagraph({
           children: [new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" })],
           alignment: AlignmentType.CENTER,
         })
@@ -629,12 +660,12 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   if (multi) {
     multi.forEach((eq, i) => {
       children.push(
-        new Paragraph({
+        docParagraph({
           heading: HeadingLevel.HEADING_1,
           children: [
             new Bookmark({
               id: equipmentBookmarkId(i + 1),
-              children: [new TextRun(`${sectionTitle(lang, "equipment")} ${i + 1}`)],
+              children: [docRun(`${sectionTitle(lang, "equipment")} ${i + 1}`)],
             }),
           ],
         })
@@ -650,8 +681,8 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     children.push(...equipmentSection(input.equipment, lang));
   }
     children.push(
-    new Paragraph({ text: sectionTitle(lang, "summary"), heading: HeadingLevel.HEADING_1 }),
-    new Paragraph(
+    docParagraph({ text: sectionTitle(lang, "summary"), heading: HeadingLevel.HEADING_1 }),
+    docParagraph(
       d?.summary ?? `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
     ),
   );
@@ -659,7 +690,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const overall = input.meta.overall;
   if (overall) {
     const cell = (t: string, bold = false) =>
-      new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: t, bold })] })] });
+      new TableCell({ children: [docParagraph({ children: [docRun({ text: t, bold })] })] });
     const extraRows: [string, string][] = [];
     if (input.zones) {
       extraRows.push(
@@ -669,7 +700,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       );
     }
     children.push(
-      new Paragraph({ text: sectionTitle(lang, "overall"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph({ text: sectionTitle(lang, "overall"), heading: HeadingLevel.HEADING_1 }),
       new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: [
@@ -690,7 +721,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     if (input.zones) {
       const z = classifyZone(overall.rmsV, input.zones.limits.velocity);
       children.push(
-        new Paragraph(
+        docParagraph(
           `This measurement: velocity zone ${z || "—"} (RMS-V ${overall.rmsV} against ${formatLimits(input.zones.limits.velocity)}).`
         )
       );
@@ -698,14 +729,14 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   }
 
   children.push(
-    new Paragraph({ text: sectionTitle(lang, "spectra"), heading: HeadingLevel.HEADING_1 }),
-    new Paragraph({
+    docParagraph({ text: sectionTitle(lang, "spectra"), heading: HeadingLevel.HEADING_1 }),
+    docParagraph({
       children: [
         new ImageRun({ data: png, transformation: { width: 600, height: 300 }, type: "png" }),
       ],
       alignment: AlignmentType.CENTER,
     }),
-    new Paragraph({ text: `${sectionTitle(lang, "data")} (${rows.length})`, heading: HeadingLevel.HEADING_1 }),
+    docParagraph({ text: `${sectionTitle(lang, "data")} (${rows.length})`, heading: HeadingLevel.HEADING_1 }),
     table
   );
 
@@ -716,41 +747,41 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   if (input.trends && input.trends.sampleCount > 0) {
     const t = input.trends;
     const trendImg = (data: Uint8Array) =>
-      new Paragraph({
+      docParagraph({
         children: [
           new ImageRun({ data, transformation: { width: 600, height: 300 }, type: "png" }),
         ],
         alignment: AlignmentType.CENTER,
       });
     children.push(
-      new Paragraph({ text: sectionTitle(lang, "trends"), heading: HeadingLevel.HEADING_1 }),
-      new Paragraph(`Point ${t.pointLabel} · ${t.window} · ${t.sampleCount} samples.`),
-      new Paragraph({ text: sectionTitle(lang, "velocity"), heading: HeadingLevel.HEADING_2 }),
+      docParagraph({ text: sectionTitle(lang, "trends"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph(`Point ${t.pointLabel} · ${t.window} · ${t.sampleCount} samples.`),
+      docParagraph({ text: sectionTitle(lang, "velocity"), heading: HeadingLevel.HEADING_2 }),
       trendImg(t.velocityPng),
-      new Paragraph({ text: sectionTitle(lang, "acceleration"), heading: HeadingLevel.HEADING_2 }),
+      docParagraph({ text: sectionTitle(lang, "acceleration"), heading: HeadingLevel.HEADING_2 }),
       trendImg(t.accelPng)
     );
   }
 
   if (!perMachineVib && input.allTrends && input.allTrends.length > 0) {
     children.push(
-      new Paragraph({ text: sectionTitle(lang, "trendsAll"), heading: HeadingLevel.HEADING_1 })
+      docParagraph({ text: sectionTitle(lang, "trendsAll"), heading: HeadingLevel.HEADING_1 })
     );
     for (const t of input.allTrends.slice(0, 40)) {
       children.push(
-        new Paragraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({
+        docParagraph({ text: `${t.pointLabel} · ${t.sampleCount} samples`, heading: HeadingLevel.HEADING_2 }),
+        docParagraph({
           children: [new ImageRun({ data: t.velocityPng, transformation: { width: 600, height: 300 }, type: "png" })],
           alignment: AlignmentType.CENTER,
         }),
-        new Paragraph({
+        docParagraph({
           children: [new ImageRun({ data: t.accelPng, transformation: { width: 600, height: 300 }, type: "png" })],
           alignment: AlignmentType.CENTER,
         }),
         ...(t.envelopePng
           ? [
-              new Paragraph({ text: sectionTitle(lang, "envelope"), heading: HeadingLevel.HEADING_2 }),
-              new Paragraph({
+              docParagraph({ text: sectionTitle(lang, "envelope"), heading: HeadingLevel.HEADING_2 }),
+              docParagraph({
                 children: [
                   new ImageRun({ data: t.envelopePng, transformation: { width: 600, height: 300 }, type: "png" }),
                 ],
@@ -764,12 +795,12 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 
   if (input.fftGallery && input.fftGallery.length > 0 && !multi?.some((e) => e.vib?.fft && e.vib.fft.length > 0)) {
     children.push(
-      new Paragraph({ text: sectionTitle(lang, "fft"), heading: HeadingLevel.HEADING_1 })
+      docParagraph({ text: sectionTitle(lang, "fft"), heading: HeadingLevel.HEADING_1 })
     );
     for (const g of input.fftGallery.slice(0, 24)) {
       children.push(
-        new Paragraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({
+        docParagraph({ text: g.peak ? `${g.label} · peak ${g.peak}` : g.label, heading: HeadingLevel.HEADING_2 }),
+        docParagraph({
           children: [new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" })],
           alignment: AlignmentType.CENTER,
         })
@@ -779,20 +810,20 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 
   if (d) {
     children.push(
-      new Paragraph({ text: sectionTitle(lang, "methodology"), heading: HeadingLevel.HEADING_1 }),
-      new Paragraph(d.methodology),
-      new Paragraph({ text: sectionTitle(lang, "observations"), heading: HeadingLevel.HEADING_1 }),
-      new Paragraph(d.observations),
-      new Paragraph({ text: sectionTitle(lang, "recommendations"), heading: HeadingLevel.HEADING_1 }),
-      new Paragraph(d.recommendations),
-      new Paragraph({ text: sectionTitle(lang, "conclusion"), heading: HeadingLevel.HEADING_1 }),
-      new Paragraph(d.conclusion)
+      docParagraph({ text: sectionTitle(lang, "methodology"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph(d.methodology),
+      docParagraph({ text: sectionTitle(lang, "observations"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph(d.observations),
+      docParagraph({ text: sectionTitle(lang, "recommendations"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph(d.recommendations),
+      docParagraph({ text: sectionTitle(lang, "conclusion"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph(d.conclusion)
     );
   }
   if (input.options.notes) {
     children.push(
-      new Paragraph({ text: sectionTitle(lang, "notes"), heading: HeadingLevel.HEADING_1 }),
-      new Paragraph(input.options.notes)
+      docParagraph({ text: sectionTitle(lang, "notes"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph(input.options.notes)
     );
   }
 
@@ -813,7 +844,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
               page: { margin: { top: 400, bottom: 400, left: 400, right: 400 } },
             },
             children: [
-              new Paragraph({
+              docParagraph({
                 alignment: AlignmentType.CENTER,
                 children: [
                   new ImageRun({
@@ -840,17 +871,17 @@ function buildIsoSection(lang: "en" | "fa" = "en", groups?: "all" | "1+3" | "2+4
       ...(c.span && c.span > 1 ? { columnSpan: c.span } : {}),
       ...(c.fill ? { shading: { type: ShadingType.CLEAR, fill: c.fill, color: "auto" } } : {}),
       children: [
-        new Paragraph({
+        docParagraph({
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: c.text, bold: bold || c.bold, color: c.color, size: 16 })],
+          children: [docRun({ text: c.text, bold: bold || c.bold, color: c.color, size: 16 })],
         }),
       ],
     });
   return [
-    new Paragraph({ text: sectionTitle(lang, "iso"), heading: HeadingLevel.HEADING_1 }),
-    new Paragraph({
+    docParagraph({ text: sectionTitle(lang, "iso"), heading: HeadingLevel.HEADING_1 }),
+    docParagraph({
       children: [
-        new TextRun({
+        docRun({
           text: sectionTitle(lang, "isoBlurb"),
           italics: true,
         }),

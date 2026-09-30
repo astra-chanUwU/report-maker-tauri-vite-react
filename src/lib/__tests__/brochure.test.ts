@@ -128,6 +128,12 @@ describe("equipments + toc", () => {
       fftGallery: [{ label: "7 / 1", png: renderChartPng(parsed.spectra), peak: "1 @ 2" }],
     });
     expect(full.size).toBeGreaterThan(bare.size);
+    const JSZip = (await import("jszip")).default;
+    const faXml = await (await JSZip.loadAsync(await full.arrayBuffer())).file("word/document.xml")!.async("string");
+    const enXml = await (await JSZip.loadAsync(await bare.arrayBuffer())).file("word/document.xml")!.async("string");
+    expect(faXml).toContain("<w:bidi/>");
+    expect(faXml).toContain("fa-IR");
+    expect(enXml).not.toContain("<w:bidi/>");
   }, 30000);
 });
 
