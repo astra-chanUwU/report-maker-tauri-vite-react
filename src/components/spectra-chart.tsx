@@ -54,8 +54,12 @@ export function SpectraChart({
       className="w-full rounded-lg border bg-card"
       style={{ height }}
       role="img"
-      aria-label="Spectra preview chart"
+      aria-label={`Spectra preview chart — ${spectra.length} points, peak ${model.peak.amp} at ${model.peak.freq}`}
     >
+      <title>Spectra preview</title>
+      <desc>
+        {spectra.length} points, peak {model.peak.amp} at {model.peak.freq}
+      </desc>
       {[0.25, 0.5, 0.75].map((t) => (
         <line
           key={t}

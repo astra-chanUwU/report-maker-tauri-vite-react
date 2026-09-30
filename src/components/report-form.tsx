@@ -45,9 +45,14 @@ export function ReportForm({
             value={options.projectName}
             placeholder="e.g. Site survey 04"
             onChange={(e) => set({ projectName: e.target.value })}
+            aria-required="true"
+            aria-invalid={!!errors.projectName}
+            aria-describedby={errors.projectName ? "err-project" : undefined}
           />
           {touched && errors.projectName ? (
-            <p className="text-xs text-destructive">{errors.projectName}</p>
+            <p id="err-project" className="text-xs text-destructive" role="alert">
+              {errors.projectName}
+            </p>
           ) : null}
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -58,9 +63,14 @@ export function ReportForm({
               value={options.engineer}
               placeholder="e.g. A. Chan"
               onChange={(e) => set({ engineer: e.target.value })}
+              aria-required="true"
+              aria-invalid={!!errors.engineer}
+              aria-describedby={errors.engineer ? "err-engineer" : undefined}
             />
             {touched && errors.engineer ? (
-              <p className="text-xs text-destructive">{errors.engineer}</p>
+              <p id="err-engineer" className="text-xs text-destructive" role="alert">
+                {errors.engineer}
+              </p>
             ) : null}
           </div>
           <div className="grid gap-2">
@@ -70,9 +80,14 @@ export function ReportForm({
               type="date"
               value={options.reportDate}
               onChange={(e) => set({ reportDate: e.target.value })}
+              aria-required="true"
+              aria-invalid={!!errors.reportDate}
+              aria-describedby={errors.reportDate ? "err-date" : undefined}
             />
             {touched && errors.reportDate ? (
-              <p className="text-xs text-destructive">{errors.reportDate}</p>
+              <p id="err-date" className="text-xs text-destructive" role="alert">
+                {errors.reportDate}
+              </p>
             ) : null}
           </div>
         </div>
@@ -84,6 +99,7 @@ export function ReportForm({
                 <Button
                   key={u}
                   type="button"
+                  aria-pressed={options.units === u}
                   variant={options.units === u ? "default" : "outline"}
                   size="sm"
                   onClick={() => set({ units: u })}

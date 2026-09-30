@@ -13,6 +13,8 @@ const ACCEPT = ".sp3,.txt,.csv";
 
 /** Head slice for huge files: enough for header + first rows (Spec path needs ~200KB). */
 const HEAD_SLICE = 4 * 1024 * 1024;
+/** Above this, never buffer the whole file — first-row-only or error. */
+const FULL_BUFFER_GUARD = 50 * 1024 * 1024;
 
 export function Ingest({
   onParsed,
@@ -26,44 +28,70 @@ export function Ingest({
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const handleFile = useCallback(
     async (file: File) => {
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
       setError(null);
       setLoading(true);
       try {
+        if (ctrl.signal.aborted) return;
         let parsed: ParseResult;
         if (file.size > HEAD_SLICE) {
-          // Giant exports (100s of MB): preview-parse the head only. The
-          // measurement picker streams rows on demand, so nothing is lost.
-          const head = parseSp3(
-            new Uint8Array(await file.slice(0, HEAD_SLICE).arrayBuffer()),
-            file.name
-          );
-          parsed =
-            head.meta.source === "spec-csv"
-              ? {
-                  ...head,
-                  meta: { ...head.meta, size: file.size, extraRows: undefined },
-                  warning: undefined,
-                }
-              : parseSp3(new Uint8Array(await file.arrayBuffer()), file.name);
+          const headBuf = await file.slice(0, HEAD_SLICE).arrayBuffer();
+          if (ctrl.signal.aborted) return;
+          const head = parseSp3(new Uint8Array(headBuf), file.name);
+          if (head.meta.source === "spec-csv") {
+            parsed = {
+              ...head,
+              meta: { ...head.meta, size: file.size, extraRows: undefined },
+              warning: undefined,
+            };
+          } else if (file.size > FULL_BUFFER_GUARD) {
+            // Never buffer 50MB+ non-CSV into RAM — would OOM in WebView.
+            throw new Error(
+              `File is ${(file.size / 1024 / 1024).toFixed(0)} MB and not a Data-table CSV export. Split or export one row per file (mdb-export file.sp3 Data > data.csv) then drop the CSV. Showing preview skipped to avoid out-of-memory.`
+            );
+          } else {
+            const buf = await file.arrayBuffer();
+            if (ctrl.signal.aborted) return;
+            parsed = parseSp3(new Uint8Array(buf), file.name);
+          }
         } else {
           const buf = await file.arrayBuffer();
+          if (ctrl.signal.aborted) return;
           parsed = parseSp3(new Uint8Array(buf), file.name);
         }
+        if (ctrl.signal.aborted) return;
         setResult(parsed);
         onParsed?.(parsed, file);
       } catch (e) {
+        if ((e as Error)?.name === "AbortError") return;
+        const msg =
+          e instanceof Error
+            ? e.message.includes("out of memory") ||
+              e.message.includes("Array buffer allocation failed")
+              ? "File too large to preview in the browser — use the desktop app's 'Open .sp3 file' or export one row per CSV."
+              : e.message
+            : "Failed to parse file.";
         setResult(null);
         onParsed?.(null);
-        setError(e instanceof Error ? e.message : "Failed to parse file.");
+        setError(msg);
       } finally {
-        setLoading(false);
+        if (abortRef.current === ctrl) setLoading(false);
       }
     },
     [onParsed]
   );
+
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+    setLoading(false);
+    setError("Cancelled.");
+  }, []);
 
   return (
     <div className="grid gap-4">
@@ -76,9 +104,15 @@ export function Ingest({
           <div
             role="button"
             tabIndex={0}
-            aria-label="Drop .sp3 file here"
-            onClick={() => inputRef.current?.click()}
-            onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+            aria-label="Drop .sp3, .txt or .csv file here — press Enter or Space to browse"
+            aria-busy={loading}
+            onClick={() => !loading && inputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                inputRef.current?.click();
+              }
+            }}
             onDragOver={(e) => {
               e.preventDefault();
               setDragging(true);
@@ -91,13 +125,17 @@ export function Ingest({
               if (f) void handleFile(f);
             }}
             className={cn(
-              "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 text-sm transition-colors",
+              "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-8 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               dragging ? "border-primary bg-accent" : "hover:bg-accent/50"
             )}
           >
-            <FileUp className="h-6 w-6 text-muted-foreground" />
-            <p>{loading ? "Parsing…" : "Drop .sp3 / .txt / .csv here, or click to browse"}</p>
-            <Button variant="outline" size="sm" type="button">
+            <FileUp className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+            <p aria-live="polite">
+              {loading
+                ? "Parsing… large files preview first row only."
+                : "Drop .sp3 / .txt / .csv here, or click to browse"}
+            </p>
+            <Button variant="outline" size="sm" type="button" tabIndex={-1} aria-hidden="true">
               Browse files
             </Button>
             <input
@@ -105,6 +143,7 @@ export function Ingest({
               type="file"
               accept={ACCEPT}
               className="hidden"
+              aria-hidden="true"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void handleFile(f);
@@ -112,7 +151,21 @@ export function Ingest({
               }}
             />
           </div>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {loading ? (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground" aria-live="polite" aria-busy="true">
+                Reading file…
+              </p>
+              <Button variant="ghost" size="sm" onClick={cancel}>
+                Cancel
+              </Button>
+            </div>
+          ) : null}
+          {error ? (
+            <p className="text-sm text-destructive" role="alert" aria-live="assertive">
+              {error}
+            </p>
+          ) : null}
           {!result && !error ? (
             <p className="text-sm text-muted-foreground">No file loaded yet. Try the demo below.</p>
           ) : null}

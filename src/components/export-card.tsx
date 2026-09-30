@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, FolderOpen } from "lucide-react";
-import { buildDocx, type MeasureRow } from "../lib/generateDocx";
+import { type MeasureRow } from "../lib/generateDocx";
 import { fallbackDraft } from "../lib/ai";
 import type { CsvRowSummary } from "../lib/mdb";
 import type { ParseResult, ReportOptions } from "../lib/parseSp3";
@@ -85,6 +85,7 @@ export function ExportCard({
               })),
             }
           : undefined;
+      const { buildDocx } = await import("../lib/generateDocx");
       const blob = await buildDocx({
         meta: parsed.meta,
         spectra: parsed.spectra,
@@ -97,6 +98,7 @@ export function ExportCard({
         zones,
       });
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
+      // filename preview already sanitized — shown below when enabled
       const savedPath = await saveBlob(blob, filename);
       if (savedPath) setLastPath(savedPath);
       onExported?.({ filename, savedPath });
@@ -132,18 +134,38 @@ export function ExportCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
-        <Button onClick={handleExport} disabled={!canExport}>
-          <Download />
+        <Button
+          onClick={handleExport}
+          disabled={!canExport}
+          aria-busy={busy}
+          aria-label={busy ? "Generating report" : "Generate report"}
+        >
+          <Download aria-hidden="true" />
           {busy ? "Generating…" : "Generate Report"}
         </Button>
         {lastPath ? (
-          <Button variant="outline" size="sm" onClick={handleReveal}>
-            <FolderOpen />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReveal}
+            aria-label="Reveal exported file in folder"
+          >
+            <FolderOpen aria-hidden="true" />
             Open folder
           </Button>
         ) : null}
         {!parsed ? (
           <p className="text-xs text-muted-foreground">Drop a file to enable export.</p>
+        ) : null}
+        {parsed ? (
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            Will save as{" "}
+            <code>
+              {sanitizeFilename(options.projectName) || "report"}-
+              {options.reportDate || "YYYY-MM-DD"}.docx
+            </code>{" "}
+            — Tauri save dialog when available, otherwise download.
+          </p>
         ) : null}
       </CardContent>
     </Card>
