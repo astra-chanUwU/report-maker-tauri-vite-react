@@ -136,8 +136,13 @@ export function ChartEditor({
           onMouseUp={() => setDragIdx(null)}
           onMouseLeave={() => setDragIdx(null)}
           role="img"
-          aria-label="Editable spectra chart"
+          aria-label={`Editable spectra chart — ${spectra.length} points, peak ${peak?.amp} at ${peak?.freq}`}
         >
+          <title>Editable spectra chart</title>
+          <desc>
+            {spectra.length} points, peak {peak?.amp} at {peak?.freq}. Drag points vertically or use
+            arrow keys on selected points.
+          </desc>
           {[0.25, 0.5, 0.75].map((t) => (
             <line
               key={t}
@@ -163,10 +168,35 @@ export function ChartEditor({
               stroke="#1e3a8a"
               strokeWidth={1}
               style={{ cursor: "ns-resize" }}
+              tabIndex={0}
+              role="slider"
+              aria-label={`Point ${k + 1} freq ${p.freq} amp ${p.amp}`}
+              aria-valuemin={Math.floor(model.aMin)}
+              aria-valuemax={Math.ceil(model.aMax)}
+              aria-valuenow={p.amp}
               onMouseDown={(e) => {
                 e.preventDefault();
                 setDragIdx(k);
               }}
+              onKeyDown={(e) => {
+                const step = (model.aMax - model.aMin) / 100 || 0.01;
+                let delta = 0;
+                if (e.key === "ArrowUp") delta = step;
+                else if (e.key === "ArrowDown") delta = -step;
+                else if (e.key === "PageUp") delta = step * 10;
+                else if (e.key === "PageDown") delta = -step * 10;
+                else return;
+                e.preventDefault();
+                const origIdx = editIdx[k];
+                const next = spectra.slice();
+                next[origIdx] = {
+                  ...next[origIdx],
+                  amp: Math.round((p.amp + delta) * 1000) / 1000,
+                };
+                onChange(next);
+              }}
+              onFocus={() => setDragIdx(k)}
+              onBlur={() => setDragIdx(null)}
             />
           ))}
         </svg>

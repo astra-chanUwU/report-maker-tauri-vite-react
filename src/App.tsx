@@ -12,6 +12,7 @@ import { Ingest } from "./components/ingest";
 import { LicenseCard } from "./components/license";
 import { MdbImportCard } from "./components/mdb-import";
 import { MeasurementPicker } from "./components/measurement-picker";
+import { Onboarding } from "./components/onboarding";
 import { ReportForm } from "./components/report-form";
 import { TelemetryCard } from "./components/telemetry";
 import { addHistoryEntry, makeEntry } from "./lib/history";
@@ -98,95 +99,118 @@ function App() {
   };
 
   return (
-    <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Report Maker</h1>
-          <p className="text-sm text-muted-foreground">
-            {effective
-              ? `${effective.meta.filename} · ${effective.stats.spectra_points} pts · peak ${effective.stats.peak.amp} @ ${effective.stats.peak.freq}`
-              : "Drop a .sp3 to begin."}
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setDark((d) => !d)}
-          aria-label="Toggle dark mode"
-        >
-          {dark ? <Sun /> : <Moon />}
-        </Button>
-      </header>
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="report">Report</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
-          <TabsTrigger value="design">Design</TabsTrigger>
-        </TabsList>
-        <TabsContent value="report" className="grid gap-4">
-          <MdbImportCard onConverted={handleParsed} />
-          <Ingest onParsed={handleParsed} />
-          {effective &&
-          (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
-            <MeasurementPicker
-              tauriPath={effective.meta.csvPath ?? null}
-              file={effective.meta.csvPath ? null : csvFile}
-              filename={effective.meta.filename}
-              current={
-                effective.meta.overall
-                  ? {
-                      pointId: effective.meta.overall.pointId,
-                      measDate: effective.meta.overall.measDate,
-                    }
-                  : null
-              }
-              onSelect={handlePicked}
+    <>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
+      >
+        Skip to content
+      </a>
+      <main id="main" className="mx-auto max-w-3xl space-y-4 p-6">
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">Report Maker</h1>
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {effective
+                ? `${effective.meta.filename} · ${effective.stats.spectra_points} pts · peak ${effective.stats.peak.amp} @ ${effective.stats.peak.freq}`
+                : "Drop a .sp3 to begin."}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setDark((d) => !d)}
+            aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-pressed={dark}
+          >
+            {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+          </Button>
+        </header>
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="report">Report</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="design">Design</TabsTrigger>
+          </TabsList>
+          <TabsContent value="report" className="grid gap-4">
+            {!effective ? <Onboarding /> : null}
+            <MdbImportCard onConverted={handleParsed} />
+            <div id="ingest">
+              <Ingest onParsed={handleParsed} />
+            </div>
+            {effective &&
+            (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile)) ? (
+              <MeasurementPicker
+                tauriPath={effective.meta.csvPath ?? null}
+                file={effective.meta.csvPath ? null : csvFile}
+                filename={effective.meta.filename}
+                current={
+                  effective.meta.overall
+                    ? {
+                        pointId: effective.meta.overall.pointId,
+                        measDate: effective.meta.overall.measDate,
+                      }
+                    : null
+                }
+                onSelect={handlePicked}
+              />
+            ) : null}
+            <ReportForm options={options} onChange={setOptions} />
+            <AiDraftCard
+              parsed={effective}
+              options={options}
+              draft={aiDraft}
+              onChange={setAiDraft}
             />
-          ) : null}
-          <ReportForm options={options} onChange={setOptions} />
-          <AiDraftCard parsed={effective} options={options} draft={aiDraft} onChange={setAiDraft} />
-          {effective ? (
-            <ChartEditor
-              spectra={effective.spectra}
-              onChange={setEdited}
+            {effective ? (
+              <ChartEditor
+                spectra={effective.spectra}
+                onChange={setEdited}
+                options={options}
+                onOptions={setOptions}
+              />
+            ) : null}
+            <BrandingCard
               options={options}
               onOptions={setOptions}
+              branding={branding}
+              onBranding={setBranding}
             />
-          ) : null}
-          <BrandingCard
-            options={options}
-            onOptions={setOptions}
-            branding={branding}
-            onBranding={setBranding}
-          />
-          <ExportCard
-            parsed={effective}
-            options={options}
-            branding={branding}
-            aiDraft={aiDraft}
-            onExported={handleExported}
-          />
-        </TabsContent>
-        <TabsContent value="history">
-          <HistoryTab
-            key={historyTick}
-            onReopen={(o) => {
-              setOptions(o);
-              setTab("report");
-            }}
-          />
-        </TabsContent>
-        <TabsContent value="design">
-          <DesignDemo />
-        </TabsContent>
-        <TabsContent value="settings" className="grid gap-4">
-          <LicenseCard />
-          <AiSettingsCard />
-          <TelemetryCard />
-        </TabsContent>
-      </Tabs>
-    </main>
+            <ExportCard
+              parsed={effective}
+              options={options}
+              branding={branding}
+              aiDraft={aiDraft}
+              onExported={handleExported}
+            />
+            {!effective ? (
+              <p className="text-xs text-muted-foreground">
+                Need help? See README → “Importing real data” for mdb-export install, and History
+                for past reports.
+              </p>
+            ) : null}
+          </TabsContent>
+          <TabsContent value="history">
+            <HistoryTab
+              key={historyTick}
+              onReopen={(o) => {
+                setOptions(o);
+                setTab("report");
+              }}
+            />
+          </TabsContent>
+          <TabsContent value="design">
+            <DesignDemo />
+          </TabsContent>
+          <TabsContent value="settings" className="grid gap-4">
+            <LicenseCard />
+            <AiSettingsCard />
+            <TelemetryCard />
+          </TabsContent>
+        </Tabs>
+      </main>
+    </>
   );
 }
 

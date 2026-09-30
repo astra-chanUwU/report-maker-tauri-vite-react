@@ -41,12 +41,12 @@ fn candidate_tool_paths(override_path: Option<String>) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if let Some(p) = override_path {
         let p = p.trim();
-        if (!p.is_empty()) {
+        if !p.is_empty() {
             out.push(PathBuf::from(p));
         }
     }
     if let Ok(p) = std::env::var("MDB_EXPORT_PATH") {
-        if (!p.trim().is_empty()) {
+        if !p.trim().is_empty() {
             out.push(PathBuf::from(p));
         }
     }
@@ -59,7 +59,7 @@ fn resolve_tool(override_path: Option<String>) -> Option<PathBuf> {
     for cand in candidate_tool_paths(override_path) {
         // A bare name relies on PATH; an absolute/relative path must exist.
         let has_sep = cand.to_string_lossy().contains(['/', '\\']);
-        if (has_sep && cand.is_file()) || !has_sep {
+        if has_sep && cand.is_file() || !has_sep {
             return Some(cand);
         }
     }
@@ -70,10 +70,10 @@ fn tool_version(tool: &PathBuf) -> String {
     match Command::new(tool).arg("--version").output() {
         Ok(o) => {
             let mut s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if (s.is_empty()) {
+            if s.is_empty() {
                 s = String::from_utf8_lossy(&o.stderr).trim().to_string();
             }
-            if (s.is_empty()) {
+            if s.is_empty() {
                 "responded".into()
             } else {
                 s.lines().next().unwrap_or("").chars().take(80).collect()
@@ -116,11 +116,11 @@ pub fn export_mdb_csv(
         "mdb-export not found. Install mdbtools (or set MDB_EXPORT_PATH / Settings path).".to_string()
     })?;
     let table = table.unwrap_or_else(|| "Data".to_string());
-    if (table.trim().is_empty()) {
+    if table.trim().is_empty() {
         return Err("Table name is empty.".to_string());
     }
     let input_path = PathBuf::from(&input);
-    if (!input_path.is_file()) {
+    if !input_path.is_file() {
         return Err(format!("Input file not found: {input}"));
     }
 
@@ -155,21 +155,21 @@ pub fn export_mdb_csv(
         let mut chunk = [0u8; 65536];
         loop {
             let n = stdout.read(&mut chunk).map_err(|e| format!("read failed: {e}"))?;
-            if (n == 0) {
+            if n == 0 {
                 break;
             }
             let buf = &chunk[..n];
             file.write_all(buf).map_err(|e| format!("write failed: {e}"))?;
             bytes += n as u64;
-            if (head.len() < HEAD_CAP) {
+            if head.len() < HEAD_CAP {
                 let take = (HEAD_CAP - head.len()).min(n);
                 head.extend_from_slice(&buf[..take]);
             }
             // Newlines: handle both \n and UTF-16LE \n\0 (count \n bytes; the
             // \0 of UTF-16LE never collides with a 0x0A byte scan for \r\n/\n).
             for &b in buf {
-                if (b == b'\n') {
-                    if (newline_seen) {
+                if b == b'\n' {
+                    if newline_seen {
                         rows += 1;
                     } else {
                         newline_seen = true;
@@ -180,12 +180,12 @@ pub fn export_mdb_csv(
     }
 
     let output = child.wait_with_output().map_err(|e| format!("wait failed: {e}"))?;
-    if (!output.status.success()) {
+    if !output.status.success() {
         let _ = std::fs::remove_file(&csv_path);
         let err = String::from_utf8_lossy(&output.stderr).trim().chars().take(300).collect::<String>();
         return Err(format!("mdb-export failed: {err}"));
     }
-    if (bytes < 16 || !newline_seen) {
+    if bytes < 16 || !newline_seen {
         let _ = std::fs::remove_file(&csv_path);
         return Err("mdb-export produced no output â€” is this a valid .sp3 with a Data table?".to_string());
     }
@@ -200,7 +200,7 @@ pub fn export_mdb_csv(
 
 fn sanitize(s: &str) -> String {
     s.chars()
-        .map(|c| if (c.is_ascii_alphanumeric() || c == '-' || c == '_') { c } else { '-' })
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
         .take(40)
         .collect()
 }
@@ -251,9 +251,9 @@ fn split_csv_line(line: &str) -> Vec<String> {
     let mut in_quotes = false;
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
-        if (in_quotes) {
-            if (c == '"') {
-                if (chars.peek() == Some(&'"')) {
+        if in_quotes {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
                     cur.push('"');
                     chars.next();
                 } else {
@@ -262,9 +262,9 @@ fn split_csv_line(line: &str) -> Vec<String> {
             } else {
                 cur.push(c);
             }
-        } else if (c == '"') {
+        } else if c == '"' {
             in_quotes = true;
-        } else if (c == ',') {
+        } else if c == ',' {
             cells.push(std::mem::take(&mut cur));
         } else {
             cur.push(c);
@@ -276,17 +276,17 @@ fn split_csv_line(line: &str) -> Vec<String> {
 
 fn read_csv_text(path: &str) -> Result<String, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("cannot read csv: {e}"))?;
-    if (bytes.len() > 1536 * 1024 * 1024) {
+    if bytes.len() > 1536 * 1024 * 1024 {
         return Err("CSV larger than 1.5 GiB is not supported.".to_string());
     }
-    if (bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+    if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
         let u16s: Vec<u16> = bytes[2..]
             .chunks_exact(2)
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect();
         Ok(String::from_utf16_lossy(&u16s))
     } else {
-        let start = if (bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+        let start = if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
             3
         } else {
             0
@@ -310,16 +310,16 @@ pub fn list_csv_rows(path: String, limit: Option<usize>) -> Result<CsvRowList, S
     let mut lines = text.lines();
     let header_line = lines.next().ok_or("CSV is empty.")?.to_string();
     let header = split_csv_line(&header_line);
-    if (!header.contains(&"Specdata".to_string())) {
+    if !header.contains(&"Specdata".to_string()) {
         return Err("Not a Data-table export (no Specdata column).".to_string());
     }
     let cap = limit.unwrap_or(ROW_LIST_CAP).min(ROW_LIST_CAP);
     let mut rows = Vec::new();
     for (index, line) in lines.enumerate() {
-        if (rows.len() >= cap) {
+        if rows.len() >= cap {
             break;
         }
-        if (line.trim().is_empty()) {
+        if line.trim().is_empty() {
             continue;
         }
         let cells = split_csv_line(line);
@@ -346,10 +346,10 @@ pub fn read_csv_row(path: String, index: usize) -> Result<CsvFullRow, String> {
     let header = split_csv_line(&header_line);
     let mut seen = 0usize;
     for line in lines {
-        if (line.trim().is_empty()) {
+        if line.trim().is_empty() {
             continue;
         }
-        if (seen == index) {
+        if seen == index {
             return Ok(CsvFullRow { header, cells: split_csv_line(line) });
         }
         seen += 1;

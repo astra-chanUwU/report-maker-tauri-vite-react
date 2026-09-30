@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "report-maker",
+  "productName": "Report Maker",
   "version": "0.1.0",
   "identifier": "com.reportmaker.app",
   "build": {
@@ -13,8 +13,11 @@
     "windows": [
       {
         "title": "Report Maker",
-        "width": 800,
-        "height": 600
+        "width": 960,
+        "height": 680,
+        "minWidth": 760,
+        "minHeight": 540,
+        "resizable": true
       }
     ],
     "security": {
@@ -24,12 +27,34 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Report Maker",
+    "category": "Utility",
+    "copyright": "© Report Maker",
+    "shortDescription": "Offline spectral report maker — .sp3/CSV → .docx",
+    "longDescription": "Import vibration .sp3 (Jet MDB via mdb-export) or Data-table CSV exports and generate editable Word reports with charts, metadata, and optional AI drafts. Fully offline-capable.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": [],
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false
+      },
+      "wix": {
+        "language": "en-US"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    }
   }
 }
