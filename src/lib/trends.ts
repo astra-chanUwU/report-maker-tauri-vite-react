@@ -67,6 +67,36 @@ export function takeLastHistory(samples: TrendSample[], n: number | "all"): Tren
   return samples.slice(Math.max(0, samples.length - Math.floor(n)));
 }
 
+/** Batch builder for "export all points" (brochure p.6): one V+A PNG pair per point. */
+export function buildAllTrendSnapshots(
+  histories: PointHistory[],
+  limits: { velocity: ZoneLimits; acceleration: ZoneLimits },
+  window: number | "all",
+  capPoints = 40
+): { pointLabel: string; sampleCount: number; velocityPng: Uint8Array; accelPng: Uint8Array }[] {
+  const out: {
+    pointLabel: string;
+    sampleCount: number;
+    velocityPng: Uint8Array;
+    accelPng: Uint8Array;
+  }[] = [];
+  for (const h of histories.slice(0, Math.max(1, capPoints))) {
+    const samples = takeLastHistory(h.samples, window);
+    if (samples.length === 0) continue;
+    try {
+      out.push({
+        pointLabel: h.label,
+        sampleCount: samples.length,
+        velocityPng: renderTrendPng(samples, "rmsV", limits.velocity),
+        accelPng: renderTrendPng(samples, "rmsA", limits.acceleration),
+      });
+    } catch {
+      // skip undecodable histories — single-point export still works
+    }
+  }
+  return out;
+}
+
 /** Y-axis top: data headroom plus room for thresholds (mirrors trend_chart_y_limits). */
 export function trendYMax(values: (number | null)[], limits: ZoneLimits): number {
   const finite = values.filter((v): v is number => v !== null && Number.isFinite(v));

@@ -1,12 +1,16 @@
 import { useState } from "react";
 import { Download, FolderOpen } from "lucide-react";
-import { type MeasureRow } from "../lib/generateDocx";
+import { renderChartPng, type MeasureRow } from "../lib/generateDocx";
 import { fallbackDraft } from "../lib/ai";
-import type { CsvRowSummary } from "../lib/mdb";
-import type { ParseResult, ReportOptions } from "../lib/parseSp3";
+import type { EquipmentItem } from "../lib/equipment";
+import { isoToJalaliFa } from "../lib/fa";
+import { findLastReportFor } from "../lib/history";
+import { loadFileRow, loadTauriRow, type CsvRowSummary } from "../lib/mdb";
+import { computeStats, type ParseResult, type ReportOptions } from "../lib/parseSp3";
 import { base64ToBytes, validateReportOptions, type Branding } from "../lib/settings";
 import { oleDateToISO } from "../lib/specdata";
 import { track } from "../lib/telemetry";
+import { buildAllTrendSnapshots, groupHistories } from "../lib/trends";
 import type { ZoneLimitSet } from "../lib/zones";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
@@ -31,6 +35,9 @@ export function ExportCard({
   limits,
   measureRows,
   trendSnap,
+  equipments,
+  tauriPath,
+  csvFile,
 }: {
   parsed: ParseResult | null;
   options: ReportOptions;
@@ -52,6 +59,9 @@ export function ExportCard({
     velocityPng: Uint8Array;
     accelPng: Uint8Array;
   } | null;
+  equipments?: EquipmentItem[];
+  tauriPath?: string | null;
+  csvFile?: File | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [lastPath, setLastPath] = useState<string | null>(null);
@@ -71,6 +81,10 @@ export function ExportCard({
     setBusy(true);
     try {
       const pointLimit = Math.max(1, Math.min(options.pointLimit ?? 120, 500));
+      const effOptions: ReportOptions =
+        options.language === "fa" && !options.jalaliDate && options.reportDate
+          ? { ...options, jalaliDate: isoToJalaliFa(options.reportDate), pointLimit }
+          : { ...options, pointLimit };
       const hasDraft = aiDraft && Object.values(aiDraft).some((v) => v.trim());
       const draft = hasDraft
         ? aiDraft
@@ -94,12 +108,77 @@ export function ExportCard({
               })),
             }
           : undefined;
+      // Last-report autofill (brochure p.5)
+      let lastReport = options.equipmentLastReport ?? "";
+      if (!lastReport.trim() && options.equipmentName?.trim()) {
+        try {
+          const prev = await findLastReportFor(options.equipmentName);
+          if (prev) lastReport = `${prev.date} · ${prev.filename}`;
+        } catch {
+          // offline-safe: leave empty
+        }
+      }
+      // All-points trends (brochure p.6)
+      let allTrends: { pointLabel: string; sampleCount: number; velocityPng: Uint8Array; accelPng: Uint8Array }[] | undefined;
+      if (options.trendAllPoints !== false && limits && measureRows && measureRows.length > 1) {
+        try {
+          let win: number | "all" = 10;
+          const w = trendSnap?.window ?? "";
+          if (/all/i.test(w)) win = "all";
+          else {
+            const m = /last\s+(\d+)/i.exec(w);
+            if (m) win = Number(m[1]);
+          }
+          allTrends = buildAllTrendSnapshots(groupHistories(measureRows), limits, win);
+          // single-point mode already covers it — skip duplicate
+          if (allTrends.length <= 1) allTrends = undefined;
+        } catch {
+          allTrends = undefined;
+        }
+      }
+      // FFT gallery for all points (brochure p.7): load up to 12 spectra
+      let fftGallery: { label: string; png: Uint8Array; peak?: string }[] | undefined;
+      if (options.fftAllPoints !== false && measureRows && measureRows.length > 1) {
+        try {
+          const cap = Math.min(measureRows.length, 12);
+          const items: { label: string; png: Uint8Array; peak?: string }[] = [];
+          const filename = parsed.meta.filename;
+          for (let i = 0; i < cap; i++) {
+            const row = measureRows[i];
+            let pr: ParseResult | null = null;
+            if (tauriPath) {
+              try {
+                pr = await loadTauriRow(tauriPath, row.index, filename, measureRows.length);
+              } catch {
+                pr = null;
+              }
+            } else if (csvFile) {
+              try {
+                pr = await loadFileRow(csvFile, filename, row.index, measureRows.length);
+              } catch {
+                pr = null;
+              }
+            }
+            if (!pr) continue;
+            const st = computeStats(pr.spectra);
+            items.push({
+              label: `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""} · ${oleDateToISO(Number(row.measDate)) || ""}`,
+              png: renderChartPng(pr.spectra),
+              peak: `${st.peak.amp} @ ${st.peak.freq}`,
+            });
+          }
+          if (items.length > 0) fftGallery = items;
+        } catch {
+          fftGallery = undefined;
+        }
+      }
       const { buildDocx } = await import("../lib/generateDocx");
       const toBrandImage = (b64: string | null) => (b64 ? { data: base64ToBytes(b64) } : undefined);
+      const eqList = (equipments ?? []).filter((e) => e.name.trim() || e.specs.trim());
       const blob = await buildDocx({
         meta: parsed.meta,
         spectra: parsed.spectra,
-        options: { ...options, pointLimit },
+        options: effOptions,
         aiDraft: draft,
         templateId: options.templateId ?? "classic",
         branding: {
@@ -109,10 +188,28 @@ export function ExportCard({
         },
         zones,
         trends: trendSnap ?? undefined,
+        allTrends,
+        fftGallery,
+        equipments:
+          eqList.length > 0
+            ? eqList.map((e) => ({
+                name: e.name,
+                specs: e.specs,
+                schematic: toBrandImage(e.schematicBase64),
+                status: e.status,
+                lastReport: e.lastReport || (e.name === options.equipmentName ? lastReport : e.lastReport),
+                problems: e.problems || draft.observations,
+                corrective: e.corrective || draft.recommendations,
+              }))
+            : undefined,
         equipment: {
           name: options.equipmentName,
           specs: options.equipmentSpecs,
           schematic: toBrandImage(options.schematicBase64 ?? null),
+          status: options.equipmentStatus,
+          lastReport,
+          problems: options.equipmentProblems || draft.observations,
+          corrective: options.equipmentCorrective || draft.recommendations,
         },
       });
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
