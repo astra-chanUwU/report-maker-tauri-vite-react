@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { SpectraPoint } from "../lib/parseSp3";
+import { previewPeakMarks } from "./spectra-chart-peaks";
 
 const W = 600;
 const H = 240;
@@ -20,23 +21,26 @@ export function SpectraChart({
     let fMax = -Infinity;
     let aMin = Infinity;
     let aMax = -Infinity;
-    let peak = pts[0];
     for (const p of pts) {
       if (p.freq < fMin) fMin = p.freq;
       if (p.freq > fMax) fMax = p.freq;
       if (p.amp < aMin) aMin = p.amp;
       if (p.amp > aMax) aMax = p.amp;
-      if (p.amp > peak.amp) peak = p;
     }
     if (fMax === fMin) fMax = fMin + 1;
     if (aMax === aMin) aMax = aMin + 1;
     const X = (f: number) => 40 + ((f - fMin) / (fMax - fMin)) * (W - 50);
     const Y = (a: number) => H - 30 - ((a - aMin) / (aMax - aMin)) * (H - 50);
+    const peaks = previewPeakMarks(pts).map((peak) => {
+      const x = X(peak.freq);
+      const y = Y(peak.amp);
+      let labelY = y - peak.lift;
+      if (labelY < 14) labelY = Math.min(H - 16, y + 14);
+      return { ...peak, x, y, labelY };
+    });
     return {
       path: pts.map((p) => `${X(p.freq).toFixed(1)},${Y(p.amp).toFixed(1)}`).join(" "),
-      peak,
-      peakX: X(peak.freq),
-      peakY: Y(peak.amp),
+      peaks,
     };
   }, [spectra]);
 
@@ -48,17 +52,19 @@ export function SpectraChart({
     );
   }
 
+  const peakSummary = model.peaks.map((p) => p.label).join(", ");
+
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       className="w-full rounded-lg border bg-card"
       style={{ height }}
       role="img"
-      aria-label={`Spectra preview chart — ${spectra.length} points, peak ${model.peak.amp} at ${model.peak.freq}`}
+      aria-label={`Spectra preview chart — ${spectra.length} points, peaks ${peakSummary}`}
     >
       <title>Spectra preview</title>
       <desc>
-        {spectra.length} points, peak {model.peak.amp} at {model.peak.freq}
+        {spectra.length} points, peaks {peakSummary}
       </desc>
       {[0.25, 0.5, 0.75].map((t) => (
         <line
@@ -80,7 +86,23 @@ export function SpectraChart({
         strokeWidth={2}
         strokeLinejoin="round"
       />
-      {highlightPeak ? <circle cx={model.peakX} cy={model.peakY} r={5} fill="#dc2626" /> : null}
+      {highlightPeak
+        ? model.peaks.map((peak) => (
+            <g key={`${peak.index}-${peak.freq}`}>
+              <circle cx={peak.x} cy={peak.y} r={4} fill="#dc2626" />
+              <text
+                x={peak.x}
+                y={peak.labelY}
+                textAnchor="middle"
+                fill="#dc2626"
+                fontSize={11}
+                fontFamily="ui-sans-serif, system-ui, sans-serif"
+              >
+                {peak.label}
+              </text>
+            </g>
+          ))
+        : null}
     </svg>
   );
 }
