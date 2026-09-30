@@ -99,6 +99,12 @@ export interface BuildDocxInput {
   };
   branding?: { logoPng?: Uint8Array; cover?: BrandImage; signature?: BrandImage };
   templateId?: string;
+  /** §3 equipment identity (name + specs + schematic), when provided. */
+  equipment?: {
+    name?: string;
+    specs?: string;
+    schematic?: BrandImage;
+  };
   /** Measuring-results table (all export rows) + alarm limits, when available. */
   zones?: {
     limits: ZoneLimitSet;
@@ -182,6 +188,42 @@ function downsample(spectra: SpectraPoint[], max: number): SpectraPoint[] {
   const step = spectra.length / max;
   const out: SpectraPoint[] = [];
   for (let i = 0; i < max; i++) out.push(spectra[Math.floor(i * step)]);
+  return out;
+}
+
+/** §3 equipment page: name + technical specs + machine schematic (when provided). */
+function equipmentSection(eq?: BuildDocxInput["equipment"]): (Paragraph | Table)[] {
+  const name = eq?.name?.trim() ?? "";
+  const specs = eq?.specs?.trim() ?? "";
+  const schema = eq?.schematic?.data?.length ? eq.schematic : undefined;
+  if (!name && !specs && !schema) return [];
+  const out: (Paragraph | Table)[] = [
+    new Paragraph({ text: "Equipment", heading: HeadingLevel.HEADING_1 }),
+  ];
+  if (name) {
+    out.push(new Paragraph({ text: name, heading: HeadingLevel.HEADING_2 }));
+  }
+  if (specs) {
+    out.push(new Paragraph({ text: "Technical specifications", heading: HeadingLevel.HEADING_2 }));
+    for (const para of specs.split(/\n\s*\n/)) {
+      const t = para.trim();
+      if (t) out.push(new Paragraph(t));
+    }
+  }
+  if (schema) {
+    out.push(
+      new Paragraph({
+        children: [
+          new ImageRun({
+            data: schema.data,
+            transformation: { width: 600, height: 400 },
+            type: schema.kind ?? detectImageKind(schema.data),
+          }),
+        ],
+        alignment: AlignmentType.CENTER,
+      })
+    );
+  }
   return out;
 }
 
@@ -287,6 +329,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 
   const children: (Paragraph | Table)[] = [
     ...headerChildren,
+    ...equipmentSection(input.equipment),
     new Paragraph({ text: "Summary", heading: HeadingLevel.HEADING_1 }),
     new Paragraph(
       d?.summary ?? `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`

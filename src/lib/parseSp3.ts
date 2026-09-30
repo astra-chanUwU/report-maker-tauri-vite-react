@@ -66,6 +66,11 @@ export interface ReportOptions {
   pointLimit?: number;
   /** Append the ISO 10816-3 severity reference table (default true). */
   includeIsoTable?: boolean;
+  /** §3 equipment identity: name + technical specs + machine schematic. */
+  equipmentName?: string;
+  equipmentSpecs?: string;
+  /** Schematic image (PNG/JPEG base64, no prefix). Null/undefined = none. */
+  schematicBase64?: string | null;
 }
 
 export interface AiDraft {

@@ -156,6 +156,27 @@ describe("buildDocx", () => {
     expect(withTrends.size).toBeGreaterThan(without.size);
   }, 30000);
 
+  it("embeds the §3 equipment page when identity is provided", async () => {
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n300,1.2\n"), "a.sp3");
+    const schematic = renderChartPng(parsed.spectra);
+    const withEq = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: OPTS,
+      equipment: {
+        name: "Conveyor CH",
+        specs: "Drive 15 kW.\n\nRPM 1480.",
+        schematic: { data: schematic, kind: "png" },
+      },
+    });
+    const without = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: OPTS,
+    });
+    expect(withEq.size).toBeGreaterThan(without.size);
+  }, 30000);
+
   it("detects branding image kinds from magic bytes", () => {
     expect(detectImageKind(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2]))).toBe("png");
     expect(detectImageKind(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2]))).toBe("jpg");

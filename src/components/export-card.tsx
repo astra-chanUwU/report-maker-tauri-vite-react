@@ -109,6 +109,11 @@ export function ExportCard({
         },
         zones,
         trends: trendSnap ?? undefined,
+        equipment: {
+          name: options.equipmentName,
+          specs: options.equipmentSpecs,
+          schematic: toBrandImage(options.schematicBase64 ?? null),
+        },
       });
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
       // filename preview already sanitized — shown below when enabled

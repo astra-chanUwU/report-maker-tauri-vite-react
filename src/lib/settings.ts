@@ -20,6 +20,9 @@ export function defaultReportOptions(): ReportOptions {
     notes: "",
     pointLimit: 120,
     includeIsoTable: true,
+    equipmentName: "",
+    equipmentSpecs: "",
+    schematicBase64: null,
   };
 }
 
@@ -42,6 +45,9 @@ export function loadReportOptions(): ReportOptions {
       pointLimit: typeof o.pointLimit === "number" && o.pointLimit > 0 ? o.pointLimit : 120,
       templateId: typeof o.templateId === "string" ? o.templateId : undefined,
       includeIsoTable: typeof o.includeIsoTable === "boolean" ? o.includeIsoTable : true,
+      equipmentName: typeof o.equipmentName === "string" ? o.equipmentName : "",
+      equipmentSpecs: typeof o.equipmentSpecs === "string" ? o.equipmentSpecs : "",
+      schematicBase64: typeof o.schematicBase64 === "string" ? o.schematicBase64 : null,
     };
   } catch {
     return base;

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { ReportOptions } from "../lib/parseSp3";
 import {
+  base64ToBytes,
+  bytesToBase64,
   clearReportOptions,
   defaultReportOptions,
   todayISO,
@@ -12,6 +14,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
+import { toast } from "./ui/sonner";
+
+const MAX_SCHEMATIC_BYTES = 1024 * 1024;
+
+function schematicUrl(b64: string | null | undefined): string | null {
+  if (!b64) return null;
+  const bin = atob(b64.slice(0, 24));
+  if (bin.startsWith("\xFF\xD8\xFF")) return `data:image/jpeg;base64,${b64}`;
+  if (bin.startsWith("\x89PNG")) return `data:image/png;base64,${b64}`;
+  return `data:image/png;base64,${b64}`;
+}
 
 export function ReportForm({
   options,
@@ -27,6 +40,23 @@ export function ReportForm({
   const set = (patch: Partial<ReportOptions>) => {
     setTouched(true);
     onChange({ ...options, ...patch });
+  };
+
+  const handleSchematic = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Upload a PNG or JPEG schematic.");
+      return;
+    }
+    if (file.size > MAX_SCHEMATIC_BYTES) {
+      toast.error(`Schematic must be under ${Math.round(MAX_SCHEMATIC_BYTES / 1024)} KB.`);
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const b64 = bytesToBase64(bytes);
+    base64ToBytes(b64); // validate round-trip before persisting
+    set({ schematicBase64: b64 });
+    toast.success("Schematic saved locally.");
   };
 
   return (
@@ -128,6 +158,51 @@ export function ReportForm({
             placeholder="Survey conditions, equipment, caveats…"
             onChange={(e) => set({ notes: e.target.value })}
           />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="opt-equipment">Equipment name</Label>
+          <Input
+            id="opt-equipment"
+            value={options.equipmentName ?? ""}
+            placeholder="e.g. Conveyor System CH — CVM-F11"
+            onChange={(e) => set({ equipmentName: e.target.value })}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="opt-specs">Technical specs</Label>
+          <Textarea
+            id="opt-specs"
+            value={options.equipmentSpecs ?? ""}
+            placeholder="Drive power, RPM, bearing types, coupling…"
+            onChange={(e) => set({ equipmentSpecs: e.target.value })}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="opt-schematic">Machine schematic</Label>
+          {schematicUrl(options.schematicBase64) ? (
+            <div className="flex items-start gap-2">
+              <img
+                src={schematicUrl(options.schematicBase64)!}
+                alt="Machine schematic preview"
+                className="h-24 max-w-60 rounded border bg-white"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => set({ schematicBase64: null })}
+              >
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <Input
+              id="opt-schematic"
+              type="file"
+              accept="image/png,image/jpeg,image/*"
+              onChange={(e) => void handleSchematic(e.target.files?.[0] ?? null)}
+            />
+          )}
         </div>
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input
