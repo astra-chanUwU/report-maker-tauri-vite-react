@@ -71,7 +71,10 @@ export async function convertSp3Path(
   });
   const head = new Uint8Array(res.head);
   const preview = parseSpecCsvFirstRow(head);
-  if (!preview) throw new Error("Export produced no readable measurement rows.");
+  if (!preview) {
+    const hint = head.length < 1024 ? " Is the Data table empty?" : "";
+    throw new Error(`Export produced no readable measurement rows.${hint} Head was ${head.length} bytes.`);
+  }
   const filename = picked.split(/[/\\]/).pop() || "export.sp3";
   const result = assembleRow(preview.row, {
     filename,

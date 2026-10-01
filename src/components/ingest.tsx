@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useUi } from "../lib/i18n";
+import { detectJetMdb } from "../lib/specdata";
 import { parseSp3, type ParseResult } from "../lib/parseSp3";
 import {
   convertSp3FromDisk,
@@ -85,6 +86,25 @@ export function useIngest(onParsed: OnParsed): Ingest {
     setError(null);
     setLoading(true);
     try {
+      // Jet DB large blob via HTML5 File would freeze the WebView on ArrayBuffer
+      // and also lacks -b octal — fast-reject and point to the Tauri path.
+      if (file.size > HEAD_SLICE) {
+        const probe = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+        if (detectJetMdb(probe)) {
+          const inTauri =
+            isTauri || (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
+          if (inTauri) {
+            throw new Error(
+              `This is a ${Math.round(file.size / 1024 / 1024)} MB Spectra database (.sp3). Drop it on the window chrome or use "Open .sp3 file" so the backend converts it with mdb-export. Browser file drops for .sp3 are for small CSV shims only.`
+            );
+          }
+          if (file.size > FULL_BUFFER_GUARD) {
+            throw new Error(
+              `This is a ${Math.round(file.size / 1024 / 1024)} MB .sp3 database — browsers cannot read Jet DBs. In Tauri: use "Open .sp3 file". Otherwise export the Data table to CSV first: mdb-export file.sp3 Data > data.csv`
+            );
+          }
+        }
+      }
       let parsed: ParseResult;
       if (file.size > HEAD_SLICE) {
         const headBuf = await file.slice(0, HEAD_SLICE).arrayBuffer();

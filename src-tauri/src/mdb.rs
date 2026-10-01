@@ -129,13 +129,29 @@ pub fn export_mdb_csv(
         return Err(format!("Input file not found: {input}"));
     }
 
-    let mut child = Command::new(&bin)
-        .arg(&input)
-        .arg(&table)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("failed to run mdb-export: {e}"))?;
+    // CH-family .sp3 files store Specdata as OLE blobs with embedded NUL/0x0A
+    // bytes that split CSV rows mid-field unless we ask for octal escapes.
+    // `mdb-export -b octal` yields \ooo per byte so the CSV stays line-oriented
+    // and our `\\ooo` decoder (specdata.ts) can recover the original bytes.
+    let mut child = if table == "Data" {
+        Command::new(&bin)
+            .arg("-b")
+            .arg("octal")
+            .arg(&input)
+            .arg(&table)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("failed to run mdb-export: {e}"))?
+    } else {
+        Command::new(&bin)
+            .arg(&input)
+            .arg(&table)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("failed to run mdb-export: {e}"))?
+    };
 
     let stem = input_path
         .file_stem()

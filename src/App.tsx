@@ -285,10 +285,17 @@ function App() {
       dragDepth.current = 0;
       setDragOver(false);
       const f = e.dataTransfer.files?.[0];
-      if (f) {
-        setPage("data");
-        void ingest.handleFile(f);
-      }
+      if (!f) return;
+      const ext = f.name.split(".").pop()?.toLowerCase();
+      // In Tauri the native window drop (onDragDropEvent → handlePath → mdb-export -b octal)
+      // is the correct path for .sp3/.mdb — it streams to a temp CSV and never
+      // buffers a 400MB File blob into the WebView. The HTML5 File drop for a
+      // Jet DB large blob would both freeze the UI (ArrayBuffer) and produce
+      // binary-corrupted CSV (needs -b octal), so defer instead of calling
+      // handleFile which is meant for small .csv/.txt shims.
+      if (ingest.isTauri && (ext === "sp3" || ext === "mdb")) return;
+      setPage("data");
+      void ingest.handleFile(f);
     },
   };
 
