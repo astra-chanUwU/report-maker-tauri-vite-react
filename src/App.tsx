@@ -74,6 +74,7 @@ import { initCrashHooks, track } from "./lib/telemetry";
 import { translate, UiProvider, type UiLang } from "./lib/i18n";
 import { cn } from "./lib/utils";
 import type { ZoneLimitSet } from "./lib/zones";
+import { IMAGE_EXTS, INGEST_EXTS, shouldHandleNativeDrop } from "./lib/drop-guards";
 
 function App() {
   const [themePref, setThemePref] = useTheme();
@@ -291,6 +292,31 @@ function App() {
   // Native window drops (Tauri) carry real paths, so .sp3 can go through mdb-export.
   const handlePathRef = useRef(ingest.handlePath);
   handlePathRef.current = ingest.handlePath;
+  const isInsideBrandingDrop = (target: EventTarget | null) =>
+    target instanceof HTMLElement && !!target.closest("[data-branding-drop],[data-schematic-drop]");
+  const dragLooksLikeIngest = (e: React.DragEvent) => {
+    const items = Array.from(e.dataTransfer.items ?? []);
+    if (items.length > 0) {
+      let hasIngest = false;
+      let hasImage = false;
+      let hasUnknown = false;
+      for (const it of items) {
+        if (it.kind !== "file") continue;
+        const f = it.getAsFile();
+        const name = f?.name ?? "";
+        const ext = name.split(".").pop()?.toLowerCase() ?? "";
+        const type = it.type || f?.type || "";
+        if (ext && INGEST_EXTS.has(ext)) hasIngest = true;
+        else if (type.startsWith("image/") || (ext && IMAGE_EXTS.has(ext))) hasImage = true;
+        else if (!ext && !type) hasUnknown = true;
+        else if (ext) hasUnknown = true;
+      }
+      if (hasIngest) return true;
+      if (hasImage && !hasUnknown) return false;
+    }
+    // Fallback: extension-less drag (e.g. from OS) — assume ingest so overlay shows.
+    return true;
+  };
   useEffect(() => {
     if (!ingest.isTauri) return;
     let cancelled = false;
@@ -299,16 +325,18 @@ function App() {
       .then(({ getCurrentWebview }) =>
         getCurrentWebview().onDragDropEvent((e) => {
           const p = e.payload;
-          if (p.type === "enter" || p.type === "over") setDragOver(true);
-          else if (p.type === "leave") setDragOver(false);
+          if (p.type === "enter" || p.type === "over") {
+            const first = (p as { paths?: string[] }).paths?.[0] ?? "";
+            if (!shouldHandleNativeDrop(first)) return;
+            setDragOver(true);
+          } else if (p.type === "leave") setDragOver(false);
           else if (p.type === "drop") {
             setDragOver(false);
             const first = p.paths[0];
-            if (first) {
-              pendingSp3PathRef.current = first;
-              setPage("data");
-              void handlePathRef.current(first);
-            }
+            if (!first || !shouldHandleNativeDrop(first)) return;
+            pendingSp3PathRef.current = first;
+            setPage("data");
+            void handlePathRef.current(first);
           }
         })
       )
@@ -329,12 +357,17 @@ function App() {
   const dropHandlers = {
     onDragEnter: (e: React.DragEvent) => {
       if (!isFileDrag(e)) return;
+      if (isInsideBrandingDrop(e.target)) return;
+      if (!dragLooksLikeIngest(e)) return;
       e.preventDefault();
       dragDepth.current++;
       setDragOver(true);
     },
     onDragOver: (e: React.DragEvent) => {
-      if (isFileDrag(e)) e.preventDefault();
+      if (!isFileDrag(e)) return;
+      if (isInsideBrandingDrop(e.target)) return;
+      if (!dragLooksLikeIngest(e)) return;
+      e.preventDefault();
     },
     onDragLeave: (e: React.DragEvent) => {
       if (!isFileDrag(e)) return;
@@ -343,12 +376,17 @@ function App() {
     },
     onDrop: (e: React.DragEvent) => {
       if (!isFileDrag(e)) return;
+      if (isInsideBrandingDrop(e.target)) return;
+      // Let image-only drags fall through to the branding/schematic drop zones.
+      if (!dragLooksLikeIngest(e)) return;
       e.preventDefault();
       dragDepth.current = 0;
       setDragOver(false);
       const f = e.dataTransfer.files?.[0];
       if (!f) return;
       const ext = f.name.split(".").pop()?.toLowerCase();
+      if (ext && IMAGE_EXTS.has(ext)) return;
+      if (ext && !INGEST_EXTS.has(ext)) return;
       // In Tauri the native window drop (onDragDropEvent → handlePath → mdb-export -b octal)
       // is the correct path for .sp3/.mdb — it streams to a temp CSV and never
       // buffers a 400MB File blob into the WebView. The HTML5 File drop for a

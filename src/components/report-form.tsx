@@ -358,6 +358,7 @@ export function SchematicField({
 }) {
   const { t } = useUi();
   const ref = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
   const url = imageDataUrl(value);
 
   const handle = async (file: File | null) => {
@@ -376,15 +377,48 @@ export function SchematicField({
     toast.success(t("schematicSaved"));
   };
 
+  const isImageDrag = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer.types).includes("Files") &&
+    Array.from(e.dataTransfer.items ?? []).some(
+      (it) => it.kind === "file" && (it.type.startsWith("image/") || !it.type)
+    );
   return (
     <Field label={t("schematic")} htmlFor={id}>
-      <div className="flex items-center gap-3">
+      <div
+        className="flex items-center gap-3"
+        data-schematic-drop
+        onDragEnter={(e) => {
+          if (!isImageDrag(e)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setDragActive(true);
+        }}
+        onDragOver={(e) => {
+          if (!isImageDrag(e)) return;
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setDragActive(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setDragActive(false);
+          void handle(e.dataTransfer.files?.[0] ?? null);
+        }}
+      >
         <button
           type="button"
           onClick={() => ref.current?.click()}
           className={cn(
-            "flex h-24 w-40 shrink-0 cursor-default items-center justify-center overflow-hidden rounded-md border border-dashed border-input hover:border-primary",
-            url ? "bg-white" : "bg-muted/50"
+            "flex h-24 w-40 shrink-0 cursor-default items-center justify-center overflow-hidden rounded-md border border-dashed hover:border-primary",
+            dragActive
+              ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+              : "border-input",
+            !dragActive && url ? "bg-white" : !dragActive ? "bg-muted/50" : "bg-primary/5"
           )}
           aria-label={url ? "Replace schematic" : "Upload schematic"}
         >
@@ -392,10 +426,12 @@ export function SchematicField({
             <img
               src={url}
               alt="Machine schematic preview"
-              className="h-full w-full object-contain"
+              className="h-full w-full object-contain pointer-events-none"
             />
+          ) : dragActive ? (
+            <span className="text-xs text-primary">Drop image here</span>
           ) : (
-            <ImagePlus className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
+            <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" aria-hidden="true" />
           )}
         </button>
         <div className="grid gap-1.5">

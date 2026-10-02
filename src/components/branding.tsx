@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Check, ImagePlus, LayoutTemplate, PenLine } from "lucide-react";
 import type { ReportOptions } from "../lib/parseSp3";
 import { base64ToBytes, bytesToBase64, type Branding } from "../lib/settings";
@@ -235,24 +235,61 @@ function AssetTile({
   onRemove: (() => void) | null;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const isImageDrag = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer.types).includes("Files") &&
+    Array.from(e.dataTransfer.items ?? []).some(
+      (it) => it.kind === "file" && (it.type.startsWith("image/") || !it.type)
+    );
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!isImageDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(true);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isImageDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) onPick(f);
+  };
   return (
-    <div className="grid content-start gap-2 rounded-lg border p-2">
+    <div
+      data-branding-drop
+      className="grid content-start gap-2 rounded-lg border p-2"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
         className={cn(
-          "flex cursor-default items-center justify-center overflow-hidden rounded-md border border-dashed border-input hover:border-primary",
-          preview ? "bg-white" : "bg-muted/50",
+          "flex cursor-default items-center justify-center overflow-hidden rounded-md border border-dashed hover:border-primary",
+          dragActive ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-input",
+          preview && !dragActive ? "bg-white" : dragActive ? "bg-primary/5" : "bg-muted/50",
           tall ? "h-32" : "h-24"
         )}
         aria-label={`${preview ? "Replace" : "Upload"} ${title.toLowerCase()}`}
       >
         {preview ? (
-          <img src={preview} alt={`${title} preview`} className="h-full w-full object-contain" />
+          <img src={preview} alt={`${title} preview`} className="h-full w-full object-contain pointer-events-none" />
         ) : (
-          <span className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+          <span className="flex flex-col items-center gap-1 text-xs text-muted-foreground pointer-events-none">
             <ImagePlus className="h-5 w-5" aria-hidden="true" />
-            Click to upload
+            {dragActive ? "Drop image here" : "Click or drop image"}
           </span>
         )}
       </button>
