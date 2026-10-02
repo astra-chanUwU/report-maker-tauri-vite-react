@@ -11,6 +11,7 @@
  */
 
 import type { CsvRowSummary } from "./mdb";
+import { gToMps2, type TrendMetric } from "./metrics";
 import { oleDateToISO } from "./specdata";
 import { encodePng, line } from "./png";
 import { toLimit, trendZoneBands, type ZoneLimits } from "./zones";
@@ -19,9 +20,18 @@ export interface TrendSample {
   dateNum: number;
   dateISO: string;
   rmsV: number | null;
+  /** Acceleration overall in m/s² (Spectra stores g). */
   rmsA: number | null;
+  /** Bearing condition overall in m/s². */
+  bc?: number | null;
   /** Envelope overall, when EnvelopeData was joined. */
   envelope?: number | null;
+}
+
+export function sampleValue(s: TrendSample, metric: TrendMetric): number | null {
+  if (metric === "envelope") return s.envelope ?? null;
+  if (metric === "bc") return s.bc ?? null;
+  return s[metric];
 }
 
 export interface PointHistory {
@@ -54,7 +64,8 @@ export function groupHistories(rows: CsvRowSummary[]): PointHistory[] {
       dateNum,
       dateISO: oleDateToISO(dateNum) || String(dateNum),
       rmsV: toLimit(r.rmsV),
-      rmsA: toLimit(r.rmsA),
+      rmsA: gToMps2(r.rmsA),
+      bc: gToMps2(r.bc ?? ""),
       envelope: toLimit(r.envelopeRms ?? ""),
     });
   }
@@ -77,12 +88,9 @@ function fmtStat(v: number | null | undefined): string {
 }
 
 /** Brochure columns: Total = latest overall, Avg, Prev, Curr. */
-export function historyStats(
-  samples: TrendSample[],
-  metric: "rmsV" | "rmsA" | "envelope"
-): HistoryStat {
+export function historyStats(samples: TrendSample[], metric: TrendMetric): HistoryStat {
   const vals = samples
-    .map((s) => (metric === "envelope" ? (s.envelope ?? null) : s[metric]))
+    .map((s) => sampleValue(s, metric))
     .filter((v): v is number => v !== null && Number.isFinite(v));
   if (vals.length === 0) return { total: "—", avg: "—", prev: "—", curr: "—" };
   const curr = vals[vals.length - 1];
@@ -103,7 +111,9 @@ export function buildAllTrendSnapshots(
   limits: { velocity: ZoneLimits; acceleration: ZoneLimits; envelope?: ZoneLimits },
   window: number | "all",
   capPoints = 40,
-  includeEnvelope = false
+  includeEnvelope = false,
+  secondary: TrendMetric = "rmsA",
+  bands = true
 ): {
   pointLabel: string;
   sampleCount: number;
@@ -121,15 +131,19 @@ export function buildAllTrendSnapshots(
   for (const h of histories.slice(0, Math.max(1, capPoints))) {
     const samples = takeLastHistory(h.samples, window);
     if (samples.length === 0) continue;
+    const secLimits =
+      secondary === "envelope" ? (limits.envelope ?? limits.acceleration) : limits.acceleration;
     try {
       out.push({
         pointLabel: h.label,
         sampleCount: samples.length,
-        velocityPng: renderTrendPng(samples, "rmsV", limits.velocity),
-        accelPng: renderTrendPng(samples, "rmsA", limits.acceleration),
+        velocityPng: renderTrendPng(samples, "rmsV", limits.velocity, { bands }),
+        accelPng: renderTrendPng(samples, secondary, secLimits, { bands }),
         envelopePng:
-          includeEnvelope && samples.some((s) => s.envelope != null)
-            ? renderTrendPng(samples, "envelope", limits.envelope ?? limits.acceleration)
+          includeEnvelope && secondary !== "envelope" && samples.some((s) => s.envelope != null)
+            ? renderTrendPng(samples, "envelope", limits.envelope ?? limits.acceleration, {
+                bands,
+              })
             : undefined,
       });
     } catch {
@@ -170,7 +184,17 @@ export interface TrendChartOpts {
   height?: number;
   /** Tight margins, no grid — for the measuring-table sparkline. */
   sparkline?: boolean;
+  /** Alarm zone backgrounds (default on). */
+  bands?: boolean;
 }
+
+/** Series ink: velocity dark green (brochure), secondary metrics blue/amber/green. */
+const SERIES_INK: Record<TrendMetric, [number, number, number]> = {
+  rmsV: [27, 94, 32],
+  rmsA: [30, 100, 200],
+  bc: [180, 83, 9],
+  envelope: [22, 163, 74],
+};
 
 /**
  * Render a trend PNG: zone bands + RMS polyline + sample dots.
@@ -178,25 +202,25 @@ export interface TrendChartOpts {
  */
 export function renderTrendPng(
   samples: TrendSample[],
-  metric: "rmsV" | "rmsA" | "envelope",
+  metric: TrendMetric,
   limits: ZoneLimits,
   opts: TrendChartOpts = {}
 ): Uint8Array {
   const spark = opts.sparkline === true;
-  const w = opts.width ?? (spark ? 120 : 800);
-  const h = opts.height ?? (spark ? 36 : 400);
+  const w = opts.width ?? (spark ? 460 : 800);
+  const h = opts.height ?? (spark ? 194 : 400);
   const buf = new Uint8Array(w * h * 3);
   buf.fill(255);
-  const L = spark ? 2 : 46;
-  const R = spark ? 2 : 12;
-  const T = spark ? 2 : 12;
-  const B = spark ? 2 : 34;
+  const L = spark ? 3 : 46;
+  const R = spark ? 3 : 12;
+  const T = spark ? 3 : 12;
+  const B = spark ? 3 : 34;
   const plotW = w - L - R;
   const plotH = h - T - B;
 
-  const values = samples.map((s) => (metric === "envelope" ? (s.envelope ?? null) : s[metric]));
+  const values = samples.map((s) => sampleValue(s, metric));
   const yMax = trendYMax(values, limits);
-  const bands = trendZoneBands(limits, 0, yMax);
+  const bands = opts.bands === false ? [] : trendZoneBands(limits, 0, yMax);
   const px = (i: number) =>
     samples.length < 2 ? L + plotW / 2 : Math.round(L + (i / (samples.length - 1)) * plotW);
   const py = (v: number) => Math.round(T + plotH - (Math.min(v, yMax) / yMax) * plotH);
@@ -204,7 +228,7 @@ export function renderTrendPng(
   for (const b of bands) {
     const y0 = py(Math.min(b.y1, yMax));
     const y1 = py(Math.max(b.y0, 0));
-    const [r, g, bl] = lighten(b.color, 0.72);
+    const [r, g, bl] = lighten(b.color, spark ? 0.6 : 0.72);
     for (let y = y0; y <= y1; y++) line(buf, w, h, L, y, w - R - 1, y, [r, g, bl]);
   }
   if (!spark) {
@@ -223,21 +247,27 @@ export function renderTrendPng(
     }
   }
   // polyline with gaps
-  const ink: [number, number, number] =
-    metric === "rmsV" ? [37, 99, 235] : metric === "envelope" ? [22, 163, 74] : [180, 83, 9];
+  const ink = SERIES_INK[metric];
+  const dot = spark ? 2 : 3;
   let prev: { x: number; y: number } | null = null;
   samples.forEach((s, i) => {
-    const v = metric === "envelope" ? (s.envelope ?? null) : s[metric];
+    const v = sampleValue(s, metric);
     if (v === null) {
       prev = null;
       return;
     }
     const x = px(i);
     const y = py(v);
-    if (prev) line(buf, w, h, prev.x, prev.y, x, y, ink);
-    for (let dy = -3; dy <= 3; dy++)
-      for (let dx = -3; dx <= 3; dx++) {
-        if (dx * dx + dy * dy > 9) continue;
+    if (prev) {
+      line(buf, w, h, prev.x, prev.y, x, y, ink);
+      if (spark) {
+        line(buf, w, h, prev.x, prev.y + 1, x, y + 1, ink);
+        line(buf, w, h, prev.x, prev.y - 1, x, y - 1, ink);
+      }
+    }
+    for (let dy = -dot; dy <= dot; dy++)
+      for (let dx = -dot; dx <= dot; dx++) {
+        if (dx * dx + dy * dy > dot * dot) continue;
         const xx = x + dx;
         const yy = y + dy;
         if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;

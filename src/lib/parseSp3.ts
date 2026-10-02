@@ -68,6 +68,18 @@ export interface ReportOptions {
   includeIsoTable?: boolean;
   /** Which machinery groups to emphasize in the ISO appendix. */
   isoGroups?: "all" | "1+3" | "2+4";
+  /** Where the ISO table prints (default end). "off" behaves like includeIsoTable=false. */
+  isoPosition?: "off" | "afterToc" | "end";
+  /** Print the analyst-edited ISO rows instead of the standard table. */
+  useCustomIso?: boolean;
+  /** Second metric beside velocity in the measuring table and trends (default acceleration). */
+  secondaryMetric?: "acceleration" | "bc" | "envelope";
+  /** Show the secondary metric columns and trend charts (default true). */
+  showSecondary?: boolean;
+  /** Alarm-zone backgrounds on trend charts (default true). */
+  trendZoneBands?: boolean;
+  /** Full-size trend chart pages per point, beyond the measuring-table sparklines (default false). */
+  trendPages?: boolean;
   /** §3 equipment identity: name + technical specs + machine schematic. */
   equipmentName?: string;
   equipmentSpecs?: string;

@@ -73,7 +73,9 @@ export async function convertSp3Path(
   const preview = parseSpecCsvFirstRow(head);
   if (!preview) {
     const hint = head.length < 1024 ? " Is the Data table empty?" : "";
-    throw new Error(`Export produced no readable measurement rows.${hint} Head was ${head.length} bytes.`);
+    throw new Error(
+      `Export produced no readable measurement rows.${hint} Head was ${head.length} bytes.`
+    );
   }
   const filename = picked.split(/[/\\]/).pop() || "export.sp3";
   const result = assembleRow(preview.row, {
@@ -101,6 +103,8 @@ export interface CsvRowSummary {
   rmsV: string;
   rmsA: string;
   peakA: string;
+  /** Bearing condition overall, stored in g like TotalRMSA. */
+  bc?: string;
   unit: string;
   noLines: string;
   /** Joined from EnvelopeData when the metric is enabled. */
@@ -127,6 +131,7 @@ function summarize(header: string[], cells: string[], index: number): CsvRowSumm
     rmsV: get("TotalRMSV").trim(),
     rmsA: get("TotalRMSA").trim(),
     peakA: get("TotalPeakA").trim(),
+    bc: get("BC").trim(),
     unit: get("Unit").replace(/^"|"$/g, "").trim(),
     noLines: get("NoLines").trim(),
   };
@@ -369,45 +374,71 @@ export async function pickSp3Path(): Promise<string> {
   return picked;
 }
 
-export async function fetchEnvelopeSamples(
-  sp3Path: string
-): Promise<{ pointId: string; measDate: string; rms: string }[]> {
+export interface EnvelopeSample {
+  pointId: string;
+  directionId?: string;
+  measDate: string;
+  rms: string;
+  unit?: string;
+}
+
+export async function fetchEnvelopeSamples(sp3Path: string): Promise<EnvelopeSample[]> {
   const { invoke } = await import("@tauri-apps/api/core");
   const overridePath = loadMdbToolPath().trim();
   return invoke("list_envelope_samples", { input: sp3Path, tool: overridePath || null });
 }
 
-/** PointID|MeasDate → envelope RMS from an EnvelopeData CSV (strip mode). */
-export function indexEnvelopeCsv(csv: string): Map<string, string> {
+const positive = (v: string) => Number.isFinite(Number(v)) && Number(v) > 0;
+
+/** Envelope samples from an EnvelopeData CSV (strip mode). Spectra keeps the overall in TotalRMSA. */
+export function indexEnvelopeCsv(csv: string): EnvelopeSample[] {
   const lines = csv
     .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
     .filter((l) => l.trim());
-  const map = new Map<string, string>();
-  if (lines.length < 2) return map;
+  if (lines.length < 2) return [];
   const header = lines[0].split(",").map((h) => h.replace(/^"|"$/g, "").trim());
-  const ip = header.indexOf("PointID");
-  const id = header.indexOf("MeasDate");
-  const ir = header.indexOf("TotalRMSV");
-  if (ip < 0 || id < 0 || ir < 0) return map;
+  const at = (cells: string[], name: string) => {
+    const i = header.indexOf(name);
+    return i >= 0 ? (cells[i] ?? "").replace(/"/g, "").trim() : "";
+  };
+  const out: EnvelopeSample[] = [];
   for (const line of lines.slice(1)) {
     const cells = line.split(",");
-    const key = `${(cells[ip] ?? "").replace(/"/g, "").trim()}|${(cells[id] ?? "").trim()}`;
-    const val = (cells[ir] ?? "").replace(/"/g, "").trim();
-    if (key !== "|" && val) map.set(key, val);
+    const rms = ["TotalRMSA", "TotalRMSV", "TotalRMSD"].map((c) => at(cells, c)).find(positive);
+    const pointId = at(cells, "PointID");
+    const measDate = at(cells, "MeasDate");
+    if (!rms || !measDate) continue;
+    out.push({
+      pointId,
+      directionId: at(cells, "DirectionID") || undefined,
+      measDate,
+      rms,
+      unit: at(cells, "Unit") || undefined,
+    });
   }
-  return map;
+  return out;
 }
 
-/** Write envelope RMS onto measuring rows that share PointID and MeasDate. Returns how many rows were filled. */
+/**
+ * Write envelope RMS onto measuring rows taken at the same direction and MeasDate
+ * (falls back to point + date for samples without a DirectionID). Returns rows filled.
+ */
 export function applyEnvelopeSamples(
-  rows: { pointId: string; measDate: string; envelopeRms?: string }[],
-  samples: { pointId: string; measDate: string; rms: string }[]
+  rows: { pointId: string; directionId?: string; measDate: string; envelopeRms?: string }[],
+  samples: EnvelopeSample[]
 ): number {
-  const idx = new Map(samples.map((e) => [`${e.pointId}|${e.measDate}`, e.rms]));
+  const idx = new Map<string, string>();
+  // Samples without a DirectionID (old exports) can only be matched by point.
+  for (const e of samples) {
+    const key = e.directionId ? `d${e.directionId}|${e.measDate}` : `p${e.pointId}|${e.measDate}`;
+    if (!idx.has(key)) idx.set(key, e.rms);
+  }
   let n = 0;
   for (const row of rows) {
-    const v = idx.get(`${row.pointId}|${row.measDate}`);
+    const v =
+      (row.directionId ? idx.get(`d${row.directionId}|${row.measDate}`) : undefined) ??
+      idx.get(`p${row.pointId}|${row.measDate}`);
     if (v == null || !Number.isFinite(Number(v))) continue;
     row.envelopeRms = v;
     n++;

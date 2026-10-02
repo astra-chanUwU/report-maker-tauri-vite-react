@@ -81,7 +81,9 @@ export async function persistRecentDbs(list: RecentDb[]): Promise<void> {
   }
 }
 
-export async function addRecentDb(entry: Omit<RecentDb, "lastOpenedAt"> & { lastOpenedAt?: string }): Promise<RecentDb[]> {
+export async function addRecentDb(
+  entry: Omit<RecentDb, "lastOpenedAt"> & { lastOpenedAt?: string }
+): Promise<RecentDb[]> {
   const current = await loadRecentDbs();
   const key = uidPath(entry.path);
   const next: RecentDb = {

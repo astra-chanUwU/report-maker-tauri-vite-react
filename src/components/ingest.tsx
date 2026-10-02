@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ChevronDown,
   DatabaseZap,
   FileUp,
   FlaskConical,
@@ -25,7 +24,6 @@ import { ZoneBadge } from "./measuring-table";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Stat } from "./ui/form";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { SpectraChart } from "./spectra-chart";
 import { toast } from "./ui/sonner";
 
@@ -375,7 +373,7 @@ export function DataOverview({ result, limits }: { result: ParseResult; limits?:
           <p>{result.warning}</p>
         </div>
       ) : null}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3">
         <Stat
           label={t("rmsVelocity")}
           value={
@@ -398,71 +396,14 @@ export function DataOverview({ result, limits }: { result: ParseResult; limits?:
         />
         <Stat
           label={t("peak")}
-          value={`${result.stats.peak.amp}`}
-          sub={`at ${result.stats.peak.freq}${unit ? ` · ${unit}` : ""}`}
-        />
-        <Stat
-          label={t("freqRange")}
-          value={`${result.stats.freq_min} – ${result.stats.freq_max}`}
-          sub={`Amplitude ${result.stats.amp_min} – ${result.stats.amp_max}`}
-        />
-        <Stat
-          label={t("pointsLabel")}
-          value={result.stats.spectra_points.toLocaleString()}
-          sub={
-            overall
-              ? `Point ${overall.pointId || "?"}${overall.directionId ? ` / ${overall.directionId}` : ""}`
-              : sourceLabel(result)
-          }
+          value={`${Number(result.stats.peak.amp).toFixed(2)}${unit ? ` ${unit}` : ""}`}
+          sub={`at ${Math.round(Number(result.stats.peak.freq) * 60)} RPM (${result.stats.peak.freq} Hz)`}
         />
       </div>
       <Card className="p-3">
         <SpectraChart spectra={result.spectra} height={260} />
-        <p className="mt-2 px-1 text-xs text-muted-foreground">
-          {result.spectra.length > 500
-            ? `Preview downsampled to 500 of ${result.spectra.length.toLocaleString()} points.`
-            : `${result.spectra.length} points.`}{" "}
-          Edit values on the Chart page.
-        </p>
       </Card>
-      <RawSpectraTable result={result} />
     </div>
-  );
-}
-
-function RawSpectraTable({ result }: { result: ParseResult }) {
-  const rows = result.spectra.slice(0, 200);
-  return (
-    <details className="group rounded-lg border bg-card">
-      <summary className="flex cursor-default items-center gap-2 px-4 py-2.5 text-[13px] font-medium select-none hover:bg-muted/60 [&::-webkit-details-marker]:hidden">
-        <ChevronDown
-          className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180"
-          aria-hidden="true"
-        />
-        Raw spectrum values
-        <span className="text-xs font-normal text-muted-foreground">
-          first {rows.length} of {result.spectra.length.toLocaleString()}
-        </span>
-      </summary>
-      <Table containerClassName="max-h-72 border-t">
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-16">#</TableHead>
-            <TableHead>Freq</TableHead>
-            <TableHead>Amp</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((p, i) => (
-            <TableRow key={i}>
-              <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-              <TableCell>{p.freq}</TableCell>
-              <TableCell>{p.amp}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </details>
   );
 }
 

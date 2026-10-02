@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, FolderOpen, Loader2 } from "lucide-react";
-import { renderChartPng } from "../lib/generateDocx";
+import { renderChartPng, type MeasurePeak, type MeasureRow } from "../lib/generateDocx";
+import { loadIsoRows } from "../lib/iso-store";
+import { SECONDARY_SERIES } from "../lib/metrics";
 import { fallbackDraft } from "../lib/ai";
 import type { EquipmentItem } from "../lib/equipment";
 import { isoToJalaliFa } from "../lib/fa";
@@ -12,7 +14,13 @@ import {
   loadTauriRow,
   type CsvRowSummary,
 } from "../lib/mdb";
-import { buildMeasureRows, latestPerPoint, rowsForPoints } from "../lib/report-slices";
+import {
+  buildMeasureRows,
+  formatSpectrumPeak,
+  latestPerPoint,
+  peaksFromSpectrum,
+  rowsForPoints,
+} from "../lib/report-slices";
 import { computeStats, type ParseResult, type ReportOptions } from "../lib/parseSp3";
 import { base64ToBytes, validateReportOptions, type Branding } from "../lib/settings";
 import { oleDateToISO } from "../lib/specdata";
@@ -40,6 +48,9 @@ export function sanitizeFilename(name: string): string {
   return clean || "report";
 }
 
+/** Dispatch on window to run the toolbar export from elsewhere (one exporter, one Ctrl+E). */
+export const EXPORT_EVENT = "report-maker:export";
+
 export function ExportControls({
   onBlocked,
   parsed,
@@ -53,6 +64,7 @@ export function ExportControls({
   equipments,
   tauriPath,
   csvFile,
+  onBusy,
 }: {
   /** Called instead of exporting when data or required fields are missing. */
   onBlocked?: () => void;
@@ -79,6 +91,7 @@ export function ExportControls({
   equipments?: EquipmentItem[];
   tauriPath?: string | null;
   csvFile?: File | null;
+  onBusy?: (busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const { t } = useUi();
@@ -115,10 +128,6 @@ export function ExportControls({
             stats: parsed.stats,
           });
       const win = parseTrendWindow(trendSnap?.window);
-      const zones =
-        limits && measureRows && measureRows.length > 0
-          ? { limits, rows: buildMeasureRows(measureRows, limits, win) }
-          : undefined;
       // Last-report autofill (brochure p.5)
       let lastReport = options.equipmentLastReport ?? "";
       if (!lastReport.trim() && options.equipmentName?.trim()) {
@@ -129,98 +138,97 @@ export function ExportControls({
           // offline-safe: leave empty
         }
       }
-      const askedEnvelope = (options.trendMetrics ?? []).includes("envelope");
+      const secondary = options.secondaryMetric ?? "acceleration";
+      const series = SECONDARY_SERIES[secondary];
+      const bands = options.trendZoneBands !== false;
+      const trendPages = options.trendPages === true;
+      const askedEnvelope =
+        secondary === "envelope" || (options.trendMetrics ?? []).includes("envelope");
       const sp3Paths = [
         ...new Set((equipments ?? []).map((e) => e.sp3Path).filter((p): p is string => Boolean(p))),
       ];
       let envelopeHits = 0;
-      if (measureRows && measureRows.length > 0 && sp3Paths.length > 0) {
+      let envelopeUnit: string | undefined;
+      if (askedEnvelope && measureRows && measureRows.length > 0 && sp3Paths.length > 0) {
         for (const path of sp3Paths) {
           try {
-            envelopeHits += applyEnvelopeSamples(measureRows, await fetchEnvelopeSamples(path));
+            const samples = await fetchEnvelopeSamples(path);
+            envelopeUnit ??= samples.find((s) => s.unit)?.unit;
+            envelopeHits += applyEnvelopeSamples(measureRows, samples);
           } catch {
             // envelope table optional
           }
         }
       }
-      const includeEnvelope =
-        envelopeHits > 0 ||
-        (askedEnvelope &&
-          (measureRows ?? []).some(
-            (r) => r.envelopeRms != null && Number.isFinite(Number(r.envelopeRms))
-          ));
-      // All-points trends (brochure p.6)
-      let allTrends:
-        | {
-            pointLabel: string;
-            sampleCount: number;
-            velocityPng: Uint8Array;
-            accelPng: Uint8Array;
-          }[]
-        | undefined;
-      if (options.trendAllPoints !== false && limits && measureRows && measureRows.length > 1) {
+      const includeEnvelope = envelopeHits > 0 && secondary !== "envelope";
+      // Full-size trend pages (opt-in; the measuring table already carries sparklines)
+      let allTrends: ReturnType<typeof buildAllTrendSnapshots> | undefined;
+      if (trendPages && limits && measureRows && measureRows.length > 1) {
         try {
           allTrends = buildAllTrendSnapshots(
             groupHistories(measureRows),
             limits,
             win,
             40,
-            includeEnvelope
+            includeEnvelope,
+            series,
+            bands
           );
-          // single-point mode already covers it — skip duplicate
           if (allTrends.length <= 1) allTrends = undefined;
         } catch {
           allTrends = undefined;
         }
       }
-      // FFT charts: latest spectrum per point. Bound machines keep their own gallery (cap 24 each).
-      const fftItem = async (row: CsvRowSummary, labels?: Record<string, string>) => {
+      // Latest spectrum per point feeds both the Peak List column and the FFT gallery.
+      const peaksByKey = new Map<string, MeasurePeak[]>();
+      const loadSpectrum = async (row: CsvRowSummary): Promise<ParseResult | null> => {
         if (!measureRows) return null;
-        let pr: ParseResult | null = null;
-        if (tauriPath) {
-          try {
-            pr = await loadTauriRow(tauriPath, row.index, parsed.meta.filename, measureRows.length);
-          } catch {
-            pr = null;
+        try {
+          if (tauriPath) {
+            return await loadTauriRow(
+              tauriPath,
+              row.index,
+              parsed.meta.filename,
+              measureRows.length
+            );
           }
-        } else if (csvFile) {
-          try {
-            pr = await loadFileRow(csvFile, parsed.meta.filename, row.index, measureRows.length);
-          } catch {
-            pr = null;
+          if (csvFile) {
+            return await loadFileRow(csvFile, parsed.meta.filename, row.index, measureRows.length);
           }
+        } catch {
+          return null;
         }
-        if (!pr) return null;
-        const st = computeStats(pr.spectra);
-        const named = labels?.[`${row.pointId} ${row.directionId}`.trim()];
-        const fallback = `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""}`;
-        return {
-          label: `${named || fallback} · ${oleDateToISO(Number(row.measDate)) || ""}`,
-          png: renderChartPng(pr.spectra),
-          peak: `${st.peak.amp} @ ${st.peak.freq}`,
-        };
+        return null;
       };
       const loadFft = async (rows: CsvRowSummary[], labels?: Record<string, string>) => {
         const items: { label: string; png: Uint8Array; peak?: string }[] = [];
-        for (const row of latestPerPoint(rows).slice(0, 24)) {
-          const item = await fftItem(row, labels);
-          if (item) items.push(item);
+        for (const row of latestPerPoint(rows).slice(0, 40)) {
+          const pr = await loadSpectrum(row);
+          if (!pr || pr.spectra.length === 0) continue;
+          const key = `${row.pointId} ${row.directionId}`;
+          peaksByKey.set(key, peaksFromSpectrum(pr.spectra));
+          if (options.fftAllPoints === false || items.length >= 24) continue;
+          const named = labels?.[key.trim()];
+          const fallback = `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""}`;
+          items.push({
+            label: `${named || fallback} · ${oleDateToISO(Number(row.measDate)) || ""}`,
+            png: renderChartPng(pr.spectra),
+            peak: formatSpectrumPeak(computeStats(pr.spectra).peak),
+          });
         }
         return items;
       };
       const eqList = (equipments ?? []).filter((e) => e.name.trim() || e.specs.trim());
       const perMachineFft = new Map<string, { label: string; png: Uint8Array; peak?: string }[]>();
       let fftGallery: { label: string; png: Uint8Array; peak?: string }[] | undefined;
-      if (options.fftAllPoints !== false && measureRows && measureRows.length > 0) {
+      if (measureRows && measureRows.length > 0) {
         try {
           const bound = eqList.filter((e) => e.pointIds && e.pointIds.length > 0);
-          if (bound.length > 0) {
-            for (const e of bound) {
-              const items = await loadFft(rowsForPoints(measureRows, e.pointIds), e.labels);
-              if (items.length > 0) perMachineFft.set(e.id, items);
-            }
+          for (const e of bound) {
+            const items = await loadFft(rowsForPoints(measureRows, e.pointIds), e.labels);
+            if (items.length > 0) perMachineFft.set(e.id, items);
           }
-          if (perMachineFft.size === 0) {
+          if (bound.length === 0) {
             const items = await loadFft(measureRows);
             if (items.length > 0) fftGallery = items;
           }
@@ -228,6 +236,18 @@ export function ExportControls({
           fftGallery = undefined;
         }
       }
+      const withPeaks = (rows: MeasureRow[]) =>
+        rows.map((r) =>
+          r.key && peaksByKey.has(r.key) ? { ...r, peaks: peaksByKey.get(r.key) } : r
+        );
+      const rowOpts = { secondary, bands };
+      const zones =
+        limits && measureRows && measureRows.length > 0
+          ? {
+              limits,
+              rows: withPeaks(buildMeasureRows(measureRows, limits, win, undefined, true, rowOpts)),
+            }
+          : undefined;
       const { buildDocx } = await import("../lib/generateDocx");
       const toBrandImage = (b64: string | null) => (b64 ? { data: base64ToBytes(b64) } : undefined);
       const blob = await buildDocx({
@@ -242,36 +262,43 @@ export function ExportControls({
           signature: toBrandImage(branding?.signatureBase64 ?? null),
         },
         zones,
-        trends: trendSnap ?? undefined,
+        trends: trendPages ? (trendSnap ?? undefined) : undefined,
         allTrends,
         fftGallery,
+        isoRows: options.useCustomIso ? loadIsoRows() : undefined,
+        envelopeUnit,
         equipments:
           eqList.length > 0
             ? eqList.map((e) => {
                 const slice =
-                  limits && measureRows && e.pointIds && e.pointIds.length > 0
+                  measureRows && e.pointIds && e.pointIds.length > 0
                     ? rowsForPoints(measureRows, e.pointIds)
                     : [];
                 const fft = perMachineFft.get(e.id);
+                const mLimits = e.limits ?? limits ?? DEFAULT_ZONE_LIMITS;
                 const vib =
-                  (limits && slice.length > 0) || (fft && fft.length > 0)
+                  slice.length > 0 || (fft && fft.length > 0)
                     ? {
-                        limits: limits ?? DEFAULT_ZONE_LIMITS,
+                        limits: mLimits,
                         rows:
-                          limits && slice.length > 0
-                            ? buildMeasureRows(slice, limits, win, e.labels)
+                          slice.length > 0
+                            ? withPeaks(
+                                buildMeasureRows(slice, mLimits, win, e.labels, true, rowOpts)
+                              )
                             : [],
                         trends:
-                          limits && slice.length > 0
+                          trendPages && slice.length > 0
                             ? buildAllTrendSnapshots(
                                 groupHistories(slice).map((h) => ({
                                   ...h,
                                   label: e.labels?.[`${h.pointId} ${h.directionId}`] || h.label,
                                 })),
-                                limits,
+                                mLimits,
                                 win,
                                 40,
-                                includeEnvelope
+                                includeEnvelope,
+                                series,
+                                bands
                               )
                             : undefined,
                         fft,
@@ -279,6 +306,7 @@ export function ExportControls({
                     : undefined;
                 return {
                   name: e.name,
+                  plant: e.plant,
                   specs: e.specs,
                   schematic: toBrandImage(e.schematicBase64),
                   status: e.status,
@@ -342,9 +370,16 @@ export function ExportControls({
         void exportRef.current();
       }
     };
+    const onRequest = () => void exportRef.current();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(EXPORT_EVENT, onRequest);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(EXPORT_EVENT, onRequest);
+    };
   }, []);
+
+  useEffect(() => onBusy?.(busy), [busy, onBusy]);
 
   const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate || "YYYY-MM-DD"}.docx`;
 

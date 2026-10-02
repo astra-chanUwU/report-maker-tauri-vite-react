@@ -21,6 +21,12 @@ export function defaultReportOptions(): ReportOptions {
     pointLimit: 120,
     includeIsoTable: true,
     isoGroups: "all",
+    isoPosition: "end",
+    useCustomIso: false,
+    secondaryMetric: "acceleration",
+    showSecondary: true,
+    trendZoneBands: true,
+    trendPages: false,
     equipmentName: "",
     equipmentSpecs: "",
     schematicBase64: null,
@@ -67,6 +73,15 @@ export function loadReportOptions(): ReportOptions {
       templateId: typeof o.templateId === "string" ? o.templateId : undefined,
       includeIsoTable: typeof o.includeIsoTable === "boolean" ? o.includeIsoTable : true,
       isoGroups: o.isoGroups === "1+3" || o.isoGroups === "2+4" ? o.isoGroups : "all",
+      isoPosition: o.isoPosition === "off" || o.isoPosition === "afterToc" ? o.isoPosition : "end",
+      useCustomIso: bool(o.useCustomIso, false),
+      secondaryMetric:
+        o.secondaryMetric === "bc" || o.secondaryMetric === "envelope"
+          ? o.secondaryMetric
+          : "acceleration",
+      showSecondary: bool(o.showSecondary, true),
+      trendZoneBands: bool(o.trendZoneBands, true),
+      trendPages: bool(o.trendPages, false),
       equipmentName: typeof o.equipmentName === "string" ? o.equipmentName : "",
       equipmentSpecs: typeof o.equipmentSpecs === "string" ? o.equipmentSpecs : "",
       schematicBase64: typeof o.schematicBase64 === "string" ? o.schematicBase64 : null,

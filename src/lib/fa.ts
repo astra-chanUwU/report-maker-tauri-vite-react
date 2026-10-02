@@ -102,6 +102,11 @@ const FA_SECTIONS: Record<string, string> = {
   measZoneV: "ناحیه سرعت",
   measZoneA: "ناحیه شتاب",
   measPeaks: "فهرست پیک",
+  measPointLong: "نقطه اندازه‌گیری",
+  machineName: "نام ماشین",
+  plant: "واحد",
+  measVelocity: "سرعت — RMS (mm/s)",
+  measTrend: "روند (میانگین · قبلی · فعلی)",
   freq: "فرکانس",
   amp: "دامنه",
   metric: "مورد",
@@ -114,7 +119,7 @@ const FA_SECTIONS: Record<string, string> = {
   peakFreq: "فرکانس پیک",
   freqLines: "محدوده فرکانس / خطوط",
   zoneVLimits: "حدود ناحیه سرعت (B/U/C)",
-  zoneALimits: "حدود ناحیه شتاب (B/U/C)",
+  zoneALimits: "حدود ناحیه شتاب / BC (B/U/C)",
   zoneELimits: "حدود ناحیه انولوپ (B/U/C)",
 };
 
@@ -154,7 +159,12 @@ const EN_SECTIONS: Record<string, string> = {
   measCurr: "Curr",
   measZoneV: "V Zone",
   measZoneA: "A Zone",
-  measPeaks: "Peak list",
+  measPeaks: "Peak List",
+  measPointLong: "Measuring point",
+  machineName: "Machine Name",
+  plant: "Plant",
+  measVelocity: "Velocity — RMS (mm/s)",
+  measTrend: "Trend (Avg · Prev · Cur)",
   freq: "Freq",
   amp: "Amp",
   metric: "Metric",
@@ -167,7 +177,7 @@ const EN_SECTIONS: Record<string, string> = {
   peakFreq: "Peak freq",
   freqLines: "Freq range / lines",
   zoneVLimits: "Velocity zone limits (B/U/C)",
-  zoneALimits: "Accel zone limits (B/U/C)",
+  zoneALimits: "Acceleration / BC zone limits (B/U/C)",
   zoneELimits: "Envelope zone limits (B/U/C)",
 };
 

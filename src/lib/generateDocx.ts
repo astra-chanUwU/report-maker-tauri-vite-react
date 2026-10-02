@@ -1,10 +1,12 @@
 import {
   AlignmentType,
   Bookmark,
+  BorderStyle,
   Document,
   Footer,
   Header,
   HeadingLevel,
+  HeightRule,
   ImageRun,
   InternalHyperlink,
   Packer,
@@ -14,11 +16,15 @@ import {
   ShadingType,
   Table,
   TableCell,
+  TableLayoutType,
   TableRow,
   TextRun,
+  VerticalAlign,
+  VerticalMergeType,
   WidthType,
   type IParagraphOptions,
   type IRunOptions,
+  type ITableCellBorders,
 } from "docx";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
 import { sectionTitle } from "./fa";
@@ -26,10 +32,12 @@ import { encodePng, drawCallout, line, setPixel } from "./png";
 import { applyWordRtl } from "./docx-rtl";
 import { findDominantPeaks, formatPeakLabel } from "./spectra-peaks";
 import { getTemplate } from "./templates";
-import { buildIsoTableData, type IsoCell } from "./iso10816";
+import { buildIsoTableData, ISO_COLUMN_DXA, type IsoCell, type IsoDataRow } from "./iso10816";
+import { secondaryLabels, secondaryLimits, type SecondaryMetric } from "./metrics";
 import {
   classifyZone,
   formatLimits,
+  limitsDisabled,
   limitsShort,
   ZONE_FILL,
   ZONE_TEXT,
@@ -73,6 +81,44 @@ export interface BrandImage {
   kind?: "png" | "jpg";
 }
 
+/** Pixel size from a PNG IHDR or JPEG SOF header; null when unreadable. */
+export function imageSize(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length > 24 && bytes[0] === 0x89 && bytes[1] === 0x50) {
+    const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    return { width: v.getUint32(16), height: v.getUint32(20) };
+  }
+  if (bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < bytes.length) {
+      if (bytes[i] !== 0xff) return null;
+      const marker = bytes[i + 1];
+      const len = (bytes[i + 2] << 8) | bytes[i + 3];
+      const sof = marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker);
+      if (sof) {
+        return {
+          height: (bytes[i + 5] << 8) | bytes[i + 6],
+          width: (bytes[i + 7] << 8) | bytes[i + 8],
+        };
+      }
+      i += 2 + len;
+    }
+  }
+  return null;
+}
+
+/** Scale an image into a box without distorting it. */
+function fitImage(
+  bytes: Uint8Array,
+  maxW: number,
+  maxH: number
+): { width: number; height: number } {
+  const size = imageSize(bytes);
+  if (!size || size.width <= 0 || size.height <= 0)
+    return { width: maxW, height: Math.round(maxW * 0.66) };
+  const k = Math.min(maxW / size.width, maxH / size.height);
+  return { width: Math.round(size.width * k), height: Math.round(size.height * k) };
+}
+
 /** Detect PNG vs JPEG from magic bytes (branding uploads lose their MIME). */
 export function detectImageKind(bytes: Uint8Array): "png" | "jpg" {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
@@ -80,10 +126,19 @@ export function detectImageKind(bytes: Uint8Array): "png" | "jpg" {
   return "png";
 }
 
+export interface MeasurePeak {
+  /** Line frequency in RPM (Hz × 60). */
+  rpm: string;
+  amp: string;
+}
+
 export interface MeasureRow {
+  /** "PointID DirectionID" — lets the exporter attach spectrum peaks later. */
+  key?: string;
   point: string;
   date: string;
   rms: string;
+  /** Current secondary-metric reading (m/s² for acceleration/BC, gEN for envelope). */
   rmsA: string;
   peak: string;
   peakFreq: string;
@@ -92,11 +147,13 @@ export interface MeasureRow {
   avgV?: string;
   prevV?: string;
   currV?: string;
+  /** Secondary-metric stats (acceleration, BC or envelope). */
   totalA?: string;
   avgA?: string;
   prevA?: string;
   currA?: string;
-  peakList?: string;
+  /** Peak List column: strongest spectrum lines. */
+  peaks?: MeasurePeak[];
   sparkV?: Uint8Array;
   sparkA?: Uint8Array;
 }
@@ -107,53 +164,108 @@ export interface MeasuringCell {
   color?: string;
   bold?: boolean;
   png?: Uint8Array;
+  /** Avg · Prev · Cur strip printed above a trend sparkline. */
+  stats?: [string, string, string];
+  /** Stacked values (peak list RPM / Amp). */
+  lines?: string[];
+  /** Font size in half-points. */
+  size?: number;
 }
+
+export interface MeasuringHead {
+  text: string;
+  fill: string;
+  color: string;
+  span: number;
+}
+
+export interface MeasuringTableData {
+  /** First header row: Measuring point (spans both rows) + metric groups. */
+  groups: MeasuringHead[];
+  /** Second header row, one entry per column (index 0 repeats the point label). */
+  header: string[];
+  headerFill: string[];
+  body: MeasuringCell[][];
+  /** Column widths in dxa (sum = A4 text width at 1 cm margins). */
+  widths: number[];
+}
+
+export const TABLE_DXA = 10772;
+const GREEN_DARK = "1B5E20";
+const GREEN_MID = "2E7D32";
+const GREEN_PEAK = "388E3C";
+const GREEN_LIGHT = "4CAF50";
+const HEAD_YELLOW = "FFEB3B";
 
 /** Pure data builder for the measuring-results table (tested without unzipping). */
 export function buildMeasuringTableData(
   rows: MeasureRow[],
   limits: ZoneLimitSet,
-  lang: "en" | "fa" = "en"
-): { header: string[]; body: MeasuringCell[][] } {
-  const header = [
-    sectionTitle(lang, "measPoint"),
-    "V",
-    sectionTitle(lang, "measTotal"),
-    sectionTitle(lang, "measAvg"),
-    sectionTitle(lang, "measPrev"),
-    sectionTitle(lang, "measCurr"),
-    `${sectionTitle(lang, "measZoneV")} (${limitsShort(limits.velocity)})`,
-    sectionTitle(lang, "measPeaks"),
-    "A",
-    sectionTitle(lang, "measTotal"),
-    sectionTitle(lang, "measAvg"),
-    sectionTitle(lang, "measPrev"),
-    sectionTitle(lang, "measCurr"),
-    `${sectionTitle(lang, "measZoneA")} (${limitsShort(limits.acceleration)})`,
+  lang: "en" | "fa" = "en",
+  opts: { secondary?: SecondaryMetric; showSecondary?: boolean; envelopeUnit?: string } = {}
+): MeasuringTableData {
+  const secondary = opts.secondary ?? "acceleration";
+  const show = opts.showSecondary !== false;
+  const sec = secondaryLabels(secondary, lang, opts.envelopeUnit);
+  const secLimits = secondaryLimits(limits, secondary);
+  const zoneHead = (label: string, l: typeof secLimits) =>
+    limitsDisabled(l) ? label : `${label} (${limitsShort(l)})`;
+  const pointLabel = sectionTitle(lang, "measPointLong");
+  const trend = sectionTitle(lang, "measTrend");
+  const groups: MeasuringHead[] = [
+    { text: pointLabel, fill: GREEN_DARK, color: "FFFFFF", span: 1 },
+    { text: sectionTitle(lang, "measVelocity"), fill: GREEN_MID, color: "FFFFFF", span: 2 },
+    { text: sectionTitle(lang, "measPeaks"), fill: GREEN_PEAK, color: "FFFFFF", span: 2 },
   ];
-  const body = rows.map((r) => {
-    const zoneV = classifyZone(r.currV || r.rms, limits.velocity);
-    const zoneA = classifyZone(r.currA || r.rmsA, limits.acceleration);
-    const peakList =
-      r.peakList || (r.peak || r.peakFreq ? `${r.peak || "—"} @ ${r.peakFreq || "—"}` : "—");
-    return [
-      { text: r.point || "?" },
-      { text: "", png: r.sparkV },
-      { text: r.totalV || r.rms || "—" },
-      { text: r.avgV || "—" },
-      { text: r.prevV || "—" },
-      { text: r.currV || r.rms || "—" },
-      { text: zoneV || "—", fill: ZONE_FILL[zoneV], color: ZONE_TEXT[zoneV], bold: true },
-      { text: peakList },
-      { text: "", png: r.sparkA },
-      { text: r.totalA || r.rmsA || "—" },
-      { text: r.avgA || "—" },
-      { text: r.prevA || "—" },
-      { text: r.currA || r.rmsA || "—" },
-      { text: zoneA || "—", fill: ZONE_FILL[zoneA], color: ZONE_TEXT[zoneA], bold: true },
-    ];
+  const header = [
+    pointLabel,
+    trend,
+    zoneHead(sectionTitle(lang, "measZoneV"), limits.velocity),
+    "RPM",
+    sectionTitle(lang, "amp"),
+  ];
+  const headerFill = [GREEN_DARK, GREEN_LIGHT, HEAD_YELLOW, HEAD_YELLOW, HEAD_YELLOW];
+  if (show) {
+    groups.push({ text: sec.group, fill: GREEN_MID, color: "FFFFFF", span: 2 });
+    header.push(trend, sec.zone);
+    headerFill.push(GREEN_LIGHT, HEAD_YELLOW);
+  }
+  const two = (s?: string) => {
+    const n = Number(s);
+    return s && s !== "—" && Number.isFinite(n) ? n.toFixed(2) : s;
+  };
+  const zoneCell = (value: string, l: typeof secLimits): MeasuringCell => {
+    const z = classifyZone(value, l);
+    return { text: z || "—", fill: ZONE_FILL[z], color: ZONE_TEXT[z], size: 32 };
+  };
+  const trendCell = (png: Uint8Array | undefined, avg?: string, prev?: string, cur?: string) => ({
+    text: "",
+    png,
+    stats: [two(avg) || "—", two(prev) || "—", two(cur) || "—"] as [string, string, string],
   });
-  return { header, body };
+  const body = rows.map((r) => {
+    const peaks = r.peaks?.length
+      ? r.peaks.slice(0, 4)
+      : r.peak || r.peakFreq
+        ? [{ rpm: r.peakFreq || "—", amp: r.peak || "—" }]
+        : [];
+    const cells: MeasuringCell[] = [
+      { text: r.point || "?", bold: true, size: 28 },
+      trendCell(r.sparkV, r.avgV, r.prevV, r.currV || r.rms),
+      zoneCell(r.currV || r.rms, limits.velocity),
+      { text: "", lines: peaks.length ? peaks.map((p) => p.rpm) : ["—"], bold: true },
+      { text: "", lines: peaks.length ? peaks.map((p) => two(p.amp) ?? p.amp) : ["—"], bold: true },
+    ];
+    if (show) {
+      cells.push(
+        trendCell(r.sparkA, r.avgA, r.prevA, r.currA || r.rmsA),
+        zoneCell(r.currA || r.rmsA, secLimits)
+      );
+    }
+    return cells;
+  });
+  const widths = show ? [920, 3590, 660, 800, 560, 3590, 652] : [1100, 6000, 900, 1100, 1672];
+  return { groups, header, headerFill, body, widths };
 }
 
 export interface BuildDocxInput {
@@ -182,6 +294,8 @@ export interface BuildDocxInput {
   /** Multi-equipment report (brochure p.4): one section per item + auto TOC. */
   equipments?: {
     name?: string;
+    /** Plant / area from the Spectra tree, printed in the identity block. */
+    plant?: string;
     specs?: string;
     schematic?: BrandImage;
     status?: string;
@@ -225,6 +339,10 @@ export interface BuildDocxInput {
   }[];
   /** FFT gallery for all points (brochure p.7). */
   fftGallery?: { label: string; png: Uint8Array; peak?: string }[];
+  /** Analyst-edited ISO 10816-3 rows (printed when options.useCustomIso). */
+  isoRows?: IsoDataRow[];
+  /** Envelope unit from EnvelopeData (default gEN). */
+  envelopeUnit?: string;
 }
 
 export { encodePng, line } from "./png";
@@ -324,7 +442,8 @@ function equipmentSection(
     problems?: string;
     actions?: string;
   },
-  skipName = false
+  skipName = false,
+  limits?: ZoneLimitSet
 ): (Paragraph | Table)[] {
   const name = eq?.name?.trim() ?? "";
   const specs = eq?.specs?.trim() ?? "";
@@ -333,7 +452,8 @@ function equipmentSection(
   const lastReport = eq?.lastReport?.trim() ?? "";
   const problems = eq?.problems?.trim() ?? "";
   const corrective = eq?.corrective?.trim() ?? "";
-  if (!name && !specs && !schema && !status && !lastReport && !problems && !corrective) return [];
+  if (!name && !specs && !schema && !status && !lastReport && !problems && !corrective && !limits)
+    return [];
   const out: (Paragraph | Table)[] = [
     docParagraph({ text: sectionTitle(lang, "equipment"), heading: HeadingLevel.HEADING_1 }),
   ];
@@ -346,50 +466,45 @@ function equipmentSection(
     );
     out.push(docParagraph(status));
   }
-  if (specs) {
+  if (schema) {
+    out.push(
+      headingWithBookmark(
+        sectionTitle(lang, "schematic"),
+        HeadingLevel.HEADING_2,
+        marks?.schematic
+      ),
+      docParagraph({
+        children: [
+          new ImageRun({
+            data: schema.data,
+            transformation: fitImage(schema.data, 560, 400),
+            type: schema.kind ?? detectImageKind(schema.data),
+          }),
+        ],
+        alignment: AlignmentType.CENTER,
+      })
+    );
+  }
+  if (specs || limits) {
     out.push(
       headingWithBookmark(sectionTitle(lang, "specs"), HeadingLevel.HEADING_2, marks?.specs)
     );
-    // Structured specs (colon-separated lines) render as a 2-column table like the brochure
+    // "Key: value" lines become the brochure specs table; free text stays as paragraphs
     const specLines = specs
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean);
     const kvRows = specLines
-      .filter((l) => l.includes(":"))
+      .filter((l) => /^[^:]{1,40}:/.test(l))
       .map((l) => {
         const idx = l.indexOf(":");
         return [l.slice(0, idx).trim(), l.slice(idx + 1).trim()] as [string, string];
-      });
-    if (kvRows.length >= 2 && kvRows.length === specLines.filter((l) => l.includes(":")).length) {
-      const specCell = (t: string, bold = false) =>
-        new TableCell({
-          children: [docParagraph({ children: [docRun({ text: t, bold })] })],
-          shading: bold ? { type: ShadingType.CLEAR, fill: "F0F0F0", color: "auto" } : undefined,
-        });
-      out.push(
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: [
-            new TableRow({
-              children: [
-                specCell(sectionTitle(lang, "metric"), true),
-                specCell(sectionTitle(lang, "value"), true),
-              ],
-            }),
-            ...kvRows.map(([k, v]) => new TableRow({ children: [specCell(k), specCell(v)] })),
-          ],
-        })
-      );
-      // Any non-kv lines (e.g. "Bearings:" header) already included as kv; bare lines appended
-      const bare = specLines.filter((l) => !l.includes(":"));
-      for (const t of bare) out.push(docParagraph(t));
-    } else {
-      for (const para of specs.split(/\n\s*\n/)) {
-        const t = para.trim();
-        if (t) out.push(docParagraph(t));
-      }
-    }
+      })
+      .filter(([, v]) => v.length > 0);
+    const bare = specLines.filter((l) => !/^[^:]{1,40}:\s*\S/.test(l));
+    const tableRows = [...kvRows, ...(limits ? limitRows(limits, lang) : [])];
+    if (tableRows.length > 0) out.push(specsTable(tableRows));
+    for (const t of bare) out.push(docParagraph(t));
   }
   if (lastReport) {
     out.push(
@@ -412,23 +527,6 @@ function equipmentSection(
       headingWithBookmark(sectionTitle(lang, "actions"), HeadingLevel.HEADING_2, marks?.actions)
     );
     out.push(docParagraph(corrective));
-  }
-  if (schema) {
-    out.push(
-      headingWithBookmark(sectionTitle(lang, "schematic"), HeadingLevel.HEADING_2, marks?.schematic)
-    );
-    out.push(
-      docParagraph({
-        children: [
-          new ImageRun({
-            data: schema.data,
-            transformation: { width: 600, height: 400 },
-            type: schema.kind ?? detectImageKind(schema.data),
-          }),
-        ],
-        alignment: AlignmentType.CENTER,
-      })
-    );
   }
   return out;
 }
@@ -669,6 +767,199 @@ export function buildSignatureBlock(
   ];
 }
 
+const GRID_LINE = { style: BorderStyle.SINGLE, size: 6, color: GREEN_MID };
+const NO_LINE = { style: BorderStyle.NIL, size: 0, color: "FFFFFF" };
+const GRID_BORDERS = {
+  top: GRID_LINE,
+  bottom: GRID_LINE,
+  left: GRID_LINE,
+  right: GRID_LINE,
+  insideHorizontal: GRID_LINE,
+  insideVertical: GRID_LINE,
+};
+const SEAMLESS: ITableCellBorders = {
+  top: NO_LINE,
+  bottom: NO_LINE,
+  left: NO_LINE,
+  right: NO_LINE,
+};
+const shade = (fill?: string) =>
+  fill ? { shading: { type: ShadingType.CLEAR, fill, color: "auto" } } : {};
+const tight = { top: 30, bottom: 30, left: 50, right: 50 };
+
+function centered(text: string, run: IRunOptions = {}): Paragraph {
+  const parts = text.split("\n");
+  return docParagraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 0, after: 0 },
+    children: parts.map((t, i) => docRun({ ...run, text: t, break: i > 0 ? 1 : undefined })),
+  });
+}
+
+/** Reference measuring-results table: grouped two-row header + one tall row per point. */
+function measuringTable(data: MeasuringTableData): Table {
+  const { groups, header, headerFill, body, widths } = data;
+  const dxa = (n: number) => ({ size: n, type: WidthType.DXA });
+  const spanWidth = (start: number, span: number) =>
+    widths.slice(start, start + span).reduce((a, b) => a + b, 0);
+  let col = 0;
+  const groupCells = groups.map((g, i) => {
+    const start = col;
+    col += g.span;
+    return new TableCell({
+      width: dxa(spanWidth(start, g.span)),
+      columnSpan: g.span > 1 ? g.span : undefined,
+      verticalMerge: i === 0 ? VerticalMergeType.RESTART : undefined,
+      verticalAlign: VerticalAlign.CENTER,
+      margins: tight,
+      ...shade(g.fill),
+      children: [centered(g.text, { bold: true, color: g.color, size: 17 })],
+    });
+  });
+  const subCells = header.map((t, i) => {
+    const dark = headerFill[i] !== HEAD_YELLOW;
+    return new TableCell({
+      width: dxa(widths[i]),
+      verticalMerge: i === 0 ? VerticalMergeType.CONTINUE : undefined,
+      verticalAlign: VerticalAlign.CENTER,
+      margins: tight,
+      ...shade(headerFill[i]),
+      children: [
+        i === 0
+          ? centered("")
+          : centered(t, { bold: true, size: 15, color: dark ? "FFFFFF" : "1B1B1B" }),
+      ],
+    });
+  });
+  const bodyCell = (c: MeasuringCell, i: number) => {
+    const paras: Paragraph[] = [];
+    if (c.stats) {
+      paras.push(
+        docParagraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 0, after: 20 },
+          children: [
+            docRun({ text: c.stats[0], size: 14, color: "616161" }),
+            docRun({ text: "  ·  ", size: 14, color: "9E9E9E" }),
+            docRun({ text: c.stats[1], size: 14, color: "616161" }),
+            docRun({ text: "  ·  ", size: 14, color: "9E9E9E" }),
+            docRun({ text: c.stats[2], size: 15, bold: true, color: GREEN_DARK }),
+          ],
+        })
+      );
+      const imgW = Math.round((widths[i] / 1440) * 96) - 10;
+      paras.push(
+        c.png && c.png.length > 8
+          ? docParagraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 0, after: 0 },
+              children: [
+                new ImageRun({
+                  data: c.png,
+                  transformation: { width: imgW, height: Math.round(imgW * 0.42) },
+                  type: "png",
+                }),
+              ],
+            })
+          : centered("—", { color: "9E9E9E", size: 16 })
+      );
+    } else if (c.lines) {
+      for (const l of c.lines) paras.push(centered(l, { bold: c.bold, size: 17 }));
+    } else {
+      paras.push(centered(c.text, { bold: c.bold, color: c.color, size: c.size ?? 18 }));
+    }
+    return new TableCell({
+      width: dxa(widths[i]),
+      verticalAlign: VerticalAlign.CENTER,
+      margins: tight,
+      ...shade(c.fill),
+      children: paras,
+    });
+  };
+  return new Table({
+    width: dxa(TABLE_DXA),
+    columnWidths: widths,
+    layout: TableLayoutType.FIXED,
+    borders: GRID_BORDERS,
+    rows: [
+      new TableRow({ tableHeader: true, children: groupCells }),
+      new TableRow({ tableHeader: true, children: subCells }),
+      ...body.map(
+        (r) =>
+          new TableRow({
+            cantSplit: true,
+            height: { value: 1700, rule: HeightRule.ATLEAST },
+            children: r.map(bodyCell),
+          })
+      ),
+    ],
+  });
+}
+
+/** Machine specifications (label | value) with the alarm limit rows appended. */
+function specsTable(rows: [string, string][]): Table {
+  const label = Math.round(TABLE_DXA * 0.32);
+  const cell = (t: string, isLabel: boolean) =>
+    new TableCell({
+      width: { size: isLabel ? label : TABLE_DXA - label, type: WidthType.DXA },
+      margins: { top: 40, bottom: 40, left: 100, right: 100 },
+      ...shade(isLabel ? "F1F8E9" : undefined),
+      children: [
+        docParagraph({
+          spacing: { before: 0, after: 0 },
+          children: [
+            docRun({ text: t, bold: isLabel, size: 18, color: isLabel ? GREEN_DARK : undefined }),
+          ],
+        }),
+      ],
+    });
+  return new Table({
+    width: { size: TABLE_DXA, type: WidthType.DXA },
+    columnWidths: [label, TABLE_DXA - label],
+    layout: TableLayoutType.FIXED,
+    borders: GRID_BORDERS,
+    rows: rows.map(([k, v]) => new TableRow({ children: [cell(k, true), cell(v, false)] })),
+  });
+}
+
+/** Machine identity block under the machine heading (label fill E8F5E9, like the reference). */
+function identityTable(rows: [string, string][]): Table {
+  const label = Math.round(TABLE_DXA * 0.32);
+  const cell = (t: string, isLabel: boolean) =>
+    new TableCell({
+      width: { size: isLabel ? label : TABLE_DXA - label, type: WidthType.DXA },
+      margins: { top: 40, bottom: 40, left: 100, right: 100 },
+      ...shade(isLabel ? "E8F5E9" : undefined),
+      children: [
+        docParagraph({
+          spacing: { before: 0, after: 0 },
+          children: [
+            docRun({ text: t, bold: isLabel, size: 20, color: isLabel ? GREEN_DARK : undefined }),
+          ],
+        }),
+      ],
+    });
+  return new Table({
+    width: { size: TABLE_DXA, type: WidthType.DXA },
+    columnWidths: [label, TABLE_DXA - label],
+    layout: TableLayoutType.FIXED,
+    borders: GRID_BORDERS,
+    rows: rows.map(([k, v]) => new TableRow({ children: [cell(k, true), cell(v, false)] })),
+  });
+}
+
+/** Alarm limits as printed under the specs (velocity, acceleration/BC, envelope when enabled). */
+export function limitRows(limits: ZoneLimitSet, lang: "en" | "fa" = "en"): [string, string][] {
+  const out: [string, string][] = [
+    [sectionTitle(lang, "zoneVLimits"), formatLimits(limits.velocity)],
+    [sectionTitle(lang, "zoneALimits"), formatLimits(limits.acceleration)],
+  ];
+  if (!limitsDisabled(limits.envelope)) {
+    out.push([sectionTitle(lang, "zoneELimits"), formatLimits(limits.envelope)]);
+  }
+  return out;
+}
+
 export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   paragraphRtl = input.options.language === "fa";
   const stats = computeStats(input.spectra);
@@ -729,16 +1020,20 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         ),
       ],
       alignment: align,
-    }),
-    docParagraph({
-      children: [
-        docRun(
-          `Source: ${input.meta.filename} (${input.meta.source}) · ${stats.spectra_points} points · peak ${stats.peak.amp} @ ${stats.peak.freq}`
-        ),
-      ],
-      alignment: align,
     })
   );
+  if (!input.equipments?.length) {
+    headerChildren.push(
+      docParagraph({
+        children: [
+          docRun(
+            `Source: ${input.meta.filename} (${input.meta.source}) · ${stats.spectra_points} points · peak ${stats.peak.amp} @ ${stats.peak.freq}`
+          ),
+        ],
+        alignment: align,
+      })
+    );
+  }
   if (template.coverStyle === "minimal") {
     headerChildren.push(
       docParagraph({
@@ -779,39 +1074,23 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   if (multi && input.options.includeToc !== false) {
     children.push(...tocSection(multi, fa));
   }
+  const isoPosition =
+    input.options.includeIsoTable === false ? "off" : (input.options.isoPosition ?? "end");
+  const isoRows = input.options.useCustomIso ? input.isoRows : undefined;
+  if (isoPosition === "afterToc") {
+    children.push(...buildIsoSection(fa ? "fa" : "en", input.options.isoGroups, isoRows));
+  }
   const lang: "en" | "fa" = fa ? "fa" : "en";
-  const mcell = (c: MeasuringCell, bold = false) =>
-    new TableCell({
-      ...(c.fill ? { shading: { type: ShadingType.CLEAR, fill: c.fill, color: "auto" } } : {}),
-      children: [
-        docParagraph({
-          children: [
-            ...(c.png && c.png.length > 8
-              ? [
-                  new ImageRun({
-                    data: c.png,
-                    transformation: { width: 90, height: 28 },
-                    type: "png",
-                  }),
-                ]
-              : []),
-            ...(c.text ? [docRun({ text: c.text, bold: bold || c.bold, color: c.color })] : []),
-          ],
-        }),
-      ],
-    });
+  const tableOpts = {
+    secondary: input.options.secondaryMetric,
+    showSecondary: input.options.showSecondary,
+    envelopeUnit: input.envelopeUnit,
+  };
   const pushMeasuring = (limits: ZoneLimitSet, rows: MeasureRow[], bookmarkId?: string) => {
     if (rows.length === 0) return;
-    const { header, body } = buildMeasuringTableData(rows, limits, lang);
     children.push(
       headingWithBookmark(sectionTitle(lang, "measuring"), HeadingLevel.HEADING_1, bookmarkId),
-      new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          new TableRow({ children: header.map((t) => mcell({ text: t }, true)) }),
-          ...body.map((r) => new TableRow({ children: r.map((c) => mcell(c)) })),
-        ],
-      })
+      measuringTable(buildMeasuringTableData(rows, limits, lang, tableOpts))
     );
   };
   const pushTrends = (list: NonNullable<BuildDocxInput["allTrends"]>, bookmarkId?: string) => {
@@ -875,20 +1154,26 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     children.push(headingWithBookmark(sectionTitle(lang, "fft"), level, bookmarkId));
     // Brochure p.7: 2 spectra per row in a bordered grid
     const items = list.slice(0, 24);
+    const half = TABLE_DXA / 2;
     const fftCell = (g: { label: string; png: Uint8Array; peak?: string }) =>
       new TableCell({
-        width: { size: 50, type: WidthType.PERCENTAGE },
+        width: { size: half, type: WidthType.DXA },
+        margins: tight,
         children: [
           docParagraph({
-            text: g.peak ? `${g.label} · peak ${g.peak}` : g.label,
-            heading: HeadingLevel.HEADING_3,
             alignment: AlignmentType.CENTER,
+            spacing: { before: 0, after: 40 },
+            shading: { type: ShadingType.CLEAR, fill: "F1F8E9", color: "auto" },
+            children: [
+              docRun({ text: g.label, bold: true, size: 18, color: GREEN_DARK }),
+              ...(g.peak ? [docRun({ text: `   ${g.peak}`, size: 15, color: "616161" })] : []),
+            ],
           }),
           docParagraph({
             children: [
               new ImageRun({
                 data: g.png,
-                transformation: { width: 280, height: 150 },
+                transformation: { width: 340, height: 170 },
                 type: "png",
               }),
             ],
@@ -902,13 +1187,25 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       const right = items[i + 1];
       rows.push(
         new TableRow({
-          children: right ? [fftCell(left), fftCell(right)] : [fftCell(left)],
+          cantSplit: true,
+          children: right
+            ? [fftCell(left), fftCell(right)]
+            : [
+                fftCell(left),
+                new TableCell({
+                  width: { size: half, type: WidthType.DXA },
+                  children: [docParagraph("")],
+                }),
+              ],
         })
       );
     }
     children.push(
       new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
+        width: { size: TABLE_DXA, type: WidthType.DXA },
+        columnWidths: [half, half],
+        layout: TableLayoutType.FIXED,
+        borders: GRID_BORDERS,
         rows,
       })
     );
@@ -928,18 +1225,34 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         problems: sectionBookmarkId(n, "problems"),
         actions: sectionBookmarkId(n, "actions"),
       };
+      const name = eq.name?.trim() || `${sectionTitle(lang, "equipment")} ${n}`;
       children.push(
         docParagraph({
           heading: HeadingLevel.HEADING_1,
+          pageBreakBefore: i > 0 || input.options.includeToc !== false,
           children: [
             new Bookmark({
               id: equipmentBookmarkId(n),
-              children: [docRun(eq.name?.trim() || `${sectionTitle(lang, "equipment")} ${n}`)],
+              children: [docRun(`${sectionTitle(lang, "machineName")}: ${name}`)],
             }),
           ],
         })
       );
-      children.push(...equipmentSection(eq, lang, marks, true).slice(1));
+      const measured = (eq.vib?.rows ?? [])
+        .map((r) => r.date)
+        .filter((dt) => /^\d{4}-\d{2}-\d{2}/.test(dt))
+        .sort()
+        .pop();
+      children.push(
+        identityTable([
+          [sectionTitle(lang, "machineName"), name],
+          ...(eq.plant?.trim()
+            ? [[sectionTitle(lang, "plant"), eq.plant.trim()] as [string, string]]
+            : []),
+          [sectionTitle(lang, "measured"), measured || input.options.reportDate || "—"],
+        ])
+      );
+      children.push(...equipmentSection(eq, lang, marks, true, eq.vib?.limits).slice(1));
       if (eq.vib) {
         pushMeasuring(eq.vib.limits, eq.vib.rows, sectionBookmarkId(n, "measuring"));
         if (eq.vib.trends) pushTrends(eq.vib.trends, sectionBookmarkId(n, "trends"));
@@ -950,17 +1263,21 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   } else {
     children.push(...equipmentSection(input.equipment, lang));
   }
-  if (!omitSharedNarrative) {
+  const sharedSummary = d?.summary?.trim()
+    ? d.summary
+    : multi
+      ? ""
+      : `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`;
+  if (!omitSharedNarrative && sharedSummary) {
     children.push(
       docParagraph({ text: sectionTitle(lang, "summary"), heading: HeadingLevel.HEADING_1 }),
-      docParagraph(
-        d?.summary ??
-          `Peak ${stats.peak.amp} at ${stats.peak.freq}. ${stats.spectra_points} points.`
-      )
+      docParagraph(sharedSummary)
     );
   }
 
-  const overall = input.meta.overall;
+  // Featured single-spectrum sections only make sense for a one-measurement report;
+  // a machine report already carries its readings, trends and spectra per machine.
+  const overall = multi ? undefined : input.meta.overall;
   if (overall) {
     const cell = (t: string, bold = false) =>
       new TableCell({ children: [docParagraph({ children: [docRun({ text: t, bold })] })] });
@@ -1014,20 +1331,22 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     }
   }
 
-  children.push(
-    docParagraph({ text: sectionTitle(lang, "spectra"), heading: HeadingLevel.HEADING_1 }),
-    docParagraph({
-      children: [
-        new ImageRun({ data: png, transformation: { width: 600, height: 300 }, type: "png" }),
-      ],
-      alignment: AlignmentType.CENTER,
-    }),
-    docParagraph({
-      text: `${sectionTitle(lang, "data")} (${rows.length})`,
-      heading: HeadingLevel.HEADING_1,
-    }),
-    table
-  );
+  if (!multi) {
+    children.push(
+      docParagraph({ text: sectionTitle(lang, "spectra"), heading: HeadingLevel.HEADING_1 }),
+      docParagraph({
+        children: [
+          new ImageRun({ data: png, transformation: { width: 600, height: 300 }, type: "png" }),
+        ],
+        alignment: AlignmentType.CENTER,
+      }),
+      docParagraph({
+        text: `${sectionTitle(lang, "data")} (${rows.length})`,
+        heading: HeadingLevel.HEADING_1,
+      }),
+      table
+    );
+  }
 
   if (!perMachineVib && input.zones && input.zones.rows.length > 0) {
     pushMeasuring(input.zones.limits, input.zones.rows);
@@ -1150,8 +1469,8 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     );
   }
 
-  if (input.options.includeIsoTable !== false) {
-    children.push(...buildIsoSection(lang, input.options.isoGroups));
+  if (isoPosition === "end") {
+    children.push(...buildIsoSection(lang, input.options.isoGroups, isoRows));
   }
 
   if (input.branding?.signature && input.branding.signature.data.length > 0) {
@@ -1187,12 +1506,39 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     ],
   });
   const contentSection = {
+    properties: {
+      page: {
+        size: { width: 11906, height: 16838 },
+        margin: { top: 1000, bottom: 900, left: 567, right: 567, header: 400, footer: 400 },
+      },
+    },
     headers: { default: contentHeader },
     footers: { default: contentFooter },
     children,
   };
+  // Persian keeps Word's default complex-script font; Latin matches the reference serif
+  const font = fa ? {} : { font: "Times New Roman" };
+  const styles = {
+    default: {
+      document: { run: { ...font, size: 20 } },
+      title: { run: { ...font, color: GREEN_DARK, bold: true } },
+      heading1: {
+        run: { ...font, size: 30, bold: true, color: GREEN_DARK },
+        paragraph: { spacing: { before: 240, after: 120 }, keepNext: true },
+      },
+      heading2: {
+        run: { ...font, size: 24, bold: true, color: GREEN_MID },
+        paragraph: { spacing: { before: 200, after: 80 }, keepNext: true },
+      },
+      heading3: {
+        run: { ...font, size: 20, bold: true, color: GREEN_MID },
+        paragraph: { spacing: { before: 80, after: 40 }, keepNext: true },
+      },
+    },
+  };
   const doc = input.branding?.cover?.data?.length
     ? new Document({
+        styles,
         features: { updateFields: true },
         sections: [
           {
@@ -1215,7 +1561,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
           contentSection,
         ],
       })
-    : new Document({ features: { updateFields: true }, sections: [contentSection] });
+    : new Document({ styles, features: { updateFields: true }, sections: [contentSection] });
   const blob = await Packer.toBlob(doc);
   return fa ? applyWordRtl(blob) : blob;
 }
@@ -1223,33 +1569,74 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 /** ISO 10816-3 severity reference table (mirrors the legacy appendix). */
 function buildIsoSection(
   lang: "en" | "fa" = "en",
-  groups?: "all" | "1+3" | "2+4"
+  groups?: "all" | "1+3" | "2+4",
+  isoRows?: IsoDataRow[]
 ): (Paragraph | Table)[] {
-  const { rows } = buildIsoTableData({ language: lang, groups });
-  const cell = (c: IsoCell, bold = false) =>
-    new TableCell({
-      ...(c.span && c.span > 1 ? { columnSpan: c.span } : {}),
-      ...(c.fill ? { shading: { type: ShadingType.CLEAR, fill: c.fill, color: "auto" } } : {}),
+  const { rows } = buildIsoTableData({ language: lang, groups, rows: isoRows });
+  const widths = ISO_COLUMN_DXA;
+  const cell = (c: IsoCell, start: number) => {
+    const span = c.span ?? 1;
+    const w = widths.slice(start, start + span).reduce((a, b) => a + b, 0);
+    const right = c.align === "right";
+    return new TableCell({
+      width: { size: w, type: WidthType.DXA },
+      columnSpan: span > 1 ? span : undefined,
+      verticalMerge:
+        c.vMerge === "restart"
+          ? VerticalMergeType.RESTART
+          : c.vMerge === "continue"
+            ? VerticalMergeType.CONTINUE
+            : undefined,
+      verticalAlign: VerticalAlign.CENTER,
+      margins: { top: 20, bottom: 20, left: 80, right: 80 },
+      ...(c.seamless ? { borders: SEAMLESS } : {}),
+      ...shade(c.fill),
       children: [
         docParagraph({
-          alignment: AlignmentType.CENTER,
-          children: [docRun({ text: c.text, bold: bold || c.bold, color: c.color, size: 16 })],
+          alignment: right ? AlignmentType.RIGHT : AlignmentType.CENTER,
+          spacing: { before: 0, after: 0 },
+          children: c.text.split("\n").map((t, i) =>
+            docRun({
+              text: t,
+              bold: c.bold,
+              color: c.color,
+              size: c.size ?? 16,
+              break: i > 0 ? 1 : undefined,
+            })
+          ),
         }),
       ],
     });
+  };
   return [
-    docParagraph({ text: sectionTitle(lang, "iso"), heading: HeadingLevel.HEADING_1 }),
     docParagraph({
+      text: sectionTitle(lang, "iso"),
+      heading: HeadingLevel.HEADING_1,
+      pageBreakBefore: true,
+    }),
+    docParagraph({
+      spacing: { after: 120 },
       children: [
-        docRun({
-          text: sectionTitle(lang, "isoBlurb"),
-          italics: true,
-        }),
+        docRun({ text: sectionTitle(lang, "isoBlurb"), italics: true, size: 18, color: GREEN_MID }),
       ],
     }),
     new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: rows.map((r, i) => new TableRow({ children: r.map((c) => cell(c, i < 3)) })),
+      width: { size: TABLE_DXA, type: WidthType.DXA },
+      columnWidths: widths,
+      layout: TableLayoutType.FIXED,
+      borders: GRID_BORDERS,
+      rows: rows.map((r) => {
+        let col = 0;
+        return new TableRow({
+          height: { value: 280, rule: HeightRule.ATLEAST },
+          cantSplit: true,
+          children: r.map((c) => {
+            const out = cell(c, col);
+            col += c.span ?? 1;
+            return out;
+          }),
+        });
+      }),
     }),
   ];
 }

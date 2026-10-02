@@ -1,9 +1,23 @@
 /** SpectraPro identity tables (Plant / Machine / Point / Direction). Pure join + specs. */
 
+import { STANDARD_G } from "./metrics";
+import { deriveAlarmLimits, DEFAULT_ZONE_LIMITS, toLimit, type ZoneLimitSet } from "./zones";
+
+/** Raw Direction alarm columns: velocity mm/s, acceleration g, envelope NarrowAL1/2. */
+export interface DirectionAlarms {
+  overallW: number | null;
+  overallD: number | null;
+  overallWg: number | null;
+  overallDg: number | null;
+  narrow1: number | null;
+  narrow2: number | null;
+}
+
 export interface SpectraDirection {
   directionId: string;
   pointId: string;
   name: string;
+  alarms?: DirectionAlarms;
 }
 
 export interface SpectraPoint {
@@ -23,6 +37,54 @@ export interface SpectraMachine {
   rpmLabel: string;
   note: string;
   points: SpectraPoint[];
+  /** Alarm limits from the Direction table (m/s² for acceleration), null when absent. */
+  limits: ZoneLimitSet | null;
+}
+
+const scaleG = (v: number | null) => (v === null ? null : v * STANDARD_G);
+
+/** Legacy derive: B = warning, U = round(danger, 1), C = U × 1.23. */
+export function limitsFromAlarms(a: DirectionAlarms): ZoneLimitSet {
+  const accel = deriveAlarmLimits(scaleG(a.overallWg), scaleG(a.overallDg));
+  return {
+    velocity: deriveAlarmLimits(a.overallW, a.overallD),
+    acceleration: {
+      ...accel,
+      bottom: accel.bottom === null ? null : Math.round(accel.bottom * 100) / 100,
+    },
+    envelope: deriveAlarmLimits(a.narrow1, a.narrow2),
+  };
+}
+
+/** Machine-level limits: the most common alarm set across its directions. */
+export function machineLimits(points: SpectraPoint[]): ZoneLimitSet | null {
+  const counts = new Map<string, { n: number; a: DirectionAlarms }>();
+  for (const p of points) {
+    for (const d of p.directions) {
+      const a = d.alarms;
+      if (!a || (a.overallW === null && a.overallWg === null)) continue;
+      const key = JSON.stringify(a);
+      const hit = counts.get(key);
+      if (hit) hit.n++;
+      else counts.set(key, { n: 1, a });
+    }
+  }
+  let best: DirectionAlarms | null = null;
+  let bestN = 0;
+  for (const { n, a } of counts.values()) {
+    if (n > bestN) {
+      best = a;
+      bestN = n;
+    }
+  }
+  if (!best) return null;
+  const lim = limitsFromAlarms(best);
+  return {
+    velocity: lim.velocity.bottom === null ? DEFAULT_ZONE_LIMITS.velocity : lim.velocity,
+    acceleration:
+      lim.acceleration.bottom === null ? DEFAULT_ZONE_LIMITS.acceleration : lim.acceleration,
+    envelope: lim.envelope,
+  };
 }
 
 function splitCsvLine(line: string): string[] {
@@ -97,10 +159,19 @@ export function joinCatalog(input: {
   const dirsByPoint = new Map<string, SpectraDirection[]>();
   for (const r of dirs.rows) {
     const pointId = col(dirs.header, r, "PointID");
+    const num = (name: string) => toLimit(col(dirs.header, r, name));
     const d: SpectraDirection = {
       directionId: col(dirs.header, r, "DirectionID"),
       pointId,
       name: col(dirs.header, r, "Name"),
+      alarms: {
+        overallW: num("OverallW"),
+        overallD: num("OverallD"),
+        overallWg: num("OverallWg"),
+        overallDg: num("OverallDg"),
+        narrow1: num("NarrowAL1"),
+        narrow2: num("NarrowAL2"),
+      },
     };
     const list = dirsByPoint.get(pointId) ?? [];
     list.push(d);
@@ -129,6 +200,7 @@ export function joinCatalog(input: {
     if (!machineId) continue;
     const plantId = col(machines.header, r, "PlantID");
     const rpm = col(machines.header, r, "ValueRPM");
+    const pts = pointsByMachine.get(machineId) ?? [];
     out.push({
       machineId,
       plantId,
@@ -137,32 +209,34 @@ export function joinCatalog(input: {
       rpm,
       rpmLabel: col(machines.header, r, "LblRPM") || "Primary RPM",
       note: col(machines.header, r, "Note"),
-      points: pointsByMachine.get(machineId) ?? [],
+      points: pts,
+      limits: machineLimits(pts),
     });
   }
   return out;
 }
 
-/** Brochure specs block: RPM, note, bearing list per point. */
+/** Brochure specs block ("Key: value" lines → Specifications table): speed, bearings, note. */
 export function buildMachineSpecs(machine: SpectraMachine): string {
   const lines: string[] = [];
   if (machine.rpm) {
-    const rpm = Number(machine.rpm);
-    const shown = Number.isFinite(rpm) ? String(Math.round(rpm * 60)) : machine.rpm;
-    lines.push(`${machine.rpmLabel || "Primary RPM"}: ${shown} RPM (${machine.rpm} Hz)`);
+    const hz = Number(machine.rpm);
+    const shown = Number.isFinite(hz) && hz > 0 ? `${Math.round(hz * 60)} RPM (${hz} Hz)` : "";
+    if (shown) lines.push(`Motor speed: ${shown}`);
   }
-  if (machine.note.trim()) lines.push(`Note: ${machine.note.trim()}`);
-  const bearings = machine.points
-    .filter((p) => p.bearings.length)
-    .map((p) => `${p.name || p.pointId}: ${p.bearings.join(", ")}`);
-  if (bearings.length) {
-    lines.push("Bearings:");
-    lines.push(...bearings);
+  const byBearing = new Map<string, string[]>();
+  for (const p of machine.points) {
+    for (const b of p.bearings) {
+      const list = byBearing.get(b) ?? [];
+      list.push(p.name || `P${p.pointId}`);
+      byBearing.set(b, list);
+    }
   }
-  const axes = machine.points.flatMap((p) =>
-    p.directions.map((d) => pointAxisLabel(p.name || `P${p.pointId}`, d.name))
-  );
-  if (axes.length) lines.push(`Directions: ${axes.join(", ")}`);
+  if (byBearing.size) {
+    const list = [...byBearing.entries()].map(([b, pts]) => `${b} (${pts.join(", ")})`);
+    lines.push(`Bearing list: ${list.join("; ")}`);
+  }
+  if (machine.note.trim()) lines.push(`Note: ${machine.note.trim().replace(/\s*\n\s*/g, " ")}`);
   return lines.join("\n");
 }
 

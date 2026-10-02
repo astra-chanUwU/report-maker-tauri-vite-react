@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Database, FileText, Gauge, Keyboard, LineChart, Palette } from "lucide-react";
+import { ArrowRight, Database, FileText, Gauge, Keyboard, Palette } from "lucide-react";
 import { AiDraftCard, AiSettingsCard, type AiDraftFields } from "./components/ai-draft";
+import { ChartsMetricsCard, IsoTableEditor, MachineLimitsCard } from "./components/alarms-page";
 import { BrandingCard, TemplateCard } from "./components/branding";
 import { ChartEditor } from "./components/chart-editor";
 import { ClientProfiles } from "./components/client-profiles";
 import { DesignDemo } from "./components/demo";
 import { EquipmentWorkspace } from "./components/equipment-list";
 import { ExportControls } from "./components/export-card";
+import { ExportPage } from "./components/export-page";
 import { HistoryTab } from "./components/history";
 import { DataOverview, DropZone, FileBar, IngestError, useIngest } from "./components/ingest";
 import { RecentDbsCard } from "./components/recent-dbs";
-import { WizardBreadcrumb, type WizardStep } from "./components/wizard-steps";
 import { LicenseCard } from "./components/license";
+import { MachinePicker } from "./components/machine-picker";
 import { MdbToolSettings } from "./components/mdb-import";
 import { MeasurementPicker } from "./components/measurement-picker";
-import { MeasuringTable, ZoneBadge } from "./components/measuring-table";
+import { DatabaseSummary, MeasuringTable, useMeasureRows } from "./components/measuring-table";
 import { Onboarding } from "./components/onboarding";
 import {
   ClientDetailsCard,
@@ -31,22 +33,25 @@ import {
   THEME_ICONS,
   Toolbar,
   useTheme,
+  WIZARD,
+  WizardFooter,
+  WORKFLOW_NAV,
   type MissingItem,
   type NavIndicator,
   type PageId,
   type ThemePref,
+  type WizardStepId,
 } from "./components/shell";
 import { TelemetryCard } from "./components/telemetry";
 import { TrendCard, type TrendSnapshot } from "./components/trend-card";
 import { Button } from "./components/ui/button";
-import { Panel } from "./components/ui/card";
+import { Card, Panel } from "./components/ui/card";
 import { EmptyState, Field, Segmented } from "./components/ui/form";
 import { ZoneLimitsCard } from "./components/zone-limits";
 import { addHistoryEntry, makeEntry } from "./lib/history";
 import { loadEquipments, saveEquipments, type EquipmentItem } from "./lib/equipment";
 import { addRecentDb } from "./lib/recentDbs";
 import { APP_VERSION } from "./lib/license";
-import type { CsvRowSummary } from "./lib/mdb";
 import {
   computeStats,
   type ParseResult,
@@ -65,11 +70,10 @@ import {
   validateReportOptions,
   type Branding,
 } from "./lib/settings";
-import { oleDateToISO } from "./lib/specdata";
 import { initCrashHooks, track } from "./lib/telemetry";
 import { translate, UiProvider, type UiLang } from "./lib/i18n";
 import { cn } from "./lib/utils";
-import { classifyZone, type ZoneLimitSet } from "./lib/zones";
+import type { ZoneLimitSet } from "./lib/zones";
 
 function App() {
   const [themePref, setThemePref] = useTheme();
@@ -81,13 +85,15 @@ function App() {
   const [aiDraft, setAiDraft] = useState<AiDraftFields | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [zoneLimits, setZoneLimits] = useState<ZoneLimitSet>(() => loadZoneLimits());
-  const [measureRows, setMeasureRows] = useState<CsvRowSummary[] | null>(null);
   const [trendSnap, setTrendSnap] = useState<TrendSnapshot | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
   const [equipments, setEquipments] = useState<EquipmentItem[]>(() => loadEquipments());
   const [showErrors, setShowErrors] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [recentTick, setRecentTick] = useState(0);
+  const [sp3Path, setSp3Path] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const pendingSp3PathRef = useRef<string | null>(null);
 
   const uiLang: UiLang = options.language === "fa" ? "fa" : "en";
@@ -120,13 +126,13 @@ function App() {
     setEdited(r ? r.spectra : null);
     setAiDraft(null);
     setCsvFile(r && r.meta.source === "spec-csv" ? file : null);
-    setMeasureRows(null);
     setTrendSnap(null);
+    setSp3Path(r ? pendingSp3PathRef.current : null);
     if (r) {
-      const sp3Path = pendingSp3PathRef.current;
-      if (sp3Path) {
+      const opened = pendingSp3PathRef.current;
+      if (opened) {
         void addRecentDb({
-          path: sp3Path,
+          path: opened,
           filename: r.meta.filename,
           size: r.meta.size,
           source: r.meta.source,
@@ -180,10 +186,12 @@ function App() {
     effective &&
     (effective.meta.csvPath || (effective.meta.source === "spec-csv" && csvFile))
   );
-  const rowPath = effective?.meta.csvPath ?? null;
-  const rowFile = effective?.meta.csvPath ? null : csvFile;
+  const rowPath = hasRowSource ? (effective?.meta.csvPath ?? null) : null;
+  const rowFile = hasRowSource && !effective?.meta.csvPath ? csvFile : null;
+  const { rows: measureRows, loading: rowsLoading } = useMeasureRows(rowPath, rowFile);
 
   const handleExported = (info: { filename: string; savedPath: string | null }) => {
+    if (info.savedPath) setLastSaved(info.savedPath);
     if (!effective) return;
     const entry = makeEntry({
       projectName: options.projectName,
@@ -249,14 +257,17 @@ function App() {
     goTo(m.page, m.focusId);
   };
 
-  // Ctrl+1..9 page switching
+  // Ctrl+1..4 wizard steps, Ctrl+8 History, Ctrl+9 Settings
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
       const n = Number(e.key);
-      if (n >= 1 && n <= ALL_NAV.length) {
+      if (n >= 1 && n <= WIZARD.length) {
         e.preventDefault();
-        setPage(ALL_NAV[n - 1].id);
+        setPage(WIZARD[n - 1].items[0].id);
+      } else if (n === 8 || n === 9) {
+        e.preventDefault();
+        setPage(n === 8 ? "history" : "settings");
       }
     };
     window.addEventListener("keydown", onKey);
@@ -351,25 +362,33 @@ function App() {
   };
 
   const draftFilled = aiDraft ? Object.values(aiDraft).filter((v) => v.trim()).length : 0;
+  const editedLimits = equipments.filter(
+    (e) => e.dbLimits && JSON.stringify(e.limits) !== JSON.stringify(e.dbLimits)
+  ).length;
   const indicators: Partial<Record<PageId, NavIndicator>> = {
-    data: effective ? { kind: "done" } : undefined,
-    measurements:
-      measureRows && measureRows.length > 0
-        ? { kind: "count", value: measureRows.length }
-        : undefined,
+    machines: equipments.length > 0 ? { kind: "count", value: equipments.length } : undefined,
     details:
       errors.projectName || errors.engineer || errors.reportDate
         ? showErrors
           ? { kind: "warn" }
           : undefined
         : { kind: "done" },
-    equipment: equipments.length > 0 ? { kind: "count", value: equipments.length } : undefined,
     findings: draftFilled > 0 ? { kind: "done" } : undefined,
+    alarms: editedLimits > 0 ? { kind: "count", value: editedLimits } : undefined,
   };
 
+  const hasProjectDetails = !errors.projectName && !errors.engineer && !errors.reportDate;
+  const stepDone: Partial<Record<WizardStepId, boolean>> = {
+    1: !!effective,
+    2: equipments.length > 0,
+    3: hasProjectDetails,
+  };
+  // The single-spectrum editor only matters for single-measurement reports.
+  const wizardPages = WORKFLOW_NAV.map((n) => n.id).filter(
+    (id) => id !== "chart" || equipments.length === 0
+  );
+
   const current = ALL_NAV.find((n) => n.id === page)!;
-  const overall = effective?.meta.overall;
-  const zone = overall ? classifyZone(overall.rmsV, zoneLimits.velocity) : "";
   const ThemeIcon = THEME_ICONS[themePref];
   const nextTheme: Record<ThemePref, ThemePref> = {
     system: "light",
@@ -377,19 +396,6 @@ function App() {
     dark: "system",
   };
 
-  const hasProjectDetails = !errors.projectName && !errors.engineer;
-  const pageToWizardStep = (p: PageId): WizardStep => {
-    if (p === "equipment") return 2;
-    if (p === "details" || p === "findings" || p === "chart" || p === "layout") return 3;
-    if (p === "measurements") return 1;
-    if (p === "data") return 1;
-    return 1;
-  };
-  const wizardCurrent: WizardStep = pageToWizardStep(page);
-  const handleWizardJump = (s: WizardStep) => {
-    const map: Record<WizardStep, PageId> = { 1: "data", 2: "equipment", 3: "details", 4: "layout" };
-    goTo(map[s]);
-  };
   const handleOpenSp3 = useCallback(async () => {
     if (!ingest.isTauri) {
       void ingest.openSp3();
@@ -414,6 +420,7 @@ function App() {
       pendingSp3PathRef.current = null;
     }
   }, [ingest, handleParsed]);
+  const ingestWithPath = { ...ingest, openSp3: handleOpenSp3 };
 
   const noData = (
     <EmptyState
@@ -422,11 +429,11 @@ function App() {
       actions={
         <Button onClick={() => setPage("data")}>
           <Database aria-hidden="true" />
-          Go to Data
+          {t("navData")}
         </Button>
       }
     >
-      Import a Spectra .sp3 or a Data-table CSV first.
+      Open a Spectra .sp3 database or a Data-table CSV first.
     </EmptyState>
   );
 
@@ -439,19 +446,15 @@ function App() {
         >
           {t("skip")}
         </a>
-        <Sidebar page={page} onNavigate={setPage} indicators={indicators} version={APP_VERSION} />
+        <Sidebar
+          page={page}
+          onNavigate={setPage}
+          indicators={indicators}
+          stepDone={stepDone}
+          version={APP_VERSION}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {ALL_NAV.find((n) => n.id === page)?.id &&
-          ["data", "measurements", "details", "equipment", "findings", "chart", "layout"].includes(page) ? (
-            <WizardBreadcrumb
-              current={wizardCurrent}
-              onJump={handleWizardJump}
-              effective={effective}
-              equipments={equipments}
-              hasProject={hasProjectDetails}
-            />
-          ) : null}
           <Toolbar title={t(current.label)} description={t(current.desc)}>
             <ReadinessChip missing={missing} onFix={fix} />
             <Segmented
@@ -488,6 +491,7 @@ function App() {
               equipments={equipments}
               tauriPath={rowPath}
               csvFile={rowFile}
+              onBusy={setExportBusy}
             />
           </Toolbar>
 
@@ -496,47 +500,61 @@ function App() {
               {!effective ? (
                 <div className="grid gap-4">
                   <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-                    <DropZone ingest={{ ...ingest, openSp3: handleOpenSp3 }} />
+                    <DropZone ingest={ingestWithPath} />
                     <Onboarding />
                   </div>
                   <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  <FileBar result={effective} ingest={ingest} />
+                  <FileBar result={effective} ingest={ingestWithPath} />
                   {ingest.error ? <IngestError message={ingest.error} /> : null}
-                  <div
-                    className={cn(
-                      "grid items-start gap-4",
-                      hasRowSource && "xl:grid-cols-[minmax(0,1fr)_24rem]"
-                    )}
-                  >
+                  {hasRowSource ? (
+                    <>
+                      {rowsLoading && !measureRows ? (
+                        <p className="text-[13px] text-muted-foreground">Reading measurements…</p>
+                      ) : (
+                        <DatabaseSummary rows={measureRows} limits={zoneLimits} />
+                      )}
+                      <Card className="flex flex-wrap items-center gap-4 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-semibold">{t("stepMachines")}</p>
+                          <p className="text-xs text-muted-foreground">{t("pageMachinesDesc")}</p>
+                        </div>
+                        <Button onClick={() => setPage("machines")}>
+                          {t("next")}: {t("navMachines")}
+                          <ArrowRight className="rtl:rotate-180" aria-hidden="true" />
+                        </Button>
+                      </Card>
+                    </>
+                  ) : (
                     <DataOverview result={effective} limits={zoneLimits} />
-                    {hasRowSource ? (
-                      <MeasurementPicker
-                        className="max-h-[28rem] xl:sticky xl:top-0 xl:max-h-[calc(100vh-12rem)]"
-                        tauriPath={rowPath}
-                        file={rowFile}
-                        filename={effective.meta.filename}
-                        current={
-                          overall ? { pointId: overall.pointId, measDate: overall.measDate } : null
-                        }
-                        onSelect={handlePicked}
-                      />
-                    ) : null}
-                  </div>
+                  )}
                 </div>
               )}
+            </Page>
+
+            <Page active={page === "machines"}>
+              <MachinePicker
+                sp3Path={sp3Path ?? equipments.find((e) => e.sp3Path)?.sp3Path ?? null}
+                isTauri={ingest.isTauri}
+                items={equipments}
+                onChange={updateEquipments}
+                rows={measureRows}
+              />
             </Page>
 
             <Page active={page === "measurements"}>
               {hasRowSource ? (
                 <div className="grid gap-4">
                   <MeasuringTable
-                    tauriPath={rowPath}
-                    file={rowFile}
+                    rows={measureRows}
+                    loading={rowsLoading}
                     limits={zoneLimits}
-                    onRows={setMeasureRows}
+                    equipments={equipments}
+                    secondary={options.secondaryMetric ?? "acceleration"}
+                    sp3Path={sp3Path}
+                    isTauri={ingest.isTauri}
                   />
                   {measureRows && measureRows.length > 0 ? (
                     <TrendCard rows={measureRows} limits={zoneLimits} onSnapshot={setTrendSnap} />
@@ -545,15 +563,15 @@ function App() {
               ) : (
                 <EmptyState
                   icon={<Gauge />}
-                  title="No measurement table"
+                  title="No readings yet"
                   actions={
                     <Button variant="outline" onClick={() => setPage("data")}>
                       <Database aria-hidden="true" />
-                      Go to Data
+                      {t("navData")}
                     </Button>
                   }
                 >
-                  Results and trends appear when you import a Spectra .sp3 database or a Data-table
+                  Readings and trends appear when you open a Spectra .sp3 database or a Data-table
                   CSV with several measurements.
                 </EmptyState>
               )}
@@ -583,6 +601,8 @@ function App() {
                 onChange={updateEquipments}
                 options={options}
                 onOptions={setOptions}
+                onPickMachines={() => setPage("machines")}
+                onEditLimits={() => setPage("alarms")}
               />
             </Page>
 
@@ -597,7 +617,7 @@ function App() {
                       className="font-medium text-primary hover:underline"
                       onClick={() => setPage("equipment")}
                     >
-                      Equipment → Machine narrative
+                      Machines → Machine narrative
                     </button>
                     .
                   </p>
@@ -611,14 +631,59 @@ function App() {
               </div>
             </Page>
 
+            <Page active={page === "alarms"}>
+              <div className="grid gap-4">
+                <ChartsMetricsCard options={options} onOptions={setOptions} />
+                <MachineLimitsCard
+                  items={equipments}
+                  onChange={updateEquipments}
+                  defaults={zoneLimits}
+                />
+                <IsoTableEditor options={options} onOptions={setOptions} />
+                <ZoneLimitsCard limits={zoneLimits} onChange={setZoneLimits} />
+              </div>
+            </Page>
+
             <Page active={page === "chart"}>
               {effective ? (
-                <ChartEditor
-                  spectra={effective.spectra}
-                  onChange={setEdited}
-                  options={options}
-                  onOptions={setOptions}
-                />
+                <div
+                  className={cn(
+                    "grid items-start gap-4",
+                    hasRowSource && "xl:grid-cols-[minmax(0,1fr)_22rem]"
+                  )}
+                >
+                  <div className="grid min-w-0 gap-4">
+                    {equipments.length > 0 ? (
+                      <p className="rounded-md border bg-card px-3 py-2 text-[13px] text-muted-foreground">
+                        Multi-machine reports use each point's own spectrum. This editor only
+                        changes the single-measurement report.
+                      </p>
+                    ) : null}
+                    <ChartEditor
+                      spectra={effective.spectra}
+                      onChange={setEdited}
+                      options={options}
+                      onOptions={setOptions}
+                    />
+                  </div>
+                  {hasRowSource ? (
+                    <MeasurementPicker
+                      className="max-h-[28rem] xl:sticky xl:top-0 xl:max-h-[calc(100vh-12rem)]"
+                      tauriPath={rowPath}
+                      file={rowFile}
+                      filename={effective.meta.filename}
+                      current={
+                        effective.meta.overall
+                          ? {
+                              pointId: effective.meta.overall.pointId,
+                              measDate: effective.meta.overall.measDate,
+                            }
+                          : null
+                      }
+                      onSelect={handlePicked}
+                    />
+                  ) : null}
+                </div>
               ) : (
                 noData
               )}
@@ -639,6 +704,20 @@ function App() {
               </div>
             </Page>
 
+            <Page active={page === "export"}>
+              <ExportPage
+                hasData={!!effective}
+                missing={missing}
+                onFix={fix}
+                onNavigate={setPage}
+                options={options}
+                equipments={equipments}
+                findingsFilled={draftFilled > 0}
+                busy={exportBusy}
+                lastSaved={lastSaved}
+              />
+            </Page>
+
             <Page active={page === "history"}>
               <HistoryTab
                 key={historyTick}
@@ -652,7 +731,6 @@ function App() {
             <Page active={page === "settings"}>
               <div className="grid items-start gap-4 xl:grid-cols-2">
                 <AppearanceCard pref={themePref} onPref={setThemePref} />
-                <ZoneLimitsCard limits={zoneLimits} onChange={setZoneLimits} />
                 <MdbToolSettings
                   isTauri={ingest.isTauri}
                   status={ingest.tool}
@@ -670,31 +748,15 @@ function App() {
             </Page>
           </main>
 
+          <WizardFooter page={page} onNavigate={setPage} pages={wizardPages} />
+
           <StatusBar
             left={
               effective ? (
-                <>
-                  <span className="flex min-w-0 items-center gap-1.5 truncate font-medium text-foreground">
-                    <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    <span className="truncate">{effective.meta.filename}</span>
-                  </span>
-                  {overall ? (
-                    <span className="hidden truncate md:inline">
-                      Pt {overall.pointId || "?"}
-                      {overall.directionId ? `/${overall.directionId}` : ""} ·{" "}
-                      {oleDateToISO(Number(overall.measDate)) || overall.measDate || "—"}
-                    </span>
-                  ) : null}
-                  <span className="flex items-center gap-1 whitespace-nowrap">
-                    <LineChart className="h-3.5 w-3.5" aria-hidden="true" />
-                    {t("peak")} {effective.stats.peak.amp} @ {effective.stats.peak.freq}
-                  </span>
-                  {zone ? (
-                    <span className="flex items-center gap-1 whitespace-nowrap">
-                      RMS-V {overall?.rmsV} <ZoneBadge zone={zone} />
-                    </span>
-                  ) : null}
-                </>
+                <span className="flex min-w-0 items-center gap-1.5 truncate font-medium text-foreground">
+                  <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span className="truncate">{effective.meta.filename}</span>
+                </span>
               ) : (
                 <span>{t("noFile")}</span>
               )
@@ -735,7 +797,7 @@ function Page({ active, children }: { active: boolean; children: ReactNode }) {
 function AppearanceCard({ pref, onPref }: { pref: ThemePref; onPref: (p: ThemePref) => void }) {
   const shortcuts: [string, string][] = [
     ["Ctrl+E", "Generate report"],
-    ["Ctrl+1 … Ctrl+7", "Jump to a report step"],
+    ["Ctrl+1 … Ctrl+4", "Jump to a wizard step"],
     ["Ctrl+8 / Ctrl+9", "History / Settings"],
     ["Drop a file", "Import it from any page"],
   ];

@@ -25,13 +25,7 @@ function formatSize(n?: number): string | null {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function RecentDbsCard({
-  onOpen,
-  tick,
-}: {
-  onOpen: (path: string) => void;
-  tick: number;
-}) {
+export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void; tick: number }) {
   const { t } = useUi();
   const [recents, setRecents] = useState<RecentDb[] | null>(null);
 
@@ -85,7 +79,12 @@ export function RecentDbsCard({
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-1">
-                <Button size="sm" variant="outline" onClick={() => onOpen(r.path)} title="Reopen this database">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onOpen(r.path)}
+                  title="Reopen this database"
+                >
                   <FolderOpen aria-hidden="true" />
                   Open
                 </Button>

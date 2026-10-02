@@ -1,5 +1,7 @@
 /** Multi-equipment list + client profiles (brochure p.3-4). Pure + localStorage. */
 
+import type { ZoneLimitSet } from "./zones";
+
 export interface EquipmentItem {
   id: string;
   name: string;
@@ -17,6 +19,12 @@ export interface EquipmentItem {
   pointIds?: string[];
   /** "pointId directionId" → brochure label such as "P1 V". */
   labels?: Record<string, string>;
+  /** Plant / area name from the Spectra tree. */
+  plant?: string;
+  /** Alarm limits printed and used for zones; null = the report-wide defaults. */
+  limits?: ZoneLimitSet | null;
+  /** Limits as read from the database, kept so edits can be reset. */
+  dbLimits?: ZoneLimitSet | null;
   /** Per-machine condition narrative. Empty stays out of that section. */
   summary?: string;
   methodology?: string;
@@ -49,6 +57,9 @@ export function makeEquipment(partial: Partial<EquipmentItem> = {}): EquipmentIt
     machineId: partial.machineId ?? null,
     pointIds: partial.pointIds ?? [],
     labels: partial.labels ?? {},
+    plant: partial.plant ?? "",
+    limits: partial.limits ?? null,
+    dbLimits: partial.dbLimits ?? null,
     summary: partial.summary ?? "",
     methodology: partial.methodology ?? "",
     observations: partial.observations ?? "",

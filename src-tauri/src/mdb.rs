@@ -266,6 +266,7 @@ pub struct CsvRowSummary {
     pub rms_v: String,
     pub rms_a: String,
     pub peak_a: String,
+    pub bc: String,
     pub unit: String,
     pub no_lines: String,
 }
@@ -374,6 +375,7 @@ pub fn list_csv_rows(path: String, limit: Option<usize>) -> Result<CsvRowList, S
             rms_v: col(&cells, &header, "TotalRMSV"),
             rms_a: col(&cells, &header, "TotalRMSA"),
             peak_a: col(&cells, &header, "TotalPeakA"),
+            bc: col(&cells, &header, "BC"),
             unit: col(&cells, &header, "Unit"),
             no_lines: col(&cells, &header, "NoLines"),
         });
@@ -487,11 +489,18 @@ pub fn list_spectra_catalog(
 #[serde(rename_all = "camelCase")]
 pub struct EnvelopeSample {
     pub point_id: String,
+    pub direction_id: String,
     pub meas_date: String,
     pub rms: String,
+    pub unit: String,
 }
 
-/// EnvelopeData overalls (OLE stripped) so trends can join by point + date.
+fn positive(v: &str) -> bool {
+    v.trim().parse::<f64>().map(|n| n > 0.0).unwrap_or(false)
+}
+
+/// EnvelopeData overalls (OLE stripped) so trends can join by direction + date.
+/// Spectra stores the envelope overall in TotalRMSA (gEN); TotalRMSV is usually 0.
 #[tauri::command]
 pub fn list_envelope_samples(
     input: String,
@@ -508,14 +517,19 @@ pub fn list_envelope_samples(
             continue;
         }
         let cells = split_csv_line(line);
-        let rms = col(&cells, &header, "TotalRMSV");
-        if rms.is_empty() {
+        let rms = ["TotalRMSA", "TotalRMSV", "TotalRMSD"]
+            .iter()
+            .map(|c| col(&cells, &header, c))
+            .find(|v| positive(v));
+        let Some(rms) = rms else {
             continue;
-        }
+        };
         out.push(EnvelopeSample {
             point_id: col(&cells, &header, "PointID"),
+            direction_id: col(&cells, &header, "DirectionID"),
             meas_date: col(&cells, &header, "MeasDate"),
             rms,
+            unit: col(&cells, &header, "Unit").trim_matches('"').trim().to_string(),
         });
     }
     Ok(out)

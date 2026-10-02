@@ -5,9 +5,9 @@
  * (which mirrors `assets/word/iso_10816_standards.docx`):
  * zone swatches per machinery group, band labels, RMS mm/s + eq-peak in/s.
  *
- * Layout here is simplified for the `docx` JS lib: horizontal merges only
- * (no vertical label merges, no nil-border seaming) — same content, same
- * colors, slightly plainer grid.
+ * Grid (6 equal columns, like the legacy export):
+ *   [G1+3 flexible swatch | band label over G1+3 rigid + G2+4 flexible (span 2) | G2+4 rigid swatch | RMS | peak]
+ * Consecutive rows with the same band label and colour merge vertically.
  */
 
 export const ISO_ZONE_FILL = {
@@ -31,7 +31,10 @@ export const ISO_VALUE_ALT = "F1F8E9";
 
 export type IsoZone = keyof typeof ISO_ZONE_FILL;
 
+export const ISO_ZONE_ORDER: IsoZone[] = ["green", "yellow", "amber", "red"];
+
 export interface IsoDataRow {
+  /** [G1+3 flexible, band (G1+3 rigid / G2+4 flexible), unused legacy slot, G2+4 rigid] */
   zones: [IsoZone, IsoZone, IsoZone, IsoZone];
   label: string;
   rms: string;
@@ -88,6 +91,44 @@ export const ISO_DATA_ROWS: IsoDataRow[] = [
 
 export const ISO_FOOTER = ["Flexible", "Rigid", "Flexible", "Rigid", "Rigid", "Foundation"];
 
+/** Column widths (dxa) measured from the reference report; sum = A4 text width at 1 cm margins. */
+export const ISO_COLUMN_DXA = [2220, 1233, 1842, 1381, 2039, 2057];
+
+/** Editable copy of the reference rows (deep-cloned so edits never touch the constant). */
+export function defaultIsoRows(): IsoDataRow[] {
+  return ISO_DATA_ROWS.map((r) => ({ ...r, zones: [...r.zones] as IsoDataRow["zones"] }));
+}
+
+const ZONES = new Set<string>(ISO_ZONE_ORDER);
+
+/** Validate a persisted table; anything malformed falls back to the reference. */
+export function normalizeIsoRows(raw: unknown): IsoDataRow[] {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 20) return defaultIsoRows();
+  const out: IsoDataRow[] = [];
+  for (const r of raw) {
+    const z = (r as IsoDataRow)?.zones;
+    if (!Array.isArray(z) || z.length !== 4 || !z.every((v) => ZONES.has(v))) {
+      return defaultIsoRows();
+    }
+    out.push({
+      zones: [...z] as IsoDataRow["zones"],
+      label: String((r as IsoDataRow).label ?? ""),
+      rms: String((r as IsoDataRow).rms ?? ""),
+      peak: String((r as IsoDataRow).peak ?? ""),
+    });
+  }
+  return out;
+}
+
+export function isoRowsEqual(a: IsoDataRow[], b: IsoDataRow[]): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** Next colour when the analyst clicks a swatch. */
+export function cycleIsoZone(z: IsoZone): IsoZone {
+  return ISO_ZONE_ORDER[(ISO_ZONE_ORDER.indexOf(z) + 1) % ISO_ZONE_ORDER.length];
+}
+
 export interface IsoCell {
   text: string;
   fill?: string;
@@ -95,17 +136,19 @@ export interface IsoCell {
   bold?: boolean;
   /** Horizontal merge width (1 = single cell). */
   span?: number;
+  /** Vertical merge: "restart" starts a block, "continue" joins the cell above. */
+  vMerge?: "restart" | "continue";
+  /** Zone swatch / band cell: no inner borders so colours read as one block. */
+  seamless?: boolean;
+  align?: "center" | "right";
+  /** Font size in half-points. */
+  size?: number;
 }
 
 export interface IsoTableData {
   rows: IsoCell[][];
 }
 
-/**
- * Pure data builder for the ISO table (tested without unzipping a .docx).
- * Row layout: 6 columns —
- * [swatch | band label (span 2) | swatch | RMS mm/s | eq-peak in/s].
- */
 export type IsoGroups = "all" | "1+3" | "2+4";
 
 const FA_LABEL: Record<string, string> = {
@@ -118,8 +161,8 @@ const FA_LABEL: Record<string, string> = {
   "ISO 10816 - 3": "ISO 10816-3",
   "Rated Power": "توان نامی",
   Velocity: "سرعت",
-  "RMS mm/s": "RMS mm/s",
-  "eq. Peak in/s": "eq. Peak in/s",
+  "mm/sec RMS": "RMS mm/s",
+  "in/sec eq. Peak": "eq. Peak in/s",
   Flexible: "انعطاف‌پذیر",
   Rigid: "صلب",
   Foundation: "فونداسیون",
@@ -128,55 +171,84 @@ const FA_LABEL: Record<string, string> = {
 export function buildIsoTableData(opts?: {
   groups?: IsoGroups;
   language?: "en" | "fa";
+  rows?: IsoDataRow[];
 }): IsoTableData {
-  const h = (text: string, span = 1): IsoCell => ({
+  const data = opts?.rows && opts.rows.length > 0 ? opts.rows : ISO_DATA_ROWS;
+  const h = (text: string, span = 1, fill = ISO_HEADER_DARK): IsoCell => ({
     text,
-    fill: ISO_HEADER_DARK,
+    fill,
     color: "FFFFFF",
     bold: true,
     span,
+    size: 18,
+  });
+  const light = (text: string, span = 1): IsoCell => ({
+    text,
+    fill: ISO_HEADER_LIGHT,
+    color: ISO_HEADER_DARK,
+    bold: true,
+    span,
+    size: 16,
   });
   const rows: IsoCell[][] = [
     [h("Machinery Groups 1 and 3", 2), h("Machinery Groups 2 and 4", 2), h("ISO 10816 - 3", 2)],
-    [h("Rated Power", 4), h("Velocity", 2)],
+    [h("Rated Power", 4, ISO_HEADER_MID), h("Velocity", 2, ISO_HEADER_MID)],
     [
-      {
-        text: "Group1: 300 KW ≤ 50 MW / Group3: above 15 kW",
-        fill: ISO_HEADER_LIGHT,
-        color: ISO_HEADER_DARK,
-        bold: true,
-        span: 2,
-      },
-      {
-        text: "15 kW - 300 kW",
-        fill: ISO_HEADER_LIGHT,
-        color: ISO_HEADER_DARK,
-        bold: true,
-        span: 2,
-      },
-      { text: "RMS mm/s", fill: ISO_HEADER_LIGHT, color: ISO_HEADER_DARK, bold: true },
-      { text: "eq. Peak in/s", fill: ISO_HEADER_LIGHT, color: ISO_HEADER_DARK, bold: true },
+      light("Group1: 300 KW ≤ 50 MW\nGroup3: Above 15 kW", 2),
+      light("15 kW - 300 kW", 2),
+      light("mm/sec RMS"),
+      light("in/sec eq. Peak"),
     ],
   ];
-  ISO_DATA_ROWS.forEach((r, i) => {
+  data.forEach((r, i) => {
     const valueFill = i % 2 === 1 ? ISO_VALUE_ALT : "FFFFFF";
+    const above = data[i - 1];
+    const continues = !!above && above.label === r.label && above.zones[1] === r.zones[1];
+    const below = data[i + 1];
+    const startsBlock =
+      !continues && !!below && below.label === r.label && below.zones[1] === r.zones[1];
+    const swatch = (z: IsoZone): IsoCell => ({
+      text: "",
+      fill: ISO_ZONE_FILL[z],
+      color: ISO_ZONE_TEXT[z],
+      seamless: true,
+    });
     rows.push([
-      { text: "", fill: ISO_ZONE_FILL[r.zones[0]], color: ISO_ZONE_TEXT[r.zones[0]] },
+      swatch(r.zones[0]),
       {
-        text: r.label,
+        text: continues ? "" : r.label,
         fill: ISO_ZONE_FILL[r.zones[1]],
         color: ISO_ZONE_TEXT[r.zones[1]],
         bold: true,
         span: 2,
+        seamless: true,
+        size: 16,
+        ...(continues
+          ? { vMerge: "continue" as const }
+          : startsBlock
+            ? { vMerge: "restart" as const }
+            : {}),
       },
-      { text: "", fill: ISO_ZONE_FILL[r.zones[3]], color: ISO_ZONE_TEXT[r.zones[3]] },
-      { text: r.rms, fill: valueFill, color: ISO_HEADER_DARK, bold: true },
-      { text: r.peak, fill: valueFill, color: ISO_HEADER_DARK, bold: true },
+      swatch(r.zones[3]),
+      {
+        text: r.rms,
+        fill: valueFill,
+        color: ISO_HEADER_DARK,
+        bold: true,
+        align: "right",
+        size: 18,
+      },
+      {
+        text: r.peak,
+        fill: valueFill,
+        color: ISO_HEADER_DARK,
+        bold: true,
+        align: "right",
+        size: 18,
+      },
     ]);
   });
-  rows.push(
-    ISO_FOOTER.map((t) => ({ text: t, fill: ISO_HEADER_DARK, color: "FFFFFF", bold: true }))
-  );
+  rows.push(ISO_FOOTER.map((t) => h(t)));
   const groups = opts?.groups ?? "all";
   if (groups === "1+3" && rows[0]?.[1]) rows[0][1].text = "—";
   if (groups === "2+4" && rows[0]?.[0]) rows[0][0].text = "—";

@@ -1,6 +1,9 @@
-import type { MeasureRow } from "./generateDocx";
+import type { MeasurePeak, MeasureRow } from "./generateDocx";
 import type { CsvRowSummary } from "./mdb";
+import { SECONDARY_SERIES, secondaryLimits, type SecondaryMetric } from "./metrics";
 import { oleDateToISO } from "./specdata";
+import type { SpectraPoint } from "./parseSp3";
+import { findDominantPeaks } from "./spectra-peaks";
 import {
   groupHistories,
   historyStats,
@@ -35,39 +38,86 @@ function labelOf(row: CsvRowSummary, labels?: Record<string, string>): string {
   return labels?.[key] || `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""}`;
 }
 
+function fmt(v: number, digits: number): string {
+  return v.toFixed(digits).replace(/\.?0+$/, "") || "0";
+}
+
+/** Peak List column: the strongest spectrum lines as RPM (Hz × 60) + amplitude. */
+export function peaksFromSpectrum(spectra: SpectraPoint[], count = 4): MeasurePeak[] {
+  // Below ~3 Hz is sensor drift / DC leakage, not a machine line
+  return findDominantPeaks(spectra, count, 3)
+    .sort((a, b) => b.amp - a.amp)
+    .map((p) => ({ rpm: String(Math.round(p.freq * 60)), amp: fmt(p.amp, 3) }));
+}
+
+/** FFT caption: "0.47 mm/s @ 1500 RPM". */
+export function formatSpectrumPeak(peak: { freq: number; amp: number }, unit = "mm/s"): string {
+  if (!Number.isFinite(peak.amp) || !Number.isFinite(peak.freq) || peak.amp <= 0) return "";
+  return `${peak.amp.toFixed(2)} ${unit} @ ${Math.round(peak.freq * 60)} RPM`;
+}
+
+/** Fallback when the spectrum blob was not loaded: the DB's max-peak columns. */
+function peakFromSummary(r: CsvRowSummary): MeasurePeak[] {
+  const hz = Number(r.peakFreq);
+  const amp = Number(r.peakV);
+  if (!Number.isFinite(hz) || hz <= 0 || !Number.isFinite(amp)) return [];
+  return [{ rpm: String(Math.round(hz * 60)), amp: fmt(amp, 3) }];
+}
+
+export interface MeasureRowOpts {
+  /** Second metric beside velocity (default acceleration). */
+  secondary?: SecondaryMetric;
+  /** Alarm-zone backgrounds behind the sparkline (default on). */
+  bands?: boolean;
+}
+
 export function buildMeasureRows(
   rows: CsvRowSummary[],
   limits: ZoneLimitSet,
   window: number | "all" = 10,
   labels?: Record<string, string>,
-  withSparks = true
+  withSparks = true,
+  opts: MeasureRowOpts = {}
 ): MeasureRow[] {
+  const secondary = opts.secondary ?? "acceleration";
+  const series = SECONDARY_SERIES[secondary];
+  const secLimits = secondaryLimits(limits, secondary);
   const histories = groupHistories(rows);
   const byKey = new Map<string, PointHistory>(
     histories.map((h) => [`${h.pointId} ${h.directionId}`, h])
   );
-  const latest = latestPerPoint(rows);
+  // Database order (P1 V, P1 H, P1 A, P2 V …), like the Spectra tree and the legacy report
+  const num = (v: string) => (Number.isFinite(Number(v)) ? Number(v) : Infinity);
+  const latest = latestPerPoint(rows).sort(
+    (a, b) =>
+      num(a.pointId) - num(b.pointId) ||
+      num(a.directionId) - num(b.directionId) ||
+      labelOf(a, labels).localeCompare(labelOf(b, labels))
+  );
   return latest.map((r) => {
     const h = byKey.get(`${r.pointId} ${r.directionId}`);
     const samples = h ? takeLastHistory(h.samples, window) : [];
     const v = historyStats(samples, "rmsV");
-    const a = historyStats(samples, "rmsA");
+    const a = historyStats(samples, series);
     let sparkV: Uint8Array | undefined;
     let sparkA: Uint8Array | undefined;
     if (withSparks && samples.length > 1) {
+      const chart = { sparkline: true, bands: opts.bands !== false };
       try {
-        sparkV = renderTrendPng(samples, "rmsV", limits.velocity, { sparkline: true });
-        sparkA = renderTrendPng(samples, "rmsA", limits.acceleration, { sparkline: true });
+        sparkV = renderTrendPng(samples, "rmsV", limits.velocity, chart);
+        sparkA = renderTrendPng(samples, series, secLimits, chart);
       } catch {
         sparkV = undefined;
         sparkA = undefined;
       }
     }
+    const peaks = peakFromSummary(r);
     return {
+      key: `${r.pointId} ${r.directionId}`,
       point: labelOf(r, labels),
       date: oleDateToISO(Number(r.measDate)) || "—",
       rms: r.rmsV,
-      rmsA: r.rmsA,
+      rmsA: a.curr === "—" ? "" : a.curr,
       peak: r.peakV,
       peakFreq: r.peakFreq,
       totalV: v.total,
@@ -78,7 +128,7 @@ export function buildMeasureRows(
       avgA: a.avg,
       prevA: a.prev,
       currA: a.curr,
-      peakList: r.peakV || r.peakFreq ? `${r.peakV || "—"} @ ${r.peakFreq || "—"}` : "—",
+      peaks,
       sparkV,
       sparkA,
     };

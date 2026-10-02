@@ -65,9 +65,9 @@ describe("brochure fixes: TOC + specs + FFT grid + header/footer", () => {
       .async("string");
     expect(xml).toContain("Drive Chain");
     expect(xml).toContain("Motor-Coupling-Pump");
-    // Header row uses sectionTitle keys
-    expect(xml).toContain("Metric");
-    // Free-form specs stays as paragraphs (no Metric header)
+    // Label column uses the brochure's light-green fill
+    expect(xml).toContain('w:fill="F1F8E9"');
+    // Free-form specs stays as paragraphs
     const free = await buildDocx({
       meta: parsed.meta,
       spectra: parsed.spectra,
@@ -80,7 +80,6 @@ describe("brochure fixes: TOC + specs + FFT grid + header/footer", () => {
       .file("word/document.xml")!
       .async("string");
     expect(freeXml).toContain("Just a free-form note");
-
     // buildMachineSpecs produces colon-separated lines that trigger the table path
     const plant = `PlantID,Name\n1,"Motor Pump RO1"\n`;
     const machine = `MachineID,PlantID,Name,LblRPM,ValueRPM,Note\n1,1,"HHP-101A","Primary RPM",24.583,"Potable Water"\n`;
@@ -93,7 +92,7 @@ describe("brochure fixes: TOC + specs + FFT grid + header/footer", () => {
       directionCsv: direction,
     });
     const specs = buildMachineSpecs(joined[0]);
-    expect(specs).toContain("Primary RPM");
+    expect(specs).toContain("Motor speed: 1475 RPM");
     expect(specs).toContain("6213");
   });
 

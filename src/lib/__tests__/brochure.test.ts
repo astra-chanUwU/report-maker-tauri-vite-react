@@ -68,10 +68,18 @@ describe("equipments + toc", () => {
         { name: "Fan B", specs: "30kW", status: "Healthy" },
       ],
     });
-    expect(multi.size).toBeGreaterThan(single.size);
     const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(await multi.arrayBuffer());
     const xml = await zip.file("word/document.xml")!.async("string");
+    const singleXml = await (
+      await JSZip.loadAsync(await single.arrayBuffer())
+    )
+      .file("word/document.xml")!
+      .async("string");
+    // The featured single-spectrum chart + raw table are only for one-measurement reports
+    expect(singleXml).toContain("Spectra chart");
+    expect(xml).not.toContain("Spectra chart");
+    expect(xml).toContain("Pump A");
     expect(xml).toContain("PAGEREF");
     expect(xml).toContain("eq1");
     expect(xml).toContain("eq2");

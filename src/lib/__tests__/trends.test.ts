@@ -58,7 +58,9 @@ describe("groupHistories", () => {
     ];
     const g = groupHistories(rows);
     expect(g[0].samples[0]).toMatchObject({ rmsV: null, rmsA: null });
-    expect(g[0].samples[1]).toMatchObject({ rmsV: 2.5, rmsA: 7 });
+    // Spectra stores acceleration in g; trends carry m/s²
+    expect(g[0].samples[1].rmsV).toBe(2.5);
+    expect(g[0].samples[1].rmsA).toBeCloseTo(7 * 9.80665, 3);
   });
 });
 

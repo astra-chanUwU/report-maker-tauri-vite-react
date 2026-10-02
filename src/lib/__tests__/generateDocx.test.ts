@@ -98,7 +98,7 @@ describe("buildDocx", () => {
     const vCol = header.findIndex((h) => h.startsWith("V Zone"));
     const aCol = header.findIndex((h) => h.startsWith("A Zone"));
     expect(header[vCol]).toBe("V Zone (3.5/7/8.6)");
-    expect(header[aCol]).toBe("A Zone (14.71/29.4/36.2)");
+    expect(header[aCol]).toBe("A Zone");
     expect(body[0][vCol]).toMatchObject({ text: "A", fill: "2E7D32", color: "FFFFFF" });
     expect(body[0][aCol]).toMatchObject({ text: "A", fill: "2E7D32", color: "FFFFFF" });
     expect(body[1][vCol]).toMatchObject({ text: "U", fill: "F57C00", color: "FFFFFF" });

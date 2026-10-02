@@ -1,21 +1,27 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
   CheckCircle2,
   ChevronsLeft,
   ChevronsRight,
   Cog,
   Database,
   FileBarChart2,
+  FileDown,
   FileUp,
   Gauge,
   History,
   LayoutTemplate,
   LineChart,
+  ListChecks,
   Monitor,
   Moon,
   NotebookPen,
   Settings,
+  Siren,
   Sun,
   type LucideIcon,
 } from "lucide-react";
@@ -24,26 +30,61 @@ import { useUi } from "../lib/i18n";
 
 export type PageId =
   | "data"
-  | "measurements"
+  | "machines"
   | "details"
   | "equipment"
+  | "measurements"
   | "findings"
+  | "alarms"
   | "chart"
   | "layout"
+  | "export"
   | "history"
   | "settings";
 
 type NavItem = { id: PageId; icon: LucideIcon; label: string; desc: string };
 
-export const WORKFLOW_NAV: NavItem[] = [
-  { id: "data", icon: Database, label: "navData", desc: "pageDataDesc" },
-  { id: "measurements", icon: Gauge, label: "navMeasurements", desc: "pageMeasurementsDesc" },
-  { id: "details", icon: NotebookPen, label: "navDetails", desc: "pageDetailsDesc" },
-  { id: "equipment", icon: Cog, label: "navEquipment", desc: "pageEquipmentDesc" },
-  { id: "findings", icon: FileBarChart2, label: "navFindings", desc: "pageFindingsDesc" },
-  { id: "chart", icon: LineChart, label: "navChart", desc: "pageChartDesc" },
-  { id: "layout", icon: LayoutTemplate, label: "navLayout", desc: "pageLayoutDesc" },
+export type WizardStepId = 1 | 2 | 3 | 4;
+
+export interface WizardStep {
+  n: WizardStepId;
+  label: string;
+  items: NavItem[];
+}
+
+/** Open database → Select machines → Edit report (sub-pages) → Export. */
+export const WIZARD: WizardStep[] = [
+  {
+    n: 1,
+    label: "stepOpen",
+    items: [{ id: "data", icon: Database, label: "navData", desc: "pageDataDesc" }],
+  },
+  {
+    n: 2,
+    label: "stepMachines",
+    items: [{ id: "machines", icon: ListChecks, label: "navMachines", desc: "pageMachinesDesc" }],
+  },
+  {
+    n: 3,
+    label: "stepEdit",
+    items: [
+      { id: "details", icon: NotebookPen, label: "navDetails", desc: "pageDetailsDesc" },
+      { id: "equipment", icon: Cog, label: "navEquipment", desc: "pageEquipmentDesc" },
+      { id: "measurements", icon: Gauge, label: "navMeasurements", desc: "pageMeasurementsDesc" },
+      { id: "findings", icon: FileBarChart2, label: "navFindings", desc: "pageFindingsDesc" },
+      { id: "alarms", icon: Siren, label: "navAlarms", desc: "pageAlarmsDesc" },
+      { id: "chart", icon: LineChart, label: "navChart", desc: "pageChartDesc" },
+      { id: "layout", icon: LayoutTemplate, label: "navLayout", desc: "pageLayoutDesc" },
+    ],
+  },
+  {
+    n: 4,
+    label: "stepExport",
+    items: [{ id: "export", icon: FileDown, label: "navExport", desc: "pageExportDesc" }],
+  },
 ];
+
+export const WORKFLOW_NAV: NavItem[] = WIZARD.flatMap((s) => s.items);
 
 export const APP_NAV: NavItem[] = [
   { id: "history", icon: History, label: "navHistory", desc: "pageHistoryDesc" },
@@ -51,6 +92,10 @@ export const APP_NAV: NavItem[] = [
 ];
 
 export const ALL_NAV = [...WORKFLOW_NAV, ...APP_NAV];
+
+export function stepOfPage(p: PageId): WizardStepId | null {
+  return WIZARD.find((s) => s.items.some((i) => i.id === p))?.n ?? null;
+}
 
 export type NavIndicator = { kind: "done" } | { kind: "warn" } | { kind: "count"; value: number };
 
@@ -73,11 +118,13 @@ export function Sidebar({
   page,
   onNavigate,
   indicators,
+  stepDone,
   version,
 }: {
   page: PageId;
   onNavigate: (p: PageId) => void;
   indicators: Partial<Record<PageId, NavIndicator>>;
+  stepDone: Partial<Record<WizardStepId, boolean>>;
   version: string;
 }) {
   const { t } = useUi();
@@ -101,7 +148,85 @@ export function Sidebar({
     }
   };
 
-  const renderItem = (item: NavItem, shortcut: number) => {
+  const currentStep = stepOfPage(page);
+
+  /** Numbered wizard step: circle (number / check) + label; single-page steps navigate directly. */
+  const renderStep = (step: WizardStep) => {
+    const here = currentStep === step.n;
+    const done = !!stepDone[step.n] && !here;
+    const single = step.items.length === 1;
+    const target = step.items[0].id;
+    const label = t(step.label);
+    const active = single && page === target;
+    return (
+      <li key={step.n} className="grid gap-0.5">
+        <button
+          type="button"
+          onClick={() => onNavigate(target)}
+          aria-current={active ? "page" : here ? "step" : undefined}
+          title={collapsed ? `${step.n}. ${label} (Ctrl+${step.n})` : `Ctrl+${step.n}`}
+          className={cn(
+            "group relative flex h-10 w-full cursor-default items-center gap-3 rounded-md text-[13px] font-semibold transition-colors",
+            collapsed ? "justify-center px-0" : "px-2",
+            active
+              ? "bg-sidebar-active text-white"
+              : here
+                ? "text-white hover:bg-sidebar-accent"
+                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
+          )}
+        >
+          {active ? (
+            <span
+              className="absolute inset-y-1.5 start-0 w-[3px] rounded-full bg-primary"
+              aria-hidden="true"
+            />
+          ) : null}
+          <span
+            className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] tabular-nums",
+              done
+                ? "bg-success text-white"
+                : here
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-sidebar-muted/60 text-sidebar-muted"
+            )}
+            aria-hidden="true"
+          >
+            {done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : step.n}
+          </span>
+          {!collapsed ? (
+            <>
+              <span className="min-w-0 flex-1 truncate text-start">{label}</span>
+              {single ? renderIndicator(indicators[target]) : null}
+            </>
+          ) : null}
+        </button>
+        {!single && (here || !collapsed) ? (
+          <ul
+            className={cn(
+              "grid gap-0.5",
+              !collapsed && "ms-[1.3rem] border-s border-sidebar-border ps-1.5"
+            )}
+          >
+            {step.items.map((item) => renderItem(item))}
+          </ul>
+        ) : null}
+      </li>
+    );
+  };
+
+  const renderIndicator = (ind: NavIndicator | undefined) =>
+    ind?.kind === "done" ? (
+      <CheckCircle2 className="h-4 w-4 text-success" aria-label="Done" />
+    ) : ind?.kind === "warn" ? (
+      <AlertCircle className="h-4 w-4 text-warning" aria-label="Needs attention" />
+    ) : ind?.kind === "count" && ind.value > 0 ? (
+      <span className="rounded bg-sidebar-accent px-1.5 text-[11px] text-sidebar-muted tabular-nums group-hover:bg-sidebar">
+        {ind.value > 999 ? "999+" : ind.value}
+      </span>
+    ) : null;
+
+  const renderItem = (item: NavItem, shortcut?: number) => {
     const active = page === item.id;
     const ind = indicators[item.id];
     const Icon = item.icon;
@@ -112,10 +237,18 @@ export function Sidebar({
           type="button"
           onClick={() => onNavigate(item.id)}
           aria-current={active ? "page" : undefined}
-          title={collapsed ? `${label} (Ctrl+${shortcut})` : `Ctrl+${shortcut}`}
+          title={
+            collapsed
+              ? shortcut
+                ? `${label} (Ctrl+${shortcut})`
+                : label
+              : shortcut
+                ? `Ctrl+${shortcut}`
+                : undefined
+          }
           className={cn(
-            "group relative flex h-9 w-full cursor-default items-center gap-3 rounded-md text-[13px] font-medium transition-colors",
-            collapsed ? "justify-center px-0" : "px-2.5",
+            "group relative flex h-8 w-full cursor-default items-center gap-2.5 rounded-md text-[13px] font-medium transition-colors",
+            collapsed ? "justify-center px-0" : "px-2",
             active
               ? "bg-sidebar-active text-white"
               : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
@@ -128,7 +261,7 @@ export function Sidebar({
             />
           ) : null}
           <span className="relative">
-            <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+            <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             {collapsed && ind && ind.kind !== "count" ? (
               <span
                 className={cn(
@@ -142,15 +275,7 @@ export function Sidebar({
           {!collapsed ? (
             <>
               <span className="min-w-0 flex-1 truncate text-start">{label}</span>
-              {ind?.kind === "done" ? (
-                <CheckCircle2 className="h-4 w-4 text-success" aria-label="Done" />
-              ) : ind?.kind === "warn" ? (
-                <AlertCircle className="h-4 w-4 text-warning" aria-label="Needs attention" />
-              ) : ind?.kind === "count" && ind.value > 0 ? (
-                <span className="rounded bg-sidebar-accent px-1.5 text-[11px] text-sidebar-muted tabular-nums group-hover:bg-sidebar">
-                  {ind.value > 999 ? "999+" : ind.value}
-                </span>
-              ) : null}
+              {renderIndicator(ind)}
             </>
           ) : null}
         </button>
@@ -189,7 +314,7 @@ export function Sidebar({
               {t("navGroupReport")}
             </p>
           ) : null}
-          <ul className="grid gap-0.5">{WORKFLOW_NAV.map((item, i) => renderItem(item, i + 1))}</ul>
+          <ol className="grid gap-1">{WIZARD.map(renderStep)}</ol>
         </div>
         <div className="mt-auto grid gap-1">
           {!collapsed ? (
@@ -197,9 +322,7 @@ export function Sidebar({
               {t("navGroupApp")}
             </p>
           ) : null}
-          <ul className="grid gap-0.5">
-            {APP_NAV.map((item, i) => renderItem(item, WORKFLOW_NAV.length + i + 1))}
-          </ul>
+          <ul className="grid gap-0.5">{APP_NAV.map((item, i) => renderItem(item, 8 + i))}</ul>
         </div>
       </nav>
       {!narrow ? (
@@ -322,6 +445,52 @@ export function Toolbar({
       </div>
       <div className="flex shrink-0 items-center gap-2">{children}</div>
     </header>
+  );
+}
+
+/** Back / Next through the wizard pages in order. Hidden outside the workflow. */
+export function WizardFooter({
+  page,
+  onNavigate,
+  pages = WORKFLOW_NAV.map((n) => n.id),
+}: {
+  page: PageId;
+  onNavigate: (p: PageId) => void;
+  /** Pages that are relevant right now (e.g. without the single-spectrum editor). */
+  pages?: PageId[];
+}) {
+  const { t } = useUi();
+  const i = pages.indexOf(page);
+  if (i < 0) return null;
+  const prev = i > 0 ? WORKFLOW_NAV.find((n) => n.id === pages[i - 1]) : undefined;
+  const next = i < pages.length - 1 ? WORKFLOW_NAV.find((n) => n.id === pages[i + 1]) : undefined;
+  const step = stepOfPage(page);
+  return (
+    <div className="flex h-12 shrink-0 items-center gap-3 border-t bg-card px-5">
+      {prev ? (
+        <button
+          type="button"
+          onClick={() => onNavigate(prev.id)}
+          className="flex h-8 cursor-default items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+          {t("back")}: {t(prev.label)}
+        </button>
+      ) : null}
+      <span className="flex-1 text-center text-xs text-muted-foreground">
+        {step ? `${step} / ${WIZARD.length} · ${t(WIZARD[step - 1].label)}` : null}
+      </span>
+      {next ? (
+        <button
+          type="button"
+          onClick={() => onNavigate(next.id)}
+          className="flex h-8 cursor-default items-center gap-1.5 rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          {t("next")}: {t(next.label)}
+          <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
+        </button>
+      ) : null}
+    </div>
   );
 }
 

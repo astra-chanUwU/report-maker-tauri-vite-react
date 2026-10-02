@@ -220,17 +220,57 @@ describe("brochure polish", () => {
       DEFAULT_ZONE_LIMITS,
       "fa"
     ).header;
-    expect(faHeader[0]).toBe("نقطه");
-    expect(faHeader[6]).toContain("ناحیه سرعت");
-    expect(faHeader[7]).toBe("فهرست پیک");
-    const env = indexEnvelopeCsv("PointID,MeasDate,TotalRMSV\n1,45000,0.2\n");
-    expect(env.get("1|45000")).toBe("0.2");
+    expect(faHeader[0]).toBe("نقطه اندازه‌گیری");
+    expect(faHeader[2]).toContain("ناحیه سرعت");
+    // envelope overall lives in TotalRMSA (TotalRMSV is 0) and joins by direction + date
+    const env = indexEnvelopeCsv(
+      "PointID,DirectionID,MeasDate,TotalRMSV,TotalRMSA\n1,3,45000,0,0.2\n"
+    );
+    expect(env).toEqual([
+      expect.objectContaining({ pointId: "1", directionId: "3", measDate: "45000", rms: "0.2" }),
+    ]);
     const joined = [
-      { pointId: "1", measDate: "45000", envelopeRms: undefined as string | undefined },
+      {
+        pointId: "1",
+        directionId: "3",
+        measDate: "45000",
+        envelopeRms: undefined as string | undefined,
+      },
+      {
+        pointId: "1",
+        directionId: "4",
+        measDate: "45000",
+        envelopeRms: undefined as string | undefined,
+      },
       { pointId: "9", measDate: "45000", envelopeRms: undefined as string | undefined },
     ];
-    expect(applyEnvelopeSamples(joined, [{ pointId: "1", measDate: "45000", rms: "0.2" }])).toBe(1);
+    expect(applyEnvelopeSamples(joined, env)).toBe(1);
     expect(joined[0].envelopeRms).toBe("0.2");
     expect(joined[1].envelopeRms).toBeUndefined();
+    expect(joined[2].envelopeRms).toBeUndefined();
+  });
+
+  it("derives per-machine alarm limits from Direction alarm columns", () => {
+    const dirs = `DirectionID,PointID,Name,OverallW,OverallD,OverallWg,OverallDg,NarrowAL1,NarrowAL2\n1,1,"V",3.5,7,1.5,3,0,0\n2,1,"H",3.5,7,1.5,3,0,0\n`;
+    const [m] = joinCatalog({
+      plantCsv: plant,
+      machineCsv: machine,
+      pointCsv: point,
+      directionCsv: dirs,
+    });
+    expect(m.limits?.velocity).toEqual({ bottom: 3.5, mid: 7, top: 8.6 });
+    expect(m.limits?.acceleration).toEqual({ bottom: 14.71, mid: 29.4, top: 36.2 });
+  });
+
+  it("prints the secondary metric the analyst picked", () => {
+    const row = { point: "P1 V", date: "a", rms: "1", rmsA: "0.4", peak: "", peakFreq: "" };
+    const env = buildMeasuringTableData([row], DEFAULT_ZONE_LIMITS, "en", {
+      secondary: "envelope",
+    });
+    expect(env.groups[env.groups.length - 1].text).toBe("Envelope — RMS (gEN)");
+    expect(env.header[env.header.length - 1]).toBe("E Zone");
+    const off = buildMeasuringTableData([row], DEFAULT_ZONE_LIMITS, "en", { showSecondary: false });
+    expect(off.header).toHaveLength(5);
+    expect(off.widths.reduce((a, b) => a + b, 0)).toBe(10772);
   });
 });
