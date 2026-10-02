@@ -71,11 +71,8 @@ export async function convertSp3Path(
   const { invoke, Channel } = await import("@tauri-apps/api/core");
   const call = invokeFn ?? invoke;
   const overridePath = loadMdbToolPath().trim();
-  let onProgressChannel: InstanceType<typeof Channel<MdbExportProgress>> | undefined;
-  if (onProgress) {
-    onProgressChannel = new Channel<MdbExportProgress>();
-    onProgressChannel.onmessage = onProgress;
-  }
+  const onProgressChannel = new Channel<MdbExportProgress>();
+  if (onProgress) onProgressChannel.onmessage = onProgress;
   const res = await call<MdbExportIpc>("export_mdb_csv", {
     input: picked,
     table: "Data",

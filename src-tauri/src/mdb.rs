@@ -124,7 +124,7 @@ pub fn export_mdb_csv(
     input: String,
     table: Option<String>,
     tool: Option<String>,
-    on_progress: Option<Channel<MdbExportProgress>>,
+    on_progress: Channel<MdbExportProgress>,
 ) -> Result<MdbExportResult, String> {
     let bin = resolve_tool(tool).ok_or_else(|| {
         "mdb-export not found. Install mdbtools (or set MDB_EXPORT_PATH / Settings path)."
@@ -184,10 +184,8 @@ pub fn export_mdb_csv(
     let mut newline_seen = false;
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     let mut last_emit_bytes: u64 = 0;
-    let emit_progress = |bytes: u64, rows: usize, channel: &Option<Channel<MdbExportProgress>>| {
-        if let Some(ch) = channel {
-            let _ = ch.send(MdbExportProgress { bytes, rows });
-        }
+    let emit_progress = |bytes: u64, rows: usize, channel: &Channel<MdbExportProgress>| {
+        let _ = channel.send(MdbExportProgress { bytes, rows });
     };
     if let Some(mut stdout) = child.stdout.take() {
         let mut chunk = [0u8; 65536];
