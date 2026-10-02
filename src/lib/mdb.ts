@@ -57,17 +57,30 @@ export async function convertSp3FromDisk(): Promise<ParseResult> {
   return convertSp3Path(picked, invoke);
 }
 
+export interface MdbExportProgress {
+  bytes: number;
+  rows: number;
+}
+
 /** Convert a known on-disk `.sp3`/`.mdb` path (e.g. from a native window drop). */
 export async function convertSp3Path(
   picked: string,
-  invokeFn?: typeof import("@tauri-apps/api/core").invoke
+  invokeFn?: typeof import("@tauri-apps/api/core").invoke,
+  onProgress?: (p: MdbExportProgress) => void
 ): Promise<ParseResult> {
-  const invoke = invokeFn ?? (await import("@tauri-apps/api/core")).invoke;
+  const { invoke, Channel } = await import("@tauri-apps/api/core");
+  const call = invokeFn ?? invoke;
   const overridePath = loadMdbToolPath().trim();
-  const res = await invoke<MdbExportIpc>("export_mdb_csv", {
+  let onProgressChannel: InstanceType<typeof Channel<MdbExportProgress>> | undefined;
+  if (onProgress) {
+    onProgressChannel = new Channel<MdbExportProgress>();
+    onProgressChannel.onmessage = onProgress;
+  }
+  const res = await call<MdbExportIpc>("export_mdb_csv", {
     input: picked,
     table: "Data",
     tool: overridePath || null,
+    onProgress: onProgressChannel,
   });
   const head = new Uint8Array(res.head);
   const preview = parseSpecCsvFirstRow(head);

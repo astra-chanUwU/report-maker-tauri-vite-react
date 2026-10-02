@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { basename, filenameOf, groupByDb, makeJob } from "../import-jobs";
+import {
+  basename,
+  filenameOf,
+  formatBytes,
+  groupByDb,
+  makeJob,
+  softExportPercent,
+} from "../import-jobs";
 
 describe("import-jobs", () => {
   it("filenameOf extracts basename", () => {
@@ -32,5 +39,17 @@ describe("import-jobs", () => {
     expect(g.get("db1.sp3")?.length).toBe(2);
     expect(g.get("db2.sp3")?.length).toBe(1);
     expect(g.get("(manual)")?.length).toBe(1);
+  });
+
+  it("softExportPercent grows with bytes but caps under 90", () => {
+    expect(softExportPercent(0)).toBe(5);
+    expect(softExportPercent(1024 * 1024)).toBeGreaterThan(softExportPercent(0));
+    expect(softExportPercent(200 * 1024 * 1024)).toBeLessThanOrEqual(90);
+  });
+
+  it("formatBytes", () => {
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(2048)).toMatch(/KB/);
+    expect(formatBytes(3 * 1024 * 1024)).toMatch(/MB/);
   });
 });

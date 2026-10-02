@@ -1,4 +1,4 @@
-export type ImportStage = "queued" | "exporting" | "catalog" | "ready" | "failed";
+export type ImportStage = "queued" | "exporting" | "indexing" | "ready" | "failed";
 
 export interface ImportJob {
   id: string;
@@ -6,8 +6,27 @@ export interface ImportJob {
   filename: string;
   stage: ImportStage;
   progress?: string;
+  /** Soft percent 0–100 while exporting (bytes grow without a known total). */
+  percent?: number;
+  bytes?: number;
+  rows?: number;
   error?: string;
   startedAt: number;
+}
+
+/** Map streaming export bytes → a soft 5–90% bar (no known total for Jet dumps). */
+export function softExportPercent(bytes: number): number {
+  if (bytes <= 0) return 5;
+  // Log-ish growth: 1 MiB≈35%, 10 MiB≈55%, 50 MiB≈70%, 200 MiB≈82%, asymptote ~90.
+  const mb = bytes / (1024 * 1024);
+  const pct = 5 + 85 * (1 - Math.exp(-mb / 18));
+  return Math.min(90, Math.round(pct));
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function uid(): string {

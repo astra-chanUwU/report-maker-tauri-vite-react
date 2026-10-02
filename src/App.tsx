@@ -78,8 +78,14 @@ import { IMAGE_EXTS, INGEST_EXTS, shouldHandleNativeDrop } from "./lib/drop-guar
 import { DiagnosticsPanel } from "./components/diagnostics-panel";
 import { ImportPill, ImportProgress } from "./components/import-progress";
 import { ExportPill, ExportProgressPanel } from "./components/export-progress";
-import { makeJob, type ImportJob } from "./lib/import-jobs";
+import {
+  formatBytes,
+  makeJob,
+  softExportPercent,
+  type ImportJob,
+} from "./lib/import-jobs";
 import { IDLE_EXPORT, type ExportProgress } from "./lib/export-progress";
+import { convertSp3Path } from "./lib/mdb";
 
 function App() {
   const [themePref, setThemePref] = useTheme();
@@ -203,10 +209,35 @@ function App() {
     async (path: string) => {
       const id = enqueueJob(path);
       pendingSp3PathRef.current = path;
-      patchJob(id, { stage: "exporting", progress: "Exporting Data table…" });
+      const ext = path.split(".").pop()?.toLowerCase() ?? "";
+      patchJob(id, {
+        stage: "exporting",
+        percent: 5,
+        progress: ext === "csv" ? "Loading CSV…" : "Exporting Data table…",
+      });
       try {
+        if (ext === "sp3" || ext === "mdb") {
+          const result = await convertSp3Path(path, undefined, (p) => {
+            patchJob(id, {
+              stage: "exporting",
+              bytes: p.bytes,
+              rows: p.rows,
+              percent: softExportPercent(p.bytes),
+              progress: `${formatBytes(p.bytes)}${p.rows ? ` · ${p.rows.toLocaleString()} rows` : ""}`,
+            });
+          });
+          patchJob(id, {
+            stage: "indexing",
+            percent: 95,
+            progress: "Parsing preview…",
+          });
+          handleParsed(result, null);
+          patchJob(id, { stage: "ready", percent: 100, progress: "Ready" });
+          window.setTimeout(() => dismissJob(id), 4000);
+          return;
+        }
         await ingest.handlePath(path);
-        patchJob(id, { stage: "ready" });
+        patchJob(id, { stage: "ready", percent: 100, progress: "Ready" });
         window.setTimeout(() => dismissJob(id), 4000);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -214,7 +245,7 @@ function App() {
         else patchJob(id, { stage: "failed", error: msg.slice(0, 80) });
       }
     },
-    [enqueueJob, patchJob, dismissJob, ingest]
+    [enqueueJob, patchJob, dismissJob, ingest, handleParsed]
   );
 
   /** Switching measurements keeps the file/CSV source for further picks. */
@@ -581,11 +612,6 @@ function App() {
 
           <main id="main" className="relative min-h-0 flex-1">
             <Page active={page === "data"}>
-              {importJobs.length > 0 ? (
-                <div className="mb-4">
-                  <ImportProgress jobs={importJobs} onDismiss={dismissJob} onCancel={cancelJob} />
-                </div>
-              ) : null}
               {!effective ? (
                 <div className="grid gap-4">
                   <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -843,12 +869,17 @@ function App() {
             </Page>
           </main>
 
-          {exportProgress.stage !== "idle" ? (
-            <div className="shrink-0 border-t bg-background px-4 py-2">
-              <ExportProgressPanel
-                progress={exportProgress}
-                onDismiss={() => setExportProgress(IDLE_EXPORT)}
-              />
+          {importJobs.length > 0 || exportProgress.stage !== "idle" ? (
+            <div className="grid shrink-0 gap-2 border-t bg-background px-4 py-2">
+              {importJobs.length > 0 ? (
+                <ImportProgress jobs={importJobs} onDismiss={dismissJob} onCancel={cancelJob} />
+              ) : null}
+              {exportProgress.stage !== "idle" ? (
+                <ExportProgressPanel
+                  progress={exportProgress}
+                  onDismiss={() => setExportProgress(IDLE_EXPORT)}
+                />
+              ) : null}
             </div>
           ) : null}
 

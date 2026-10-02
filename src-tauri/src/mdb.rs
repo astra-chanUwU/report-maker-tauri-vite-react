@@ -12,6 +12,8 @@ use serde::Serialize;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+use tauri::ipc::Channel;
 
 /// First bytes of the CSV returned inline for preview parsing (1 MiB cap).
 const HEAD_CAP: usize = 1024 * 1024;
@@ -35,6 +37,13 @@ pub struct MdbExportResult {
     pub bytes: u64,
     /// First HEAD_CAP bytes of the CSV for preview parsing.
     pub head: Vec<u8>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MdbExportProgress {
+    pub bytes: u64,
+    pub rows: usize,
 }
 
 fn candidate_tool_paths(override_path: Option<String>) -> Vec<PathBuf> {
@@ -115,6 +124,7 @@ pub fn export_mdb_csv(
     input: String,
     table: Option<String>,
     tool: Option<String>,
+    on_progress: Option<Channel<MdbExportProgress>>,
 ) -> Result<MdbExportResult, String> {
     let bin = resolve_tool(tool).ok_or_else(|| {
         "mdb-export not found. Install mdbtools (or set MDB_EXPORT_PATH / Settings path)."
@@ -172,6 +182,13 @@ pub fn export_mdb_csv(
     let mut bytes: u64 = 0;
     let mut head: Vec<u8> = Vec::new();
     let mut newline_seen = false;
+    let mut last_emit = Instant::now() - Duration::from_secs(1);
+    let mut last_emit_bytes: u64 = 0;
+    let emit_progress = |bytes: u64, rows: usize, channel: &Option<Channel<MdbExportProgress>>| {
+        if let Some(ch) = channel {
+            let _ = ch.send(MdbExportProgress { bytes, rows });
+        }
+    };
     if let Some(mut stdout) = child.stdout.take() {
         let mut chunk = [0u8; 65536];
         loop {
@@ -200,8 +217,16 @@ pub fn export_mdb_csv(
                     }
                 }
             }
+            // Throttle IPC: every ~250ms or every ~2 MiB.
+            if last_emit.elapsed() >= Duration::from_millis(250) || bytes - last_emit_bytes >= 2 * 1024 * 1024
+            {
+                emit_progress(bytes, rows, &on_progress);
+                last_emit = Instant::now();
+                last_emit_bytes = bytes;
+            }
         }
     }
+    emit_progress(bytes, rows, &on_progress);
 
     let output = child
         .wait_with_output()
