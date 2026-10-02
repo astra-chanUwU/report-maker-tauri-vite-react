@@ -9,7 +9,8 @@
 //! small head (for preview parsing) is returned over IPC.
 
 use serde::Serialize;
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -371,25 +372,111 @@ fn col(cells: &[String], header: &[String], name: &str) -> String {
 
 #[tauri::command]
 pub fn list_csv_rows(path: String, limit: Option<usize>) -> Result<CsvRowList, String> {
-    let text = read_csv_text(&path)?;
-    let mut lines = text.lines();
-    let header_line = lines.next().ok_or("CSV is empty.")?.to_string();
+    let file = File::open(&path).map_err(|e| format!("cannot read csv: {e}"))?;
+    let meta_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    if meta_len > 1536 * 1024 * 1024 {
+        return Err("CSV larger than 1.5 GiB is not supported.".to_string());
+    }
+    let mut reader = BufReader::new(file);
+    // Detect BOM via peek without consuming whole file
+    let is_utf16 = {
+        let buf = reader.fill_buf().map_err(|e| format!("cannot read csv: {e}"))?;
+        buf.len() >= 2 && buf[0] == 0xFF && buf[1] == 0xFE
+    };
+    let is_utf8_bom = {
+        let buf = reader.fill_buf().map_err(|e| format!("cannot read csv: {e}"))?;
+        buf.len() >= 3 && buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF
+    };
+    if is_utf16 {
+        // UTF-16LE with BOM: stream via BufReader, decode incrementally
+        reader.consume(2);
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).map_err(|e| format!("cannot read csv: {e}"))?;
+        if bytes.len() % 2 == 1 {
+            bytes.push(0);
+        }
+        let u16s: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        let text = String::from_utf16_lossy(&u16s);
+        let mut lines = text.lines();
+        let header_line = lines.next().ok_or("CSV is empty.")?.to_string();
+        let header = split_csv_line(&header_line);
+        if !header.contains(&"Specdata".to_string()) {
+            return Err("Not a Data-table export (no Specdata column).".to_string());
+        }
+        let cap = limit.unwrap_or(ROW_LIST_CAP).min(ROW_LIST_CAP);
+        let mut rows = Vec::new();
+        for (index, line) in lines.enumerate() {
+            if rows.len() >= cap {
+                break;
+            }
+            if line.trim().is_empty() {
+                continue;
+            }
+            let cells = split_csv_line(line);
+            rows.push(CsvRowSummary {
+                index,
+                point_id: col(&cells, &header, "PointID"),
+                direction_id: col(&cells, &header, "DirectionID"),
+                meas_date: col(&cells, &header, "MeasDate"),
+                peak_v: col(&cells, &header, "ValuePeakMaxV"),
+                peak_freq: col(&cells, &header, "FreqPeakMaxV"),
+                rms_v: col(&cells, &header, "TotalRMSV"),
+                rms_a: col(&cells, &header, "TotalRMSA"),
+                peak_a: col(&cells, &header, "TotalPeakA"),
+                bc: col(&cells, &header, "BC"),
+                unit: col(&cells, &header, "Unit"),
+                no_lines: col(&cells, &header, "NoLines"),
+            });
+        }
+        return Ok(CsvRowList { header, rows });
+    }
+    if is_utf8_bom {
+        reader.consume(3);
+    }
+    // UTF-8 path: true BufReader streaming line-by-line (no whole-file fs::read)
+    let mut header_line = String::new();
+    let n = reader
+        .read_line(&mut header_line)
+        .map_err(|e| format!("cannot read csv: {e}"))?;
+    if n == 0 {
+        return Err("CSV is empty.".to_string());
+    }
+    // trim trailing newline(s)
+    while header_line.ends_with('\n') || header_line.ends_with('\r') {
+        header_line.pop();
+    }
     let header = split_csv_line(&header_line);
     if !header.contains(&"Specdata".to_string()) {
         return Err("Not a Data-table export (no Specdata column).".to_string());
     }
     let cap = limit.unwrap_or(ROW_LIST_CAP).min(ROW_LIST_CAP);
     let mut rows = Vec::new();
-    for (index, line) in lines.enumerate() {
+    let mut line_buf = String::new();
+    let mut logical_index: usize = 0;
+    loop {
+        line_buf.clear();
+        let n = reader
+            .read_line(&mut line_buf)
+            .map_err(|e| format!("cannot read csv: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        // Trim trailing newline for parsing, but keep original for empty check
+        let trimmed_end = line_buf.trim_end_matches(|c| c == '\n' || c == '\r');
+        let line = trimmed_end;
         if rows.len() >= cap {
             break;
         }
         if line.trim().is_empty() {
+            logical_index += 1;
             continue;
         }
         let cells = split_csv_line(line);
         rows.push(CsvRowSummary {
-            index,
+            index: logical_index,
             point_id: col(&cells, &header, "PointID"),
             direction_id: col(&cells, &header, "DirectionID"),
             meas_date: col(&cells, &header, "MeasDate"),
@@ -402,6 +489,7 @@ pub fn list_csv_rows(path: String, limit: Option<usize>) -> Result<CsvRowList, S
             unit: col(&cells, &header, "Unit"),
             no_lines: col(&cells, &header, "NoLines"),
         });
+        logical_index += 1;
     }
     Ok(CsvRowList { header, rows })
 }
@@ -481,14 +569,30 @@ pub fn list_spectra_catalog(
     if !input_path.is_file() {
         return Err(format!("Input file not found: {input}"));
     }
-    let plant =
-        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Plant", "strip")?).into_owned();
-    let machine =
-        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Machine", "strip")?).into_owned();
-    let point =
-        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Point", "strip")?).into_owned();
-    let direction =
-        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Direction", "strip")?).into_owned();
+    // Parallelize 4 catalog tables via rayon::join (nested for 4-way parallelism)
+    let (plant_res, machine_res, point_res, direction_res) = {
+        let bin_ref = &bin;
+        let input_ref = &input;
+        let ((a, b), (c, d)) = rayon::join(
+            || {
+                rayon::join(
+                    || run_mdb_export(bin_ref, input_ref, "Plant", "strip"),
+                    || run_mdb_export(bin_ref, input_ref, "Machine", "strip"),
+                )
+            },
+            || {
+                rayon::join(
+                    || run_mdb_export(bin_ref, input_ref, "Point", "strip"),
+                    || run_mdb_export(bin_ref, input_ref, "Direction", "strip"),
+                )
+            },
+        );
+        (a, b, c, d)
+    };
+    let plant = String::from_utf8_lossy(&plant_res?).into_owned();
+    let machine = String::from_utf8_lossy(&machine_res?).into_owned();
+    let point = String::from_utf8_lossy(&point_res?).into_owned();
+    let direction = String::from_utf8_lossy(&direction_res?).into_owned();
     if !machine.contains("MachineID") {
         return Err("Machine table missing from this .sp3.".to_string());
     }
