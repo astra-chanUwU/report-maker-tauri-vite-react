@@ -25,28 +25,46 @@ function dataUrl(b64: string | null, fallbackMime: string): string | null {
 /** Tiny schematic of the cover so templates can be told apart at a glance. */
 function TemplateThumb({ tpl }: { tpl: DocTemplate }) {
   const accent = `#${tpl.accentHex}`;
-  const align = tpl.coverStyle === "modern" ? "items-start" : "items-center";
+  const soft = `#${tpl.accentSoft}`;
   return (
     <div className="flex h-28 items-center justify-center rounded-md bg-muted/70 p-2">
-      <div
-        className={cn(
-          "flex h-full w-[4.2rem] flex-col gap-1 rounded-sm bg-white p-1.5 shadow-sm",
-          align
-        )}
-      >
+      <div className="flex h-full w-[4.4rem] flex-col gap-1 overflow-hidden rounded-sm bg-white p-1.5 shadow-sm">
         {tpl.coverStyle === "modern" ? (
-          <div className="h-1.5 w-full rounded-full" style={{ backgroundColor: accent }} />
-        ) : null}
-        <div className="mt-2 h-1.5 w-3/4 rounded-full" style={{ backgroundColor: accent }} />
-        <div className="h-1 w-1/2 rounded-full bg-neutral-300" />
-        {tpl.coverStyle === "minimal" ? (
-          <div className="my-1 h-px w-full bg-neutral-300" />
+          <>
+            <div className="-mx-1.5 -mt-1.5 mb-1 space-y-1 px-1.5 py-1.5" style={{ backgroundColor: accent }}>
+              <div className="h-0.5 w-2/3 rounded-full bg-white/70" />
+              <div className="h-1.5 w-full rounded-full bg-white" />
+            </div>
+            <div className="h-1 w-full rounded-full" style={{ backgroundColor: soft }} />
+            <div className="h-1 w-3/4 rounded-full bg-neutral-200" />
+          </>
+        ) : tpl.coverStyle === "industrial" ? (
+          <>
+            <div className="-mx-1.5 -mt-1.5 h-2" style={{ backgroundColor: accent }} />
+            <div className="mx-auto mt-1 h-1.5 w-3/4 rounded-full" style={{ backgroundColor: accent }} />
+            <div className="h-1 w-full rounded-full" style={{ backgroundColor: soft }} />
+            <div className="h-0.5 w-full rounded-full bg-neutral-200" />
+            <div className="h-0.5 w-2/3 rounded-full bg-neutral-200" />
+            <div className="-mx-1.5 mt-auto h-1.5" style={{ backgroundColor: accent }} />
+          </>
+        ) : tpl.coverStyle === "minimal" ? (
+          <>
+            <div className="mt-3 h-1 w-1/2 rounded-full bg-neutral-300" />
+            <div className="h-2 w-full rounded-full" style={{ backgroundColor: accent }} />
+            <div className="my-0.5 h-px w-full" style={{ backgroundColor: accent }} />
+            <div className="h-0.5 w-full rounded-full bg-neutral-200" />
+            <div className="h-0.5 w-2/3 rounded-full bg-neutral-200" />
+          </>
         ) : (
-          <div className="my-1 h-5 w-full rounded-sm bg-neutral-100" />
+          <>
+            <div className="mx-auto mt-2 h-1.5 w-3/4 rounded-full" style={{ backgroundColor: accent }} />
+            <div className="mx-auto h-1 w-1/2 rounded-full bg-neutral-300" />
+            <div className="my-1 h-1.5 w-full rounded-sm" style={{ backgroundColor: accent }} />
+            <div className="h-0.5 w-full rounded-full bg-neutral-200" />
+            <div className="h-0.5 w-full rounded-full bg-neutral-200" />
+            <div className="h-0.5 w-2/3 rounded-full bg-neutral-200" />
+          </>
         )}
-        <div className="h-0.5 w-full rounded-full bg-neutral-200" />
-        <div className="h-0.5 w-full rounded-full bg-neutral-200" />
-        <div className="h-0.5 w-2/3 rounded-full bg-neutral-200" />
       </div>
     </div>
   );
@@ -66,7 +84,7 @@ export function TemplateCard({
       title="Template"
       description="Cover and heading style of the Word document."
     >
-      <div className="grid grid-cols-3 gap-3" role="radiogroup" aria-label="Template">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" role="radiogroup" aria-label="Template">
         {TEMPLATES.map((tpl) => {
           const active = selected === tpl.id;
           return (

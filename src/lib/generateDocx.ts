@@ -31,7 +31,7 @@ import { sectionTitle } from "./fa";
 import { encodePng, drawCallout, line, setPixel } from "./png";
 import { applyWordRtl } from "./docx-rtl";
 import { findDominantPeaks, formatPeakLabel } from "./spectra-peaks";
-import { getTemplate } from "./templates";
+import { getTemplate, type DocTemplate } from "./templates";
 import { buildIsoTableData, ISO_COLUMN_DXA, type IsoCell, type IsoDataRow } from "./iso10816";
 import { secondaryLabels, secondaryLimits, type SecondaryMetric } from "./metrics";
 import {
@@ -960,6 +960,292 @@ export function limitRows(limits: ZoneLimitSet, lang: "en" | "fa" = "en"): [stri
   return out;
 }
 
+/** Horizontal accent bar used on covers and under titles. */
+function accentBar(color: string, heightDxa = 120): Table {
+  return new Table({
+    width: { size: TABLE_DXA, type: WidthType.DXA },
+    columnWidths: [TABLE_DXA],
+    rows: [
+      new TableRow({
+        height: { value: heightDxa, rule: HeightRule.EXACT },
+        children: [
+          new TableCell({
+            width: { size: TABLE_DXA, type: WidthType.DXA },
+            borders: {
+              top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+              bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+              left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+              right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+            },
+            shading: { type: ShadingType.CLEAR, fill: color },
+            children: [docParagraph({ children: [] })],
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+function metaPairTable(
+  pairs: [string, string][],
+  template: DocTemplate,
+  fa: boolean
+): Table {
+  const col = Math.floor(TABLE_DXA / 2);
+  const labelColor = template.accentHex;
+  return new Table({
+    width: { size: TABLE_DXA, type: WidthType.DXA },
+    columnWidths: [col, col],
+    rows: pairs.map(
+      ([k, v]) =>
+        new TableRow({
+          children: [k, v].map((text, i) =>
+            new TableCell({
+              width: { size: col, type: WidthType.DXA },
+              borders: {
+                top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+                bottom: { style: BorderStyle.SINGLE, size: 4, color: template.accentSoft },
+                left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+                right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+              },
+              margins: { top: 60, bottom: 60, left: 80, right: 80 },
+              children: [
+                docParagraph({
+                  alignment: fa ? AlignmentType.RIGHT : AlignmentType.LEFT,
+                  children: [
+                    docRun({
+                      text,
+                      bold: i === 0,
+                      size: i === 0 ? 16 : 20,
+                      color: i === 0 ? labelColor : "333333",
+                    }),
+                  ],
+                }),
+              ],
+            })
+          ),
+        })
+    ),
+  });
+}
+
+/** Title page / cover block for the chosen template. */
+function buildCoverChildren(
+  input: BuildDocxInput,
+  template: DocTemplate,
+  stats: ReturnType<typeof computeStats>,
+  fa: boolean
+): (Paragraph | Table)[] {
+  const project = input.options.projectName || (fa ? "گزارش بدون عنوان" : "Untitled report");
+  const subtitle = fa ? "گزارش آنالیز ارتعاشات" : "Vibration Condition Monitoring Report";
+  const engineer = input.options.engineer || "—";
+  const date =
+    fa && input.options.jalaliDate
+      ? input.options.jalaliDate
+      : input.options.reportDate || "—";
+  const client = [input.options.clientName?.trim(), input.options.clientUnit?.trim()]
+    .filter(Boolean)
+    .join(" — ");
+  const logo =
+    input.branding?.logoPng && input.branding.logoPng.length > 0
+      ? docParagraph({
+          alignment:
+            template.coverStyle === "classic" || template.coverStyle === "industrial"
+              ? AlignmentType.CENTER
+              : fa
+                ? AlignmentType.RIGHT
+                : AlignmentType.LEFT,
+          spacing: { after: 200 },
+          children: [
+            new ImageRun({
+              data: input.branding.logoPng,
+              transformation: { width: 140, height: 70 },
+              type: "png",
+            }),
+          ],
+        })
+      : null;
+
+  const metaPairs: [string, string][] = [
+    [fa ? "مهندس" : "Engineer", engineer],
+    [fa ? "تاریخ" : "Date", date],
+    [fa ? "واحدها" : "Units", input.options.units || "SI"],
+  ];
+  if (client) metaPairs.push([fa ? "کارفرما" : "Client", client]);
+  if (!input.equipments?.length) {
+    metaPairs.push([
+      fa ? "منبع" : "Source",
+      `${input.meta.filename} · ${stats.spectra_points} pts · peak ${stats.peak.amp}`,
+    ]);
+  } else {
+    metaPairs.push([
+      fa ? "تجهیزات" : "Machines",
+      String(input.equipments.length),
+    ]);
+  }
+
+  const out: (Paragraph | Table)[] = [];
+
+  if (template.coverStyle === "modern") {
+    out.push(
+      new Table({
+        width: { size: TABLE_DXA, type: WidthType.DXA },
+        columnWidths: [TABLE_DXA],
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: TABLE_DXA, type: WidthType.DXA },
+                shading: { type: ShadingType.CLEAR, fill: template.accentHex },
+                borders: {
+                  top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+                  bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+                  left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+                  right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+                },
+                margins: { top: 200, bottom: 200, left: 200, right: 200 },
+                children: [
+                  docParagraph({
+                    children: [
+                      docRun({
+                        text: subtitle.toUpperCase(),
+                        color: "FFFFFF",
+                        size: 18,
+                        bold: true,
+                      }),
+                    ],
+                  }),
+                  docParagraph({
+                    spacing: { before: 80 },
+                    children: [
+                      docRun({
+                        text: project,
+                        color: "FFFFFF",
+                        size: template.titleSize,
+                        bold: true,
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+      docParagraph({ spacing: { before: 200, after: 120 }, children: [] })
+    );
+    if (logo) out.push(logo);
+    out.push(metaPairTable(metaPairs, template, fa));
+    return out;
+  }
+
+  if (template.coverStyle === "minimal") {
+    if (logo) out.push(logo);
+    out.push(
+      docParagraph({
+        spacing: { before: 400, after: 80 },
+        children: [
+          docRun({
+            text: subtitle.toUpperCase(),
+            size: 18,
+            color: "737373",
+          }),
+        ],
+        alignment: fa ? AlignmentType.RIGHT : AlignmentType.LEFT,
+      }),
+      docParagraph({
+        spacing: { after: 120 },
+        children: [
+          docRun({
+            text: project,
+            bold: true,
+            size: template.titleSize,
+            color: template.headingHex,
+          }),
+        ],
+        heading: HeadingLevel.TITLE,
+        alignment: fa ? AlignmentType.RIGHT : AlignmentType.LEFT,
+      }),
+      accentBar(template.accentHex, 40),
+      docParagraph({ spacing: { before: 200 }, children: [] }),
+      metaPairTable(metaPairs, template, fa)
+    );
+    return out;
+  }
+
+  if (template.coverStyle === "industrial") {
+    out.push(accentBar(template.accentHex, 180));
+    if (logo) out.push(logo);
+    out.push(
+      docParagraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 200, after: 40 },
+        children: [
+          docRun({
+            text: subtitle.toUpperCase(),
+            size: 18,
+            color: template.accentHex,
+            bold: true,
+          }),
+        ],
+      }),
+      docParagraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 160 },
+        children: [
+          docRun({
+            text: project,
+            bold: true,
+            size: template.titleSize,
+            color: template.headingHex,
+          }),
+        ],
+        heading: HeadingLevel.TITLE,
+      }),
+      accentBar(template.accentSoft, 60),
+      docParagraph({ spacing: { before: 200 }, children: [] }),
+      metaPairTable(metaPairs, template, fa),
+      docParagraph({ spacing: { before: 200 }, children: [] }),
+      accentBar(template.accentHex, 80)
+    );
+    return out;
+  }
+
+  // classic
+  if (logo) out.push(logo);
+  out.push(
+    docParagraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 280, after: 60 },
+      children: [
+        docRun({
+          text: subtitle,
+          size: 20,
+          color: template.accentHex,
+          italics: true,
+        }),
+      ],
+    }),
+    docParagraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 160 },
+      children: [
+        docRun({
+          text: project,
+          bold: true,
+          size: template.titleSize,
+          color: template.headingHex,
+        }),
+      ],
+      heading: HeadingLevel.TITLE,
+    }),
+    accentBar(template.accentHex, 90),
+    docParagraph({ spacing: { before: 240 }, children: [] }),
+    metaPairTable(metaPairs, template, fa)
+  );
+  return out;
+}
+
 export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   paragraphRtl = input.options.language === "fa";
   const stats = computeStats(input.spectra);
@@ -969,79 +1255,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const d = input.aiDraft;
   const templateId = input.templateId ?? input.options.templateId ?? "classic";
   const template = getTemplate(templateId);
-  const align =
-    template.coverStyle === "modern"
-      ? AlignmentType.LEFT
-      : template.coverStyle === "minimal"
-        ? AlignmentType.LEFT
-        : AlignmentType.CENTER;
-
-  const headerChildren: Paragraph[] = [];
-  if (input.branding?.logoPng && input.branding.logoPng.length > 0) {
-    headerChildren.push(
-      docParagraph({
-        children: [
-          new ImageRun({
-            data: input.branding.logoPng,
-            transformation: { width: 120, height: 60 },
-            type: "png",
-          }),
-        ],
-        alignment: align,
-      })
-    );
-  }
-  headerChildren.push(
-    docParagraph({
-      children: [
-        docRun({
-          text: input.options.projectName || "Untitled report",
-          bold: true,
-          size: 56,
-          color: template.accentHex,
-        }),
-      ],
-      heading: HeadingLevel.TITLE,
-      alignment: align,
-    }),
-    docParagraph({
-      children: [
-        docRun({
-          text: `${template.name} template · ${input.options.reportDate || "—"}`,
-          color: template.accentHex,
-        }),
-      ],
-      alignment: align,
-    }),
-    docParagraph({
-      children: [
-        docRun(
-          `Engineer: ${input.options.engineer || "—"}    Date: ${input.options.reportDate || "—"}    Units: ${input.options.units || "SI"}`
-        ),
-      ],
-      alignment: align,
-    })
-  );
-  if (!input.equipments?.length) {
-    headerChildren.push(
-      docParagraph({
-        children: [
-          docRun(
-            `Source: ${input.meta.filename} (${input.meta.source}) · ${stats.spectra_points} points · peak ${stats.peak.amp} @ ${stats.peak.freq}`
-          ),
-        ],
-        alignment: align,
-      })
-    );
-  }
-  if (template.coverStyle === "minimal") {
-    headerChildren.push(
-      docParagraph({
-        children: [docRun({ text: "—", color: template.accentHex })],
-        alignment: align,
-      })
-    );
-  }
+  const headerChildren = buildCoverChildren(input, template, stats, input.options.language === "fa");
 
   const table = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -1488,7 +1702,13 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     children: [
       docParagraph({
         alignment: fa ? AlignmentType.RIGHT : AlignmentType.LEFT,
-        children: [docRun({ text: headerText, size: 16, color: "737373" })],
+        border: {
+          bottom: { style: BorderStyle.SINGLE, size: 12, color: template.accentHex, space: 8 },
+        },
+        spacing: { after: 80 },
+        children: [
+          docRun({ text: headerText, size: 16, color: template.headingHex, bold: true }),
+        ],
       }),
     ],
   });
@@ -1496,11 +1716,15 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     children: [
       docParagraph({
         alignment: AlignmentType.CENTER,
+        border: {
+          top: { style: BorderStyle.SINGLE, size: 6, color: template.accentSoft, space: 6 },
+        },
+        spacing: { before: 60 },
         children: [
           docRun({ text: `${footerText}    `, size: 16, color: "737373" }),
-          docRun({ children: [PageNumber.CURRENT], size: 16 }),
-          docRun({ text: " / ", size: 16 }),
-          docRun({ children: [PageNumber.TOTAL_PAGES], size: 16 }),
+          docRun({ children: [PageNumber.CURRENT], size: 16, color: template.accentHex }),
+          docRun({ text: " / ", size: 16, color: "737373" }),
+          docRun({ children: [PageNumber.TOTAL_PAGES], size: 16, color: "737373" }),
         ],
       }),
     ],
@@ -1516,22 +1740,28 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     footers: { default: contentFooter },
     children,
   };
-  // Persian keeps Word's default complex-script font; Latin matches the reference serif
-  const font = fa ? {} : { font: "Times New Roman" };
+  // Persian keeps Word's default complex-script font; Latin uses the template face.
+  const font = fa ? {} : { font: template.font };
   const styles = {
     default: {
       document: { run: { ...font, size: 20 } },
-      title: { run: { ...font, color: GREEN_DARK, bold: true } },
+      title: { run: { ...font, color: template.headingHex, bold: true } },
       heading1: {
-        run: { ...font, size: 30, bold: true, color: GREEN_DARK },
-        paragraph: { spacing: { before: 240, after: 120 }, keepNext: true },
+        run: { ...font, size: 30, bold: true, color: template.headingHex },
+        paragraph: {
+          spacing: { before: 280, after: 120 },
+          keepNext: true,
+          border: {
+            bottom: { style: BorderStyle.SINGLE, size: 8, color: template.accentSoft, space: 4 },
+          },
+        },
       },
       heading2: {
-        run: { ...font, size: 24, bold: true, color: GREEN_MID },
+        run: { ...font, size: 24, bold: true, color: template.accentHex },
         paragraph: { spacing: { before: 200, after: 80 }, keepNext: true },
       },
       heading3: {
-        run: { ...font, size: 20, bold: true, color: GREEN_MID },
+        run: { ...font, size: 20, bold: true, color: template.accentHex },
         paragraph: { spacing: { before: 80, after: 40 }, keepNext: true },
       },
     },

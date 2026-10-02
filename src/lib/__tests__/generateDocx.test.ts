@@ -41,6 +41,19 @@ describe("png encoder", () => {
 });
 
 describe("buildDocx", () => {
+  it("builds each cover template", async () => {
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n"), "a.sp3");
+    for (const templateId of ["classic", "modern", "minimal", "industrial"]) {
+      const blob = await buildDocx({
+        meta: parsed.meta,
+        spectra: parsed.spectra,
+        options: { ...OPTS, templateId },
+        templateId,
+      });
+      expect(blob.size).toBeGreaterThan(1500);
+    }
+  }, 60000);
+
   it("produces a valid .docx zip with required parts", async () => {
     const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n300,1.2\n"), "a.sp3");
     const blob = await buildDocx({
