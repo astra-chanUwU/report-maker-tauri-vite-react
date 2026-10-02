@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.reportmaker.app",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "env -u npm_config_npm_globalconfig -u npm_config_verify_deps_before_run -u npm_config__jsr_registry -u NPM_CONFIG_NPM_GLOBALCONFIG -u NPM_CONFIG_VERIFY_DEPS_BEFORE_RUN -u NPM_CONFIG__JSR_REGISTRY npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
