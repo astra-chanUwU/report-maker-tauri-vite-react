@@ -77,7 +77,9 @@ import type { ZoneLimitSet } from "./lib/zones";
 import { IMAGE_EXTS, INGEST_EXTS, shouldHandleNativeDrop } from "./lib/drop-guards";
 import { DiagnosticsPanel } from "./components/diagnostics-panel";
 import { ImportPill, ImportProgress } from "./components/import-progress";
+import { ExportPill, ExportProgressPanel } from "./components/export-progress";
 import { makeJob, type ImportJob } from "./lib/import-jobs";
+import { IDLE_EXPORT, type ExportProgress } from "./lib/export-progress";
 
 function App() {
   const [themePref, setThemePref] = useTheme();
@@ -97,7 +99,14 @@ function App() {
   const [recentTick, setRecentTick] = useState(0);
   const [sp3Path, setSp3Path] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgress>(IDLE_EXPORT);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (exportProgress.stage !== "done") return;
+    const timer = window.setTimeout(() => setExportProgress(IDLE_EXPORT), 6000);
+    return () => window.clearTimeout(timer);
+  }, [exportProgress.stage]);
   const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
   const pendingSp3PathRef = useRef<string | null>(null);
   const jobsRef = useRef<ImportJob[]>([]);
@@ -529,6 +538,7 @@ function App() {
         <div className="flex min-w-0 flex-1 flex-col">
           <Toolbar title={t(current.label)} description={t(current.desc)}>
             <ImportPill jobs={importJobs} />
+            <ExportPill progress={exportProgress} />
             <ReadinessChip missing={missing} onFix={fix} />
             <Segmented
               ariaLabel={t("language")}
@@ -565,6 +575,7 @@ function App() {
               tauriPath={rowPath}
               csvFile={rowFile}
               onBusy={setExportBusy}
+              onProgress={setExportProgress}
             />
           </Toolbar>
 
@@ -797,6 +808,7 @@ function App() {
                 equipments={equipments}
                 findingsFilled={draftFilled > 0}
                 busy={exportBusy}
+                progress={exportProgress}
                 lastSaved={lastSaved}
               />
             </Page>
@@ -830,6 +842,15 @@ function App() {
               </div>
             </Page>
           </main>
+
+          {exportProgress.stage !== "idle" ? (
+            <div className="shrink-0 border-t bg-background px-4 py-2">
+              <ExportProgressPanel
+                progress={exportProgress}
+                onDismiss={() => setExportProgress(IDLE_EXPORT)}
+              />
+            </div>
+          ) : null}
 
           <WizardFooter page={page} onNavigate={setPage} pages={wizardPages} />
 

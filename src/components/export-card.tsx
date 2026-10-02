@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, FolderOpen, Loader2 } from "lucide-react";
 import { renderChartPng, type MeasurePeak, type MeasureRow } from "../lib/generateDocx";
+import { estimatePercent, yieldToUi, type ExportProgress } from "../lib/export-progress";
 import { loadIsoRows } from "../lib/iso-store";
 import { SECONDARY_SERIES } from "../lib/metrics";
 import { fallbackDraft } from "../lib/ai";
@@ -65,6 +66,7 @@ export function ExportControls({
   tauriPath,
   csvFile,
   onBusy,
+  onProgress,
 }: {
   /** Called instead of exporting when data or required fields are missing. */
   onBlocked?: () => void;
@@ -92,10 +94,18 @@ export function ExportControls({
   tauriPath?: string | null;
   csvFile?: File | null;
   onBusy?: (busy: boolean) => void;
+  onProgress?: (progress: ExportProgress) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const { t } = useUi();
   const [lastPath, setLastPath] = useState<string | null>(null);
+  const progressRef = useRef(onProgress);
+  progressRef.current = onProgress;
+
+  const report = async (p: ExportProgress) => {
+    progressRef.current?.(p);
+    await yieldToUi();
+  };
 
   const errors = validateReportOptions(options);
 
@@ -112,6 +122,7 @@ export function ExportControls({
       return;
     }
     setBusy(true);
+    await report({ stage: "preparing", percent: estimatePercent("preparing"), detail: "Preparing…" });
     try {
       const pointLimit = Math.max(1, Math.min(options.pointLimit ?? 120, 500));
       const effOptions: ReportOptions =
@@ -150,7 +161,13 @@ export function ExportControls({
       let envelopeHits = 0;
       let envelopeUnit: string | undefined;
       if (askedEnvelope && measureRows && measureRows.length > 0 && sp3Paths.length > 0) {
-        for (const path of sp3Paths) {
+        await report({
+          stage: "envelope",
+          percent: estimatePercent("envelope"),
+          detail: "Loading envelope data…",
+        });
+        for (let i = 0; i < sp3Paths.length; i++) {
+          const path = sp3Paths[i];
           try {
             const samples = await fetchEnvelopeSamples(path);
             envelopeUnit ??= samples.find((s) => s.unit)?.unit;
@@ -158,12 +175,22 @@ export function ExportControls({
           } catch {
             // envelope table optional
           }
+          await report({
+            stage: "envelope",
+            percent: estimatePercent("envelope", (i + 1) / sp3Paths.length),
+            detail: `Envelope ${i + 1}/${sp3Paths.length}`,
+          });
         }
       }
       const includeEnvelope = envelopeHits > 0 && secondary !== "envelope";
       // Full-size trend pages (opt-in; the measuring table already carries sparklines)
       let allTrends: ReturnType<typeof buildAllTrendSnapshots> | undefined;
       if (trendPages && limits && measureRows && measureRows.length > 1) {
+        await report({
+          stage: "trends",
+          percent: estimatePercent("trends"),
+          detail: "Building trend charts…",
+        });
         try {
           allTrends = buildAllTrendSnapshots(
             groupHistories(measureRows),
@@ -178,9 +205,21 @@ export function ExportControls({
         } catch {
           allTrends = undefined;
         }
+        await yieldToUi();
       }
       // Latest spectrum per point feeds both the Peak List column and the FFT gallery.
       const peaksByKey = new Map<string, MeasurePeak[]>();
+      let fftDone = 0;
+      let fftTotal = 0;
+      const bumpFft = async () => {
+        fftDone += 1;
+        const frac = fftTotal > 0 ? fftDone / fftTotal : 0;
+        await report({
+          stage: "fft",
+          percent: estimatePercent("fft", frac),
+          detail: `Spectra ${Math.min(fftDone, fftTotal)}/${fftTotal}`,
+        });
+      };
       const loadSpectrum = async (row: CsvRowSummary): Promise<ParseResult | null> => {
         if (!measureRows) return null;
         try {
@@ -202,12 +241,19 @@ export function ExportControls({
       };
       const loadFft = async (rows: CsvRowSummary[], labels?: Record<string, string>) => {
         const items: { label: string; png: Uint8Array; peak?: string }[] = [];
-        for (const row of latestPerPoint(rows).slice(0, 40)) {
+        const points = latestPerPoint(rows).slice(0, 40);
+        for (const row of points) {
           const pr = await loadSpectrum(row);
-          if (!pr || pr.spectra.length === 0) continue;
+          if (!pr || pr.spectra.length === 0) {
+            await bumpFft();
+            continue;
+          }
           const key = `${row.pointId} ${row.directionId}`;
           peaksByKey.set(key, peaksFromSpectrum(pr.spectra));
-          if (options.fftAllPoints === false || items.length >= 24) continue;
+          if (options.fftAllPoints === false || items.length >= 24) {
+            await bumpFft();
+            continue;
+          }
           const named = labels?.[key.trim()];
           const fallback = `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""}`;
           items.push({
@@ -215,6 +261,7 @@ export function ExportControls({
             png: renderChartPng(pr.spectra),
             peak: formatSpectrumPeak(computeStats(pr.spectra).peak),
           });
+          await bumpFft();
         }
         return items;
       };
@@ -224,11 +271,24 @@ export function ExportControls({
       if (measureRows && measureRows.length > 0) {
         try {
           const bound = eqList.filter((e) => e.pointIds && e.pointIds.length > 0);
-          for (const e of bound) {
-            const items = await loadFft(rowsForPoints(measureRows, e.pointIds), e.labels);
-            if (items.length > 0) perMachineFft.set(e.id, items);
+          const batches =
+            bound.length > 0
+              ? bound.map((e) => rowsForPoints(measureRows, e.pointIds))
+              : [measureRows];
+          fftTotal = batches.reduce((n, rows) => n + latestPerPoint(rows).slice(0, 40).length, 0);
+          if (fftTotal > 0) {
+            await report({
+              stage: "fft",
+              percent: estimatePercent("fft", 0),
+              detail: `Spectra 0/${fftTotal}`,
+            });
           }
-          if (bound.length === 0) {
+          if (bound.length > 0) {
+            for (const e of bound) {
+              const items = await loadFft(rowsForPoints(measureRows, e.pointIds), e.labels);
+              if (items.length > 0) perMachineFft.set(e.id, items);
+            }
+          } else {
             const items = await loadFft(measureRows);
             if (items.length > 0) fftGallery = items;
           }
@@ -236,6 +296,11 @@ export function ExportControls({
           fftGallery = undefined;
         }
       }
+      await report({
+        stage: "building",
+        percent: estimatePercent("building"),
+        detail: "Assembling document…",
+      });
       const withPeaks = (rows: MeasureRow[]) =>
         rows.map((r) =>
           r.key && peaksByKey.has(r.key) ? { ...r, peaks: peaksByKey.get(r.key) } : r
@@ -249,7 +314,13 @@ export function ExportControls({
             }
           : undefined;
       const { buildDocx } = await import("../lib/generateDocx");
+      await yieldToUi();
       const toBrandImage = (b64: string | null) => (b64 ? { data: base64ToBytes(b64) } : undefined);
+      await report({
+        stage: "packing",
+        percent: estimatePercent("packing"),
+        detail: "Packing Word file…",
+      });
       const blob = await buildDocx({
         meta: parsed.meta,
         spectra: parsed.spectra,
@@ -333,8 +404,13 @@ export function ExportControls({
           corrective: options.equipmentCorrective || draft.recommendations,
         },
       });
+      await yieldToUi();
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
-      // filename preview already sanitized — shown below when enabled
+      await report({
+        stage: "saving",
+        percent: estimatePercent("saving"),
+        detail: "Saving…",
+      });
       const savedPath = await saveBlob(blob, filename);
       if (savedPath) setLastPath(savedPath);
       onExported?.({ filename, savedPath });
@@ -343,9 +419,16 @@ export function ExportControls({
         via: savedPath ? "tauri" : "web",
       });
       toast.success(savedPath ? `${t("saved")} ${filename}` : `${t("downloaded")} ${filename}`);
+      await report({
+        stage: "done",
+        percent: 100,
+        detail: savedPath ? `Saved ${filename}` : `Downloaded ${filename}`,
+      });
     } catch (e) {
       void track("report_failed", {});
-      toast.error(e instanceof Error ? e.message : t("exportFailed"));
+      const msg = e instanceof Error ? e.message : t("exportFailed");
+      toast.error(msg);
+      await report({ stage: "failed", error: msg, detail: msg });
     } finally {
       setBusy(false);
     }

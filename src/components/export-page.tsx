@@ -8,6 +8,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { EquipmentItem } from "../lib/equipment";
+import { stageLabel, type ExportProgress } from "../lib/export-progress";
 import { secondaryLabels } from "../lib/metrics";
 import type { ReportOptions } from "../lib/parseSp3";
 import { cn } from "../lib/utils";
@@ -35,6 +36,7 @@ export function ExportPage({
   equipments,
   findingsFilled,
   busy,
+  progress,
   lastSaved,
 }: {
   hasData: boolean;
@@ -45,6 +47,7 @@ export function ExportPage({
   equipments: EquipmentItem[];
   findingsFilled: boolean;
   busy: boolean;
+  progress?: ExportProgress;
   lastSaved: string | null;
 }) {
   const field = (key: string) => missing.find((m) => m.key === key);
@@ -219,13 +222,40 @@ export function ExportPage({
           ) : (
             <Download aria-hidden="true" />
           )}
-          {busy ? "Generating…" : ready ? "Generate report" : "Check and generate"}
+          {busy
+            ? typeof progress?.percent === "number"
+              ? `Generating ${progress.percent}%`
+              : "Generating…"
+            : ready
+              ? "Generate report"
+              : "Check and generate"}
         </Button>
-        <p className="text-xs text-muted-foreground">
-          {ready
-            ? "You choose where to save it. Ctrl+E works from any page."
-            : "Missing required items are highlighted when you press the button."}
-        </p>
+        {busy || (progress && progress.stage !== "idle" && progress.stage !== "done") ? (
+          <div className="grid gap-1.5">
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress?.percent}
+            >
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                style={{ width: `${Math.min(100, Math.max(0, progress?.percent ?? 8))}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {progress?.detail || (progress ? stageLabel(progress.stage) : "Working…")} · keep
+              browsing while this runs
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {ready
+              ? "You choose where to save it. Ctrl+E works from any page."
+              : "Missing required items are highlighted when you press the button."}
+          </p>
+        )}
         {lastSaved ? (
           <Button variant="outline" size="sm" onClick={() => void reveal()} title={lastSaved}>
             <FolderOpen aria-hidden="true" />
