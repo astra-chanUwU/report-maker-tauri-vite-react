@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Gauge, Search } from "lucide-react";
 import type { EquipmentItem } from "../lib/equipment";
 import {
@@ -37,7 +37,7 @@ export function formatRowDate(raw: string): string {
 }
 
 /** Zone badge with the legacy palette. */
-export function ZoneBadge({ zone, label }: { zone: string; label?: string }) {
+export const ZoneBadge = memo(function ZoneBadge({ zone, label }: { zone: string; label?: string }) {
   const z = zone as keyof typeof ZONE_FILL;
   return (
     <span
@@ -51,9 +51,93 @@ export function ZoneBadge({ zone, label }: { zone: string; label?: string }) {
       {zone || "—"}
     </span>
   );
-}
+});
 
 const RANK: Record<ZoneResult, number> = { "": 0, A: 1, B: 2, U: 3, C: 4 };
+
+const ROW_HEIGHT = 36;
+const VIRTUAL_THRESHOLD = 100;
+const VIRTUAL_OVERSCAN = 8;
+
+interface MeasuringRowProps {
+  point: string;
+  date: string;
+  rms: string | undefined;
+  prevV?: string;
+  currV?: string;
+  zv: ZoneResult;
+  rmsA: string | undefined;
+  za: ZoneResult;
+  peakFreq: string;
+  peak: string;
+  rowKey: string | undefined;
+}
+
+const MeasuringRow = memo(function MeasuringRow({
+  point, date, rms, prevV, currV, zv, rmsA, za, peakFreq, peak, rowKey,
+}: MeasuringRowProps) {
+  const peakText = formatSpectrumPeak({ freq: Number(peakFreq), amp: Number(peak) });
+  const trend = prevV && prevV !== "—" && Number(currV) > Number(prevV) * 1.25;
+  return (
+    <tr key={rowKey} className="border-t first:border-t-0 hover:bg-muted/40">
+      <td className="px-3 py-1.5 font-medium">{point}</td>
+      <td className="px-2 py-1.5 text-muted-foreground tabular-nums">{date}</td>
+      <td className="px-2 py-1.5 text-end tabular-nums">
+        <span className="font-medium">{num(rms)}</span>
+        {prevV && prevV !== "—" ? (
+          <span className={cn("ms-1.5 text-xs", trend ? "text-destructive" : "text-muted-foreground")} title="Previous reading">
+            prev {num(prevV)}
+          </span>
+        ) : null}
+      </td>
+      <td className="px-2 py-1.5 text-center"><ZoneBadge zone={zv} /></td>
+      <td className="px-2 py-1.5 text-end font-medium tabular-nums">{num(rmsA)}</td>
+      <td className="px-2 py-1.5 text-center">{rmsA ? <ZoneBadge zone={za} /> : null}</td>
+      <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{peakText || "—"}</td>
+    </tr>
+  );
+});
+
+function VirtualizedRows({ lines, sec }: { lines: { r: ReturnType<typeof buildMeasureRows>[number]; zv: ZoneResult; za: ZoneResult; worst: ZoneResult }[]; sec: ReturnType<typeof secondaryLabels> }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewport, setViewport] = useState(400);
+  const onScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => setScrollTop(e.currentTarget.scrollTop), []);
+  useEffect(() => {
+    if (ref.current) setViewport(ref.current.clientHeight || 400);
+  }, [lines.length]);
+  const total = lines.length;
+  const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - VIRTUAL_OVERSCAN);
+  const visibleCount = Math.ceil(viewport / ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2;
+  const end = Math.min(total, start + visibleCount);
+  const slice = lines.slice(start, end);
+  const padTop = start * ROW_HEIGHT;
+  const padBottom = (total - end) * ROW_HEIGHT;
+  return (
+    <div ref={ref} onScroll={onScroll} className="max-h-[480px] overflow-auto" style={{ contain: "strict" }}>
+      <table className="w-full text-[13px]">
+        <thead className="sticky top-0 z-10 bg-background text-xs text-muted-foreground">
+          <tr className="border-b">
+            <th className="w-24 bg-background px-3 py-1.5 text-start font-medium">Point</th>
+            <th className="w-28 bg-background px-2 py-1.5 text-start font-medium">Measured</th>
+            <th className="bg-background px-2 py-1.5 text-end font-medium">Velocity</th>
+            <th className="w-14 bg-background px-2 py-1.5 text-center font-medium">V</th>
+            <th className="bg-background px-2 py-1.5 text-end font-medium">{sec.short}</th>
+            <th className="w-14 bg-background px-2 py-1.5 text-center font-medium">{sec.zone.replace(" Zone", "")}</th>
+            <th className="bg-background px-3 py-1.5 text-start font-medium">Main peak</th>
+          </tr>
+        </thead>
+        <tbody>
+          {padTop > 0 ? <tr><td colSpan={7} style={{ height: padTop }} aria-hidden="true" /></tr> : null}
+          {slice.map(({ r, zv, za }) => (
+            <MeasuringRow key={r.key ?? r.point} rowKey={r.key} point={r.point} date={r.date} rms={r.rms} prevV={r.prevV} currV={r.currV} zv={zv} rmsA={r.rmsA} za={za} peakFreq={r.peakFreq} peak={r.peak} />
+          ))}
+          {padBottom > 0 ? <tr><td colSpan={7} style={{ height: padBottom }} aria-hidden="true" /></tr> : null}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function num(v: string | undefined, digits = 2): string {
   const n = Number(v);
@@ -169,7 +253,7 @@ export function MeasuringTable({
   }, [equipments, limits, source]);
 
   const q = query.trim().toLowerCase();
-  const built = groups.map((g) => {
+  const built = useMemo(() => groups.map((g) => {
     const all = buildMeasureRows(g.rows, g.limits, 10, g.labels, false, { secondary });
     const lines = all
       .map((r) => {
@@ -180,7 +264,7 @@ export function MeasuringTable({
       .filter((l) => !alarmsOnly || RANK[l.worst] >= RANK.B)
       .filter((l) => !q || `${g.title} ${l.r.point}`.toLowerCase().includes(q));
     return { g, lines };
-  });
+  }), [groups, secondary, q, alarmsOnly]);
 
   const total = built.reduce((n, b) => n + b.lines.length, 0);
 
@@ -235,6 +319,8 @@ export function MeasuringTable({
               <p className="px-3 py-4 text-[13px] text-muted-foreground">
                 No readings for this machine's points in the open database.
               </p>
+            ) : lines.length > VIRTUAL_THRESHOLD ? (
+              <VirtualizedRows lines={lines} sec={sec} />
             ) : (
               <table className="w-full text-[13px]">
                 <thead className="text-xs text-muted-foreground">
@@ -251,46 +337,9 @@ export function MeasuringTable({
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map(({ r, zv, za }) => {
-                    const peak = formatSpectrumPeak({
-                      freq: Number(r.peakFreq),
-                      amp: Number(r.peak),
-                    });
-                    const trend =
-                      r.prevV && r.prevV !== "—" && Number(r.currV) > Number(r.prevV) * 1.25;
-                    return (
-                      <tr key={r.key} className="border-t first:border-t-0 hover:bg-muted/40">
-                        <td className="px-3 py-1.5 font-medium">{r.point}</td>
-                        <td className="px-2 py-1.5 text-muted-foreground tabular-nums">{r.date}</td>
-                        <td className="px-2 py-1.5 text-end tabular-nums">
-                          <span className="font-medium">{num(r.rms)}</span>
-                          {r.prevV && r.prevV !== "—" ? (
-                            <span
-                              className={cn(
-                                "ms-1.5 text-xs",
-                                trend ? "text-destructive" : "text-muted-foreground"
-                              )}
-                              title="Previous reading"
-                            >
-                              prev {num(r.prevV)}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <ZoneBadge zone={zv} />
-                        </td>
-                        <td className="px-2 py-1.5 text-end font-medium tabular-nums">
-                          {num(r.rmsA)}
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          {r.rmsA ? <ZoneBadge zone={za} /> : null}
-                        </td>
-                        <td className="px-3 py-1.5 text-muted-foreground tabular-nums">
-                          {peak || "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {lines.map(({ r, zv, za }) => (
+                    <MeasuringRow key={r.key ?? r.point} rowKey={r.key} point={r.point} date={r.date} rms={r.rms} prevV={r.prevV} currV={r.currV} zv={zv} rmsA={r.rmsA} za={za} peakFreq={r.peakFreq} peak={r.peak} />
+                  ))}
                 </tbody>
               </table>
             )}

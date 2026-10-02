@@ -71,6 +71,16 @@ export interface MeasureRowOpts {
   bands?: boolean;
 }
 
+const _bmWeak = new WeakMap<CsvRowSummary[], Map<string, MeasureRow[]>>();
+const _bmMap = new Map<string, MeasureRow[]>();
+const _BM_MAX = 24;
+
+function bmCacheKey(rows: CsvRowSummary[], limits: ZoneLimitSet, window: number | "all", withSparks: boolean, opts: MeasureRowOpts, labels?: Record<string, string>): string {
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  return `${rows.length}|${window}|${withSparks}|${opts.secondary ?? "acceleration"}|${opts.bands ?? true}|${JSON.stringify(limits)}|${first?.pointId ?? ""}:${first?.measDate ?? ""}|${last?.pointId ?? ""}:${last?.measDate ?? ""}|${labels ? Object.keys(labels).length : 0}`;
+}
+
 export function buildMeasureRows(
   rows: CsvRowSummary[],
   limits: ZoneLimitSet,
@@ -82,6 +92,10 @@ export function buildMeasureRows(
   const secondary = opts.secondary ?? "acceleration";
   const series = SECONDARY_SERIES[secondary];
   const secLimits = secondaryLimits(limits, secondary);
+  const _cacheKey = bmCacheKey(rows, limits, window, withSparks, opts, labels);
+  const _weakInner = _bmWeak.get(rows);
+  if (_weakInner?.has(_cacheKey)) return _weakInner.get(_cacheKey)!;
+  if (_bmMap.has(_cacheKey)) return _bmMap.get(_cacheKey)!;
   const histories = groupHistories(rows);
   const byKey = new Map<string, PointHistory>(
     histories.map((h) => [`${h.pointId} ${h.directionId}`, h])
@@ -94,7 +108,7 @@ export function buildMeasureRows(
       num(a.directionId) - num(b.directionId) ||
       labelOf(a, labels).localeCompare(labelOf(b, labels))
   );
-  return latest.map((r) => {
+  const _result = latest.map((r) => {
     const h = byKey.get(`${r.pointId} ${r.directionId}`);
     const samples = h ? takeLastHistory(h.samples, window) : [];
     const v = historyStats(samples, "rmsV");
@@ -133,4 +147,10 @@ export function buildMeasureRows(
       sparkA,
     };
   });
+  let _inner = _bmWeak.get(rows);
+  if (!_inner) { _inner = new Map(); _bmWeak.set(rows, _inner); }
+  _inner.set(_cacheKey, _result);
+  _bmMap.set(_cacheKey, _result);
+  if (_bmMap.size > _BM_MAX) { const _first = _bmMap.keys().next().value as string | undefined; if (_first) _bmMap.delete(_first); }
+  return _result;
 }

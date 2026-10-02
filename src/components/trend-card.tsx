@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { TrendingUp } from "lucide-react";
 import type { CsvRowSummary } from "../lib/mdb";
 import { groupHistories, renderTrendPng, takeLastHistory } from "../lib/trends";
@@ -20,15 +20,30 @@ type Window = (typeof WINDOWS)[number];
 
 function usePngUrl(png: Uint8Array | null): string | null {
   const [url, setUrl] = useState<string | null>(null);
+  const prevRef = React.useRef<string | null>(null);
   useEffect(() => {
     if (!png) {
+      if (prevRef.current) {
+        URL.revokeObjectURL(prevRef.current);
+        prevRef.current = null;
+      }
       setUrl(null);
       return;
     }
-    const u = URL.createObjectURL(new Blob([png as BlobPart], { type: "image/png" }));
-    setUrl(u);
-    return () => URL.revokeObjectURL(u);
+    const next = URL.createObjectURL(new Blob([png as BlobPart], { type: "image/png" }));
+    const prev = prevRef.current;
+    prevRef.current = next;
+    setUrl(next);
+    if (prev) URL.revokeObjectURL(prev);
   }, [png]);
+  useEffect(() => {
+    return () => {
+      if (prevRef.current) {
+        URL.revokeObjectURL(prevRef.current);
+        prevRef.current = null;
+      }
+    };
+  }, []);
   return url;
 }
 

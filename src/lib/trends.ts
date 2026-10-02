@@ -41,8 +41,38 @@ export interface PointHistory {
   samples: TrendSample[];
 }
 
+const _ghWeak = new WeakMap<CsvRowSummary[], PointHistory[]>();
+const _ghMap = new Map<string, PointHistory[]>();
+const _GH_MAX = 32;
+
+function ghCacheKey(rows: CsvRowSummary[]): string {
+  if (rows.length === 0) return "empty";
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  const mid = rows[Math.floor(rows.length / 2)];
+  return `${rows.length}|${first.pointId}|${first.directionId}|${first.measDate}|${mid.measDate}|${last.measDate}|${last.rmsV}|${last.rmsA}`;
+}
+
+function ghCacheGet(rows: CsvRowSummary[]): PointHistory[] | undefined {
+  const weak = _ghWeak.get(rows);
+  if (weak) return weak;
+  return _ghMap.get(ghCacheKey(rows));
+}
+
+function ghCacheSet(rows: CsvRowSummary[], value: PointHistory[]): void {
+  _ghWeak.set(rows, value);
+  const key = ghCacheKey(rows);
+  _ghMap.set(key, value);
+  if (_ghMap.size > _GH_MAX) {
+    const first = _ghMap.keys().next().value as string | undefined;
+    if (first) _ghMap.delete(first);
+  }
+}
+
 /** Group export rows into per-point histories, oldest first. */
 export function groupHistories(rows: CsvRowSummary[]): PointHistory[] {
+  const cached = ghCacheGet(rows);
+  if (cached) return cached;
   const map = new Map<string, PointHistory>();
   for (const r of rows) {
     const dateNum = Number(r.measDate);
@@ -72,6 +102,7 @@ export function groupHistories(rows: CsvRowSummary[]): PointHistory[] {
   const out = [...map.values()];
   for (const h of out) h.samples.sort((a, b) => a.dateNum - b.dateNum);
   out.sort((a, b) => a.label.localeCompare(b.label));
+  ghCacheSet(rows, out);
   return out;
 }
 
