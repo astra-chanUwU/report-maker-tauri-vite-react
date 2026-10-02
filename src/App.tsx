@@ -923,7 +923,13 @@ function App() {
 /** Every page stays mounted so trend/measurement state (and export inputs) survive navigation. */
 function Page({ active, children }: { active: boolean; children: ReactNode }) {
   return (
-    <div className={cn("absolute inset-0 overflow-y-auto", !active && "hidden")}>
+    <div
+      className={cn(
+        "absolute inset-0 overflow-y-auto transition-opacity duration-150",
+        active ? "opacity-100" : "pointer-events-none hidden opacity-0"
+      )}
+      aria-hidden={!active}
+    >
       <div className="mx-auto w-full max-w-[1400px] px-5 py-5">{children}</div>
     </div>
   );

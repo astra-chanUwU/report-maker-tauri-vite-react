@@ -231,32 +231,42 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
 
   return (
     <div
-      className="flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed border-input bg-card px-6 py-12 text-center"
+      className="relative flex min-h-[22rem] flex-col items-center justify-center gap-5 overflow-hidden rounded-xl border border-dashed border-input bg-card px-6 py-14 text-center shadow-xs"
       aria-busy={ingest.loading}
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-80"
+        style={{
+          background:
+            "radial-gradient(ellipse 70% 55% at 50% 0%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 70%)",
+        }}
+        aria-hidden="true"
+      />
+      <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
         {ingest.loading ? (
-          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+          <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
         ) : (
-          <FileUp className="h-6 w-6" aria-hidden="true" />
+          <FileUp className="h-7 w-7" aria-hidden="true" />
         )}
       </div>
-      <div className="grid gap-1">
-        <p className="text-base font-semibold" aria-live="polite">
+      <div className="relative grid max-w-md gap-1.5">
+        <p className="text-lg font-semibold tracking-tight" aria-live="polite">
           {ingest.loading ? t("reading") : "Drop a measurement file here"}
         </p>
-        <p className="text-[13px] text-muted-foreground">
-          Spectra <code>.sp3</code> database, Data-table <code>.csv</code> export, or a plain{" "}
-          <code>.txt</code> with <code>freq,amp</code> per line.
+        <p className="text-[13px] leading-relaxed text-muted-foreground">
+          Spectra <code className="rounded bg-muted px-1 py-0.5 text-[12px]">.sp3</code> database,
+          Data-table <code className="rounded bg-muted px-1 py-0.5 text-[12px]">.csv</code> export,
+          or a plain <code className="rounded bg-muted px-1 py-0.5 text-[12px]">.txt</code> with{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-[12px]">freq,amp</code> per line.
         </p>
       </div>
       {ingest.loading ? (
-        <Button variant="outline" onClick={ingest.cancel}>
+        <Button variant="outline" className="relative" onClick={ingest.cancel}>
           <X aria-hidden="true" />
           Cancel
         </Button>
       ) : (
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="relative flex flex-wrap justify-center gap-2">
           {ingest.isTauri ? (
             <Button size="lg" onClick={() => void ingest.openSp3()} disabled={toolMissing}>
               <DatabaseZap aria-hidden="true" />
@@ -274,11 +284,15 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
         </div>
       )}
       {toolMissing ? (
-        <p className="text-xs text-destructive">
+        <p className="relative text-xs text-destructive">
           mdb-export was not found, so .sp3 files can't be converted. Set its path in Settings.
         </p>
       ) : null}
-      {ingest.error ? <IngestError message={ingest.error} /> : null}
+      {ingest.error ? (
+        <div className="relative">
+          <IngestError message={ingest.error} />
+        </div>
+      ) : null}
       {picker.input}
     </div>
   );

@@ -203,12 +203,16 @@ export function ExportPage({
       </div>
 
       <Panel
-        className="lg:sticky lg:top-0"
+        className="lg:sticky lg:top-0 lg:shadow-sm"
         icon={<FileText />}
         title="Word report"
+        description="Editable .docx — keep browsing while it generates."
         contentClassName="grid gap-3"
       >
-        <p className="truncate text-[13px] text-muted-foreground" title={filename}>
+        <p
+          className="truncate rounded-md bg-muted/70 px-2.5 py-2 font-mono text-[12px] text-muted-foreground"
+          title={filename}
+        >
           {filename}
         </p>
         <Button

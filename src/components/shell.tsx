@@ -383,10 +383,10 @@ export function ReadinessChip({
   if (missing.length === 0) {
     return (
       <span
-        className="hidden items-center gap-1.5 text-xs font-medium text-success md:flex"
+        className="hidden items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success md:flex"
         role="status"
       >
-        <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
         {t("readyToExport")}
       </span>
     );
@@ -399,9 +399,9 @@ export function ReadinessChip({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="true"
-        className="flex h-8 cursor-default items-center gap-1.5 rounded-md border border-warning/50 bg-warning/10 px-2.5 text-xs font-medium hover:bg-warning/20"
+        className="flex h-8 cursor-default items-center gap-1.5 rounded-full border border-warning/45 bg-warning/10 px-2.5 text-xs font-medium hover:bg-warning/20"
       >
-        <AlertCircle className="h-4 w-4 text-warning" aria-hidden="true" />
+        <AlertCircle className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
         {missing.length} {t("toFix")}
       </button>
       {open ? (
@@ -436,9 +436,9 @@ export function Toolbar({
   children?: ReactNode;
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-card px-5">
+    <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-card/95 px-5 backdrop-blur-sm">
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base leading-tight font-semibold">{title}</h1>
+        <h1 className="truncate text-base leading-tight font-semibold tracking-tight">{title}</h1>
         {description ? (
           <p className="hidden truncate text-xs text-muted-foreground md:block">{description}</p>
         ) : null}
@@ -476,10 +476,27 @@ export function WizardFooter({
           <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
           {t("back")}: {t(prev.label)}
         </button>
-      ) : null}
-      <span className="flex-1 text-center text-xs text-muted-foreground">
-        {step ? `${step} / ${WIZARD.length} · ${t(WIZARD[step - 1].label)}` : null}
-      </span>
+      ) : (
+        <span className="w-24" aria-hidden="true" />
+      )}
+      <div className="flex flex-1 flex-col items-center gap-1.5">
+        {step ? (
+          <div className="flex w-full max-w-[12rem] items-center gap-1" aria-hidden="true">
+            {WIZARD.map((s) => (
+              <span
+                key={s.n}
+                className={cn(
+                  "h-1 flex-1 rounded-full transition-colors",
+                  s.n < step ? "bg-success" : s.n === step ? "bg-primary" : "bg-muted"
+                )}
+              />
+            ))}
+          </div>
+        ) : null}
+        <span className="text-xs text-muted-foreground">
+          {step ? `${step} / ${WIZARD.length} · ${t(WIZARD[step - 1].label)}` : null}
+        </span>
+      </div>
       {next ? (
         <button
           type="button"
@@ -489,7 +506,9 @@ export function WizardFooter({
           {t("next")}: {t(next.label)}
           <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden="true" />
         </button>
-      ) : null}
+      ) : (
+        <span className="w-24" aria-hidden="true" />
+      )}
     </div>
   );
 }
