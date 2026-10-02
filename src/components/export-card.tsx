@@ -1,7 +1,76 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, FolderOpen, Loader2 } from "lucide-react";
-import { renderChartPng, type MeasurePeak, type MeasureRow } from "../lib/generateDocx";
 import { estimatePercent, yieldToUi, type ExportProgress } from "../lib/export-progress";
+
+// Types from generateDocx without a static runtime import — keeps true code-split.
+// `import()` type queries are erased at build time and do not bundle docx.
+type MeasurePeak = import("../lib/generateDocx").MeasurePeak;
+type MeasureRow = import("../lib/generateDocx").MeasureRow;
+type BuildDocxInput = import("../lib/generateDocx").BuildDocxInput;
+
+// Lazily loaded chart renderer (dynamic import ensures docx chunk is not in the main bundle).
+let cachedRenderChartPng: ((spectra: import("../lib/parseSp3").SpectraPoint[]) => Uint8Array) | null = null;
+async function getRenderChartPng(): Promise<
+  (spectra: import("../lib/parseSp3").SpectraPoint[]) => Uint8Array
+> {
+  if (cachedRenderChartPng) return cachedRenderChartPng;
+  const mod = await import("../lib/generateDocx");
+  cachedRenderChartPng = mod.renderChartPng;
+  return cachedRenderChartPng;
+}
+
+async function buildDocxViaWorker(
+  input: BuildDocxInput,
+  onProgress: (p: ExportProgress) => Promise<void>
+): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("../workers/docx-worker.ts", import.meta.url), {
+        type: "module",
+      });
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    const timeout = setTimeout(() => {
+      worker.terminate();
+      reject(new Error("docx worker timeout"));
+    }, 120_000);
+    worker.onmessage = async (e: MessageEvent) => {
+      const data = e.data as {
+        id: number;
+        type: string;
+        progress?: ExportProgress;
+        buffer?: ArrayBuffer;
+        error?: string;
+      };
+      if (data.id !== id) return;
+      if (data.type === "progress" && data.progress) {
+        await onProgress(data.progress);
+      } else if (data.type === "done" && data.buffer) {
+        clearTimeout(timeout);
+        worker.terminate();
+        resolve(
+          new Blob([data.buffer], {
+            type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          })
+        );
+      } else if (data.type === "error") {
+        clearTimeout(timeout);
+        worker.terminate();
+        reject(new Error(data.error ?? "docx worker failed"));
+      }
+    };
+    worker.onerror = (ev) => {
+      clearTimeout(timeout);
+      worker.terminate();
+      reject(ev.error instanceof Error ? ev.error : new Error("Worker error"));
+    };
+    worker.postMessage({ id, input });
+  });
+}
 import { loadIsoRows } from "../lib/iso-store";
 import { SECONDARY_SERIES } from "../lib/metrics";
 import { fallbackDraft } from "../lib/ai";
@@ -258,7 +327,7 @@ export function ExportControls({
           const fallback = `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""}`;
           items.push({
             label: `${named || fallback} · ${oleDateToISO(Number(row.measDate)) || ""}`,
-            png: renderChartPng(pr.spectra),
+            png: (await getRenderChartPng())(pr.spectra),
             peak: formatSpectrumPeak(computeStats(pr.spectra).peak),
           });
           await bumpFft();
@@ -313,15 +382,8 @@ export function ExportControls({
               rows: withPeaks(buildMeasureRows(measureRows, limits, win, undefined, true, rowOpts)),
             }
           : undefined;
-      const { buildDocx } = await import("../lib/generateDocx");
-      await yieldToUi();
       const toBrandImage = (b64: string | null) => (b64 ? { data: base64ToBytes(b64) } : undefined);
-      await report({
-        stage: "packing",
-        percent: estimatePercent("packing"),
-        detail: "Packing Word file…",
-      });
-      const blob = await buildDocx({
+      const docxInput: BuildDocxInput = {
         meta: parsed.meta,
         spectra: parsed.spectra,
         options: effOptions,
@@ -403,8 +465,26 @@ export function ExportControls({
           problems: options.equipmentProblems || draft.observations,
           corrective: options.equipmentCorrective || draft.recommendations,
         },
-      });
-      await yieldToUi();
+      };
+      // Offload heavy docx assembly to a Worker; fall back to dynamic import on failure.
+      let blob: Blob;
+      try {
+        if (typeof Worker !== "undefined") {
+          blob = await buildDocxViaWorker(docxInput, report);
+        } else {
+          throw new Error("Worker unavailable");
+        }
+      } catch {
+        await report({
+          stage: "packing",
+          percent: estimatePercent("packing"),
+          detail: "Packing Word file…",
+        });
+        const { buildDocx } = await import("../lib/generateDocx");
+        await yieldToUi();
+        blob = await buildDocx(docxInput);
+        await yieldToUi();
+      }
       const filename = `${sanitizeFilename(options.projectName)}-${options.reportDate}.docx`;
       await report({
         stage: "saving",
