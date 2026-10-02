@@ -288,8 +288,42 @@ async function streamLines(
   return { header, bytes: offset };
 }
 
+const WORKER_THRESHOLD = 50 * 1024 * 1024;
+
+async function listFileRowsViaWorker(file: File): Promise<CsvRowList> {
+  const worker = new Worker(new URL("../workers/csv-worker.ts", import.meta.url), {
+    type: "module",
+  });
+  return new Promise<CsvRowList>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      worker.terminate();
+      reject(new Error("CSV worker timed out"));
+    }, 30000);
+    worker.onmessage = (e: MessageEvent<{ ok: boolean; result?: CsvRowList; error?: string }>) => {
+      clearTimeout(timeout);
+      worker.terminate();
+      const data = e.data as { ok: boolean; result?: CsvRowList; error?: string };
+      if (data.ok && data.result) resolve(data.result);
+      else reject(new Error(data.error ?? "CSV worker failed"));
+    };
+    worker.onerror = (ev: ErrorEvent) => {
+      clearTimeout(timeout);
+      worker.terminate();
+      reject(new Error(ev.message || "CSV worker error"));
+    };
+    worker.postMessage({ file });
+  });
+}
+
 /** Browser: list measurement summaries by streaming a dropped CSV File. */
 export async function listFileRows(file: File): Promise<CsvRowList> {
+  if (file.size > WORKER_THRESHOLD && typeof Worker !== "undefined") {
+    try {
+      return await listFileRowsViaWorker(file);
+    } catch {
+      // fallback to main-thread parse
+    }
+  }
   let header: string[] = [];
   const rows: CsvRowSummary[] = [];
   let index = 0;
