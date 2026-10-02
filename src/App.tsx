@@ -9,6 +9,8 @@ import { EquipmentWorkspace } from "./components/equipment-list";
 import { ExportControls } from "./components/export-card";
 import { HistoryTab } from "./components/history";
 import { DataOverview, DropZone, FileBar, IngestError, useIngest } from "./components/ingest";
+import { RecentDbsCard } from "./components/recent-dbs";
+import { WizardBreadcrumb, type WizardStep } from "./components/wizard-steps";
 import { LicenseCard } from "./components/license";
 import { MdbToolSettings } from "./components/mdb-import";
 import { MeasurementPicker } from "./components/measurement-picker";
@@ -42,6 +44,7 @@ import { EmptyState, Field, Segmented } from "./components/ui/form";
 import { ZoneLimitsCard } from "./components/zone-limits";
 import { addHistoryEntry, makeEntry } from "./lib/history";
 import { loadEquipments, saveEquipments, type EquipmentItem } from "./lib/equipment";
+import { addRecentDb } from "./lib/recentDbs";
 import { APP_VERSION } from "./lib/license";
 import type { CsvRowSummary } from "./lib/mdb";
 import {
@@ -84,6 +87,8 @@ function App() {
   const [equipments, setEquipments] = useState<EquipmentItem[]>(() => loadEquipments());
   const [showErrors, setShowErrors] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [recentTick, setRecentTick] = useState(0);
+  const pendingSp3PathRef = useRef<string | null>(null);
 
   const uiLang: UiLang = options.language === "fa" ? "fa" : "en";
   const t = useCallback((key: string) => translate(uiLang, key), [uiLang]);
@@ -117,6 +122,37 @@ function App() {
     setCsvFile(r && r.meta.source === "spec-csv" ? file : null);
     setMeasureRows(null);
     setTrendSnap(null);
+    if (r) {
+      const sp3Path = pendingSp3PathRef.current;
+      if (sp3Path) {
+        void addRecentDb({
+          path: sp3Path,
+          filename: r.meta.filename,
+          size: r.meta.size,
+          source: r.meta.source,
+          rows: (r.meta.extraRows ?? 0) + 1,
+        }).then(() => setRecentTick((n) => n + 1));
+        pendingSp3PathRef.current = null;
+      } else if (r.meta.source === "spec-csv" && file) {
+        void addRecentDb({
+          path: file.name,
+          filename: file.name,
+          size: file.size,
+          source: r.meta.source,
+          rows: (r.meta.extraRows ?? 0) + 1,
+        }).then(() => setRecentTick((n) => n + 1));
+      } else if (r.meta.csvPath) {
+        void addRecentDb({
+          path: r.meta.csvPath,
+          filename: r.meta.filename,
+          size: r.meta.size,
+          source: r.meta.source,
+          rows: (r.meta.extraRows ?? 0) + 1,
+        }).then(() => setRecentTick((n) => n + 1));
+      }
+    } else {
+      pendingSp3PathRef.current = null;
+    }
   }, []);
 
   const ingest = useIngest(handleParsed);
@@ -227,6 +263,20 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Wrap ingest.handlePath to capture the original sp3 path for Recent DBs.
+  const openRecentPath = useCallback(
+    async (path: string) => {
+      pendingSp3PathRef.current = path;
+      setPage("data");
+      try {
+        await ingest.handlePath(path);
+      } catch {
+        pendingSp3PathRef.current = null;
+      }
+    },
+    [ingest]
+  );
+
   // Native window drops (Tauri) carry real paths, so .sp3 can go through mdb-export.
   const handlePathRef = useRef(ingest.handlePath);
   handlePathRef.current = ingest.handlePath;
@@ -244,6 +294,7 @@ function App() {
             setDragOver(false);
             const first = p.paths[0];
             if (first) {
+              pendingSp3PathRef.current = first;
               setPage("data");
               void handlePathRef.current(first);
             }
@@ -326,6 +377,44 @@ function App() {
     dark: "system",
   };
 
+  const hasProjectDetails = !errors.projectName && !errors.engineer;
+  const pageToWizardStep = (p: PageId): WizardStep => {
+    if (p === "equipment") return 2;
+    if (p === "details" || p === "findings" || p === "chart" || p === "layout") return 3;
+    if (p === "measurements") return 1;
+    if (p === "data") return 1;
+    return 1;
+  };
+  const wizardCurrent: WizardStep = pageToWizardStep(page);
+  const handleWizardJump = (s: WizardStep) => {
+    const map: Record<WizardStep, PageId> = { 1: "data", 2: "equipment", 3: "details", 4: "layout" };
+    goTo(map[s]);
+  };
+  const handleOpenSp3 = useCallback(async () => {
+    if (!ingest.isTauri) {
+      void ingest.openSp3();
+      return;
+    }
+    try {
+      const [{ open }, { invoke }] = await Promise.all([
+        import("@tauri-apps/plugin-dialog"),
+        import("@tauri-apps/api/core"),
+      ]);
+      const picked = await open({
+        filters: [{ name: "SP3 / MDB", extensions: ["sp3", "mdb"] }],
+        multiple: false,
+      });
+      if (!picked || Array.isArray(picked)) return;
+      pendingSp3PathRef.current = picked as string;
+      const { convertSp3Path } = await import("./lib/mdb");
+      const result = await convertSp3Path(picked as string, invoke as never);
+      handleParsed(result, null);
+    } catch (e) {
+      if (e instanceof Error && e.message === "cancelled") return;
+      pendingSp3PathRef.current = null;
+    }
+  }, [ingest, handleParsed]);
+
   const noData = (
     <EmptyState
       icon={<Database />}
@@ -353,6 +442,16 @@ function App() {
         <Sidebar page={page} onNavigate={setPage} indicators={indicators} version={APP_VERSION} />
 
         <div className="flex min-w-0 flex-1 flex-col">
+          {ALL_NAV.find((n) => n.id === page)?.id &&
+          ["data", "measurements", "details", "equipment", "findings", "chart", "layout"].includes(page) ? (
+            <WizardBreadcrumb
+              current={wizardCurrent}
+              onJump={handleWizardJump}
+              effective={effective}
+              equipments={equipments}
+              hasProject={hasProjectDetails}
+            />
+          ) : null}
           <Toolbar title={t(current.label)} description={t(current.desc)}>
             <ReadinessChip missing={missing} onFix={fix} />
             <Segmented
@@ -395,9 +494,12 @@ function App() {
           <main id="main" className="relative min-h-0 flex-1">
             <Page active={page === "data"}>
               {!effective ? (
-                <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-                  <DropZone ingest={ingest} />
-                  <Onboarding />
+                <div className="grid gap-4">
+                  <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+                    <DropZone ingest={{ ...ingest, openSp3: handleOpenSp3 }} />
+                    <Onboarding />
+                  </div>
+                  <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
                 </div>
               ) : (
                 <div className="grid gap-4">
