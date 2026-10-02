@@ -102,6 +102,22 @@ export function saveEquipments(list: EquipmentItem[]): void {
   lsSet(EQ_KEY, JSON.stringify(list.slice(0, 200)));
 }
 
+export function sp3Filename(path: string | null | undefined): string {
+  if (!path) return "";
+  return path.split(/[/\\]/).pop() || path;
+}
+
+export function groupEquipmentsByDb(list: EquipmentItem[]): Map<string, EquipmentItem[]> {
+  const m = new Map<string, EquipmentItem[]>();
+  for (const e of list) {
+    const key = sp3Filename(e.sp3Path) || "(manual)";
+    const cur = m.get(key);
+    if (cur) cur.push(e);
+    else m.set(key, [e]);
+  }
+  return m;
+}
+
 /** TOC rows: index + name + status. */
 export function buildTocData(
   list: EquipmentItem[]

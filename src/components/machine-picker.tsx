@@ -26,9 +26,10 @@ import { cn } from "../lib/utils";
 import { ZoneBadge } from "./measuring-table";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
-import { Badge, EmptyState } from "./ui/form";
+import { Badge, EmptyState, Segmented } from "./ui/form";
 import { Input } from "./ui/input";
 import { toast } from "./ui/sonner";
+import { groupEquipmentsByDb, sp3Filename } from "../lib/equipment";
 
 const ZONE_RANK: Record<ZoneResult, number> = { "": 0, A: 1, B: 2, U: 3, C: 4 };
 
@@ -78,6 +79,7 @@ export function MachinePicker({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [addMode, setAddMode] = useState<"append" | "replace">("append");
   const anchor = useRef<string | null>(null);
 
   const load = async (path: string) => {
@@ -176,12 +178,25 @@ export function MachinePicker({
     setBusy(true);
     try {
       const built: EquipmentItem[] = [];
-      for (const i of toAdd) built.push(await equipmentFromMachine(catalog, i.machine));
-      onChange([...items, ...built]);
+      // Limited concurrency so UI stays responsive and pictures load progressively
+      const CONC = 3;
+      for (let i = 0; i < toAdd.length; i += CONC) {
+        const chunk = toAdd.slice(i, i + CONC);
+        const part = await Promise.all(chunk.map((x) => equipmentFromMachine(catalog, x.machine)));
+        built.push(...part);
+      }
+      if (addMode === "replace") {
+        if (items.length > 0 && !confirm(`Replace ${items.length} machines with ${built.length} from ${sp3Filename(catalog.path)}?`))
+          return;
+        onChange(built);
+        toast.success(`Replaced report with ${built.length} machines from ${sp3Filename(catalog.path)}.`);
+      } else {
+        onChange([...items, ...built]);
+        toast.success(
+          built.length === 1 ? `Added ${built[0].name}.` : `Added ${built.length} machines.`
+        );
+      }
       setSelected(new Set());
-      toast.success(
-        built.length === 1 ? `Added ${built[0].name}.` : `Added ${built.length} machines.`
-      );
     } finally {
       setBusy(false);
     }
@@ -428,37 +443,82 @@ export function MachinePicker({
             In this report{" "}
             <span className="font-normal text-muted-foreground">({items.length})</span>
           </p>
-          <p className="text-xs text-muted-foreground">Each machine gets its own section.</p>
+          <p className="text-xs text-muted-foreground">Grouped by source database.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Segmented
+              ariaLabel="Add mode"
+              value={addMode}
+              onChange={(v) => setAddMode(v as typeof addMode)}
+              options={[
+                { value: "append", label: "Append" },
+                { value: "replace", label: "Replace" },
+              ]}
+            />
+            <span className="text-xs text-muted-foreground" title="Replace removes all existing machines and adds only the selection">
+              {addMode === "replace" ? "Replaces all" : "Adds to existing"}
+            </span>
+          </div>
         </div>
         {items.length === 0 ? (
           <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
             Nothing yet. Select machines on the left and add them.
           </p>
         ) : (
-          <ol className="max-h-[calc(100vh-20rem)] overflow-auto py-1">
-            {items.map((e, idx) => (
-              <li key={e.id} className="group flex items-center gap-2 px-3 py-1.5">
-                <span className="w-5 shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {idx + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium">{e.name}</span>
-                  {e.plant ? (
-                    <span className="block truncate text-xs text-muted-foreground">{e.plant}</span>
-                  ) : null}
-                </span>
-                <button
-                  type="button"
-                  className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
-                  aria-label={`Remove ${e.name}`}
-                  title="Remove from report"
-                  onClick={() => onChange(items.filter((x) => x.id !== e.id))}
+          <div className="max-h-[calc(100vh-20rem)] overflow-auto py-1">
+            <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (confirm(`Clear all ${items.length} machines from the report?`)) onChange([]);
+                }}
+              >
+                <X aria-hidden="true" />
+                Clear all
+              </Button>
+              {catalog && items.some((e) => e.sp3Path === catalog.path) ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const n = items.filter((e) => e.sp3Path === catalog.path).length;
+                    if (confirm(`Remove ${n} machines from ${sp3Filename(catalog.path)}?`))
+                      onChange(items.filter((e) => e.sp3Path !== catalog.path));
+                  }}
                 >
-                  <X className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-              </li>
+                  Remove from this DB
+                </Button>
+              ) : null}
+            </div>
+            {[...groupEquipmentsByDb(items).entries()].map(([db, list]) => (
+              <div key={db} className="border-t first:border-t-0">
+                <p className="sticky top-0 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                  {db} <span className="font-normal">· {list.length}</span>
+                </p>
+                <ol>
+                  {list.map((e) => (
+                    <li key={e.id} className="group flex items-center gap-2 px-3 py-1.5">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium">{e.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {[e.plant, e.pointIds?.length ? `${e.pointIds.length} points` : null].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
+                        aria-label={`Remove ${e.name}`}
+                        title="Remove from report"
+                        onClick={() => onChange(items.filter((x) => x.id !== e.id))}
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </div>
             ))}
-          </ol>
+          </div>
         )}
       </Card>
     </div>

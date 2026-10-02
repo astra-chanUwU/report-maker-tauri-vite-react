@@ -26,6 +26,7 @@ import {
   type ZoneResult,
 } from "../lib/zones";
 import { cn } from "../lib/utils";
+import { sp3Filename } from "../lib/equipment";
 import { Panel } from "./ui/card";
 import { Badge, CheckRow, Stat } from "./ui/form";
 import { Input } from "./ui/input";
@@ -160,7 +161,7 @@ export function MeasuringTable({
     return linked.map((e) => ({
       id: e.id,
       title: e.name || "Machine",
-      sub: e.plant ?? "",
+      sub: [e.plant, sp3Filename(e.sp3Path)].filter(Boolean).join(" · "),
       limits: e.limits ?? limits,
       rows: rowsForPoints(source, e.pointIds),
       labels: e.labels,

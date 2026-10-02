@@ -75,6 +75,9 @@ import { translate, UiProvider, type UiLang } from "./lib/i18n";
 import { cn } from "./lib/utils";
 import type { ZoneLimitSet } from "./lib/zones";
 import { IMAGE_EXTS, INGEST_EXTS, shouldHandleNativeDrop } from "./lib/drop-guards";
+import { DiagnosticsPanel } from "./components/diagnostics-panel";
+import { ImportPill, ImportProgress } from "./components/import-progress";
+import { makeJob, type ImportJob } from "./lib/import-jobs";
 
 function App() {
   const [themePref, setThemePref] = useTheme();
@@ -95,7 +98,10 @@ function App() {
   const [sp3Path, setSp3Path] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
   const pendingSp3PathRef = useRef<string | null>(null);
+  const jobsRef = useRef<ImportJob[]>([]);
+  jobsRef.current = importJobs;
 
   const uiLang: UiLang = options.language === "fa" ? "fa" : "en";
   const t = useCallback((key: string) => translate(uiLang, key), [uiLang]);
@@ -163,6 +169,44 @@ function App() {
   }, []);
 
   const ingest = useIngest(handleParsed);
+
+  // Import job helpers — keep UI responsive while a large DB exports in the background.
+  const enqueueJob = useCallback((path: string) => {
+    const job = makeJob(path);
+    setImportJobs((prev) => [...prev, job]);
+    return job.id;
+  }, []);
+  const patchJob = useCallback((id: string, patch: Partial<ImportJob>) => {
+    setImportJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...patch } : j)));
+  }, []);
+  const dismissJob = useCallback((id: string) => {
+    setImportJobs((prev) => prev.filter((j) => j.id !== id));
+  }, []);
+  const cancelJob = useCallback(
+    (id: string) => {
+      patchJob(id, { stage: "failed", error: "cancelled" });
+      window.setTimeout(() => dismissJob(id), 2500);
+    },
+    [patchJob, dismissJob]
+  );
+
+  const runPathWithJob = useCallback(
+    async (path: string) => {
+      const id = enqueueJob(path);
+      pendingSp3PathRef.current = path;
+      patchJob(id, { stage: "exporting", progress: "Exporting Data table…" });
+      try {
+        await ingest.handlePath(path);
+        patchJob(id, { stage: "ready" });
+        window.setTimeout(() => dismissJob(id), 4000);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === "cancelled") dismissJob(id);
+        else patchJob(id, { stage: "failed", error: msg.slice(0, 80) });
+      }
+    },
+    [enqueueJob, patchJob, dismissJob, ingest]
+  );
 
   /** Switching measurements keeps the file/CSV source for further picks. */
   const handlePicked = (r: ParseResult) => {
@@ -278,15 +322,10 @@ function App() {
   // Wrap ingest.handlePath to capture the original sp3 path for Recent DBs.
   const openRecentPath = useCallback(
     async (path: string) => {
-      pendingSp3PathRef.current = path;
       setPage("data");
-      try {
-        await ingest.handlePath(path);
-      } catch {
-        pendingSp3PathRef.current = null;
-      }
+      await runPathWithJob(path);
     },
-    [ingest]
+    [runPathWithJob]
   );
 
   // Native window drops (Tauri) carry real paths, so .sp3 can go through mdb-export.
@@ -334,9 +373,8 @@ function App() {
             setDragOver(false);
             const first = p.paths[0];
             if (!first || !shouldHandleNativeDrop(first)) return;
-            pendingSp3PathRef.current = first;
             setPage("data");
-            void handlePathRef.current(first);
+            void runPathWithJob(first);
           }
         })
       )
@@ -440,7 +478,7 @@ function App() {
       return;
     }
     try {
-      const [{ open }, { invoke }] = await Promise.all([
+      const [{ open }] = await Promise.all([
         import("@tauri-apps/plugin-dialog"),
         import("@tauri-apps/api/core"),
       ]);
@@ -449,15 +487,11 @@ function App() {
         multiple: false,
       });
       if (!picked || Array.isArray(picked)) return;
-      pendingSp3PathRef.current = picked as string;
-      const { convertSp3Path } = await import("./lib/mdb");
-      const result = await convertSp3Path(picked as string, invoke as never);
-      handleParsed(result, null);
+      await runPathWithJob(picked as string);
     } catch (e) {
       if (e instanceof Error && e.message === "cancelled") return;
-      pendingSp3PathRef.current = null;
     }
-  }, [ingest, handleParsed]);
+  }, [runPathWithJob]);
   const ingestWithPath = { ...ingest, openSp3: handleOpenSp3 };
 
   const noData = (
@@ -494,6 +528,7 @@ function App() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <Toolbar title={t(current.label)} description={t(current.desc)}>
+            <ImportPill jobs={importJobs} />
             <ReadinessChip missing={missing} onFix={fix} />
             <Segmented
               ariaLabel={t("language")}
@@ -535,12 +570,18 @@ function App() {
 
           <main id="main" className="relative min-h-0 flex-1">
             <Page active={page === "data"}>
+              {importJobs.length > 0 ? (
+                <div className="mb-4">
+                  <ImportProgress jobs={importJobs} onDismiss={dismissJob} onCancel={cancelJob} />
+                </div>
+              ) : null}
               {!effective ? (
                 <div className="grid gap-4">
                   <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
                     <DropZone ingest={ingestWithPath} />
                     <Onboarding />
                   </div>
+                  <DiagnosticsPanel rows={measureRows} equipments={equipments} limits={zoneLimits} />
                   <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
                 </div>
               ) : (
@@ -554,6 +595,7 @@ function App() {
                       ) : (
                         <DatabaseSummary rows={measureRows} limits={zoneLimits} />
                       )}
+                      <DiagnosticsPanel rows={measureRows} equipments={equipments} limits={zoneLimits} />
                       <Card className="flex flex-wrap items-center gap-4 px-4 py-3">
                         <div className="min-w-0 flex-1">
                           <p className="text-[13px] font-semibold">{t("stepMachines")}</p>
@@ -566,7 +608,10 @@ function App() {
                       </Card>
                     </>
                   ) : (
-                    <DataOverview result={effective} limits={zoneLimits} />
+                    <>
+                      <DiagnosticsPanel rows={measureRows} equipments={equipments} limits={zoneLimits} />
+                      <DataOverview result={effective} limits={zoneLimits} />
+                    </>
                   )}
                 </div>
               )}
