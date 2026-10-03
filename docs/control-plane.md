@@ -4,6 +4,21 @@ The control plane is a small HTTPS service for licensing, hosted AI, and
 consented diagnostics. It is not the report database and it does not receive
 `.sp3` files by default. The desktop app remains useful offline.
 
+## Customer identity at checkout
+
+Checkout normalizes email to lowercase trimmed form and **find-or-creates** one
+durable customer row per email. Repeat purchases with the same email link to the
+same account used by magic-link and passkey sign-in.
+
+When checkout contact differs from an account with **verified phone**
+(`phone_verified_at` set):
+
+- stored phone and surname are **not** overwritten;
+- checkout still captures the submitted name/phone on the **order** row for receipts;
+- conflicts are recorded internally for support review.
+
+Unverified accounts accept checkout contact updates (name and phone).
+
 ## Boundaries
 
 - The Tauri Rust layer is the client security boundary. React displays status

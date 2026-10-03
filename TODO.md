@@ -281,6 +281,18 @@ git diff --check
 Also separate results for automated tests, HTTP tests, browser passkey/payment
 checks, desktop interoperability, and unavailable live-provider checks.
 
+## Cursor follow-up task pack (integration)
+
+### C02 — Make checkout account-safe
+
+**Status:** Implemented on `feat/c02-checkout-account-safe` (see `CURSOR_REPORT_C02.md`).
+
+- [x] Normalize email consistently and find-or-create the customer during checkout.
+- [x] Preserve the verified phone state when checkout updates contact details.
+- [x] Document verified-identity conflict policy (no silent overwrite).
+- [x] Link every paid order to the durable customer account used by sign-in.
+- [x] Tests: repeat purchases, case-insensitive email, account purchase visibility.
+
 ## Required report for the repository owner
 
 After each completed slice, and again at the end, write a report for review. Save

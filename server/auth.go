@@ -77,7 +77,7 @@ func (a *App) requestMagicLink(w http.ResponseWriter, r *http.Request) {
 	if !a.rateLimit(w, r, "magic-link-request", 5, 15*time.Minute) {
 		return
 	}
-	email := strings.TrimSpace(strings.ToLower(r.FormValue("email")))
+	email := normalizeEmail(r.FormValue("email"))
 	if !validEmail(email) {
 		http.Error(w, "enter a valid email", http.StatusBadRequest)
 		return
@@ -169,14 +169,14 @@ func (a *App) loginWithPassword(w http.ResponseWriter, r *http.Request) {
 		if !decodeJSON(w, r, &body) {
 			return
 		}
-		email = strings.TrimSpace(strings.ToLower(body.Email))
+		email = normalizeEmail(body.Email)
 		password = body.Password
 	} else {
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "invalid form", http.StatusBadRequest)
 			return
 		}
-		email = strings.TrimSpace(strings.ToLower(r.FormValue("email")))
+		email = normalizeEmail(r.FormValue("email"))
 		password = r.FormValue("password")
 	}
 	customer, ok := a.store.FindCustomerByEmail(email)
