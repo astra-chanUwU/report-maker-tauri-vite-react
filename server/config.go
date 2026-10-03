@@ -27,6 +27,8 @@ import (
 //	REPORT_SMS_PROVIDER            http|kavenegar required in production (not fake/local)
 //	REPORT_SMS_API_URL/API_KEY     required for http sms
 //	REPORT_ADMIN_PASSWORD          optional; enables /admin when set
+//	REPORT_SITE_LANG               optional site language (en default; fa for Persian copy)
+//	REPORT_SITE_DIR                optional layout direction (ltr|rtl; defaults from lang)
 
 func isDevEnvValue(raw string) bool {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
@@ -113,6 +115,8 @@ func ConfigFromEnv() Config {
 		ReleaseManifest:      os.Getenv("REPORT_RELEASE_MANIFEST"),
 		DownloadLinkTTLHours: downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_LINK_TTL_HOURS"), 24),
 		DownloadRateLimit:    downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_RATE_LIMIT"), 30),
+		SiteLang:             strings.TrimSpace(os.Getenv("REPORT_SITE_LANG")),
+		SiteDir:              strings.TrimSpace(os.Getenv("REPORT_SITE_DIR")),
 	}
 }
 
