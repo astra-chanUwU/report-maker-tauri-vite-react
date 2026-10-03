@@ -326,19 +326,6 @@ export function MachinePicker({
               aria-label="Search machines"
             />
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setMany(
-                shown.filter((i) => i.measurements > 0).map((i) => keyFor(i.catalogPath, i.machine.machineId)),
-                true
-              )
-            }
-            disabled={catalogs.length === 0}
-          >
-            Select all with data
-          </Button>
           <Button variant="outline" size="sm" onClick={() => void openOther()}>
             <FolderOpen aria-hidden="true" />
             Other databases…

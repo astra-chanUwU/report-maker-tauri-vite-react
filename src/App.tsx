@@ -655,23 +655,6 @@ function App() {
             >
               <ThemeIcon aria-hidden="true" />
             </Button>
-            <span className="h-6 w-px bg-border" aria-hidden="true" />
-            <ExportControls
-              onBlocked={() => missing[0] && fix(missing[0])}
-              parsed={effective}
-              options={options}
-              branding={branding}
-              aiDraft={aiDraft}
-              onExported={handleExported}
-              limits={zoneLimits}
-              measureRows={measureRows ?? undefined}
-              trendSnap={trendSnap}
-              equipments={equipments}
-              tauriPath={rowPath}
-              csvFile={rowFile}
-              onBusy={setExportBusy}
-              onProgress={setExportProgress}
-            />
           </Toolbar>
 
           <main id="main" className="relative min-h-0 flex-1">
@@ -1071,6 +1054,26 @@ function App() {
           ) : null}
 
           <WizardFooter page={page} onNavigate={setPage} pages={wizardPages} />
+
+          {/* Global export handler — keeps Ctrl+E and ExportPage dispatch working without a top-nav Generate button */}
+          <div className="hidden" aria-hidden="true">
+            <ExportControls
+              onBlocked={() => missing[0] && fix(missing[0])}
+              parsed={effective}
+              options={options}
+              branding={branding}
+              aiDraft={aiDraft}
+              onExported={handleExported}
+              limits={zoneLimits}
+              measureRows={measureRows ?? undefined}
+              trendSnap={trendSnap}
+              equipments={equipments}
+              tauriPath={rowPath}
+              csvFile={rowFile}
+              onBusy={setExportBusy}
+              onProgress={setExportProgress}
+            />
+          </div>
 
           <StatusBar
             left={
