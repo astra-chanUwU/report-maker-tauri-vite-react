@@ -40,7 +40,8 @@ pub fn run() {
             mdb::list_envelope_samples,
             cache::clear_export_cache,
             cache::cache_status,
-            cache::is_cached
+            cache::is_cached,
+            cache::list_cache_entries
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

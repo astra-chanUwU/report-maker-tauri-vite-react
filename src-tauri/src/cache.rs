@@ -175,6 +175,37 @@ pub async fn cache_status() -> Result<CacheStatus, String> {
     })
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CacheEntryInfo {
+    pub key: String,
+    pub csv_path: String,
+    pub bytes: u64,
+    pub rows: usize,
+    pub cached_at_ms: u64,
+    pub mtime_ms: u64,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub async fn list_cache_entries() -> Result<Vec<CacheEntryInfo>, String> {
+    let map = try_load_via_lazy_store().await.unwrap_or_default();
+    let mut v: Vec<CacheEntryInfo> = map
+        .into_iter()
+        .map(|(k, e)| CacheEntryInfo {
+            key: k,
+            csv_path: e.csv_path,
+            bytes: e.bytes,
+            rows: e.rows,
+            cached_at_ms: e.cached_at_ms,
+            mtime_ms: e.mtime_ms,
+            size: e.size,
+        })
+        .collect();
+    v.sort_by(|a, b| b.cached_at_ms.cmp(&a.cached_at_ms));
+    Ok(v)
+}
+
 #[tauri::command]
 pub async fn is_cached(path: String) -> bool {
     get_cached(&path).await.is_some()
