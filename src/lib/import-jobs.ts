@@ -17,9 +17,10 @@ export interface ImportJob {
 /** Map streaming export bytes → a soft 5–90% bar (no known total for Jet dumps). */
 export function softExportPercent(bytes: number): number {
   if (bytes <= 0) return 5;
-  // Log-ish growth: 1 MiB≈35%, 10 MiB≈55%, 50 MiB≈70%, 200 MiB≈82%, asymptote ~90.
+  // Tuned for 500 MB files: slower growth so bar doesn't jump to 90% after 50 MB.
+  // 10 MiB≈22%, 50 MiB≈38%, 200 MiB≈68%, 500 MiB≈88%, asymptote 90.
   const mb = bytes / (1024 * 1024);
-  const pct = 5 + 85 * (1 - Math.exp(-mb / 18));
+  const pct = 5 + 85 * (1 - Math.exp(-mb / 70));
   return Math.min(90, Math.round(pct));
 }
 

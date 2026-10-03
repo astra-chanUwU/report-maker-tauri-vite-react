@@ -17,7 +17,7 @@ import {
   loadSpectraCatalog,
   type SpectraCatalog,
 } from "../lib/machine-import";
-import { pickSp3Path, type CsvRowSummary } from "../lib/mdb";
+import { pickSp3Path, pickSp3Paths, type CsvRowSummary } from "../lib/mdb";
 import { latestPerPoint } from "../lib/report-slices";
 import type { SpectraMachine } from "../lib/spectra-catalog";
 import { oleDateToISO } from "../lib/specdata";
@@ -61,18 +61,20 @@ function summarize(m: SpectraMachine, byPoint: Map<string, CsvRowSummary[]>): Ma
 /** Wizard step 2: pick machines from the Spectra tree (plant → machine). */
 export function MachinePicker({
   sp3Path,
+  sp3Paths,
   isTauri,
   items,
   onChange,
   rows,
 }: {
   sp3Path: string | null;
+  sp3Paths?: string[];
   isTauri: boolean;
   items: EquipmentItem[];
   onChange: (next: EquipmentItem[]) => void;
   rows: CsvRowSummary[] | null;
 }) {
-  const [catalog, setCatalog] = useState<SpectraCatalog | null>(null);
+  const [catalogs, setCatalogs] = useState<SpectraCatalog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -82,11 +84,17 @@ export function MachinePicker({
   const [addMode, setAddMode] = useState<"append" | "replace">("append");
   const anchor = useRef<string | null>(null);
 
+  const keyFor = (path: string, id: string) => `${path}::${id}`;
+
   const load = async (path: string) => {
     setLoading(true);
     setError(null);
     try {
-      setCatalog(await loadSpectraCatalog(path));
+      const cat = await loadSpectraCatalog(path);
+      setCatalogs((prev) => {
+        const filtered = prev.filter((c) => c.path !== path);
+        return [...filtered, cat];
+      });
       setSelected(new Set());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read the machine tree.");
@@ -95,14 +103,56 @@ export function MachinePicker({
     }
   };
 
+  const loadMany = async (paths: string[]) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const cats: SpectraCatalog[] = [];
+      for (const p of paths) {
+        try {
+          cats.push(await loadSpectraCatalog(p));
+        } catch (e) {
+          console.warn("Failed to load", p, e);
+        }
+        // yield between DBs
+        await new Promise<void>((r) => setTimeout(r, 0));
+      }
+      setCatalogs(cats);
+      setSelected(new Set());
+      if (cats.length === 0) setError("No databases could be read.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read the machine tree.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const effectivePaths = useMemo(() => {
+    if (sp3Paths && sp3Paths.length > 0) return sp3Paths;
+    if (sp3Path) return [sp3Path];
+    return [] as string[];
+  }, [sp3Path, sp3Paths]);
+
   useEffect(() => {
-    if (sp3Path && isTauri && catalog?.path !== sp3Path) void load(sp3Path);
+    if (!isTauri) return;
+    if (effectivePaths.length === 0) return;
+    const existing = new Set(catalogs.map((c) => c.path));
+    const missing = effectivePaths.filter((p) => !existing.has(p));
+    if (missing.length > 0) void loadMany(effectivePaths);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sp3Path, isTauri]);
+  }, [effectivePaths.join("|"), isTauri]);
 
   const openOther = async () => {
     try {
-      await load(await pickSp3Path());
+      // Try multi-pick first, fall back to single
+      try {
+        const paths = await pickSp3Paths();
+        if (paths.length === 1) await load(paths[0]);
+        else await loadMany(paths);
+        return;
+      } catch {
+        await load(await pickSp3Path());
+      }
     } catch (e) {
       if (e instanceof Error && e.message === "cancelled") return;
       toast.error(e instanceof Error ? e.message : "Could not open database.");
@@ -110,32 +160,39 @@ export function MachinePicker({
   };
 
   const infos = useMemo(() => {
-    if (!catalog) return [];
+    if (catalogs.length === 0) return [] as (MachineInfo & { catalogPath: string; dbName: string })[];
     const byPoint = new Map<string, CsvRowSummary[]>();
     for (const r of rows ?? []) {
       const list = byPoint.get(r.pointId);
       if (list) list.push(r);
       else byPoint.set(r.pointId, [r]);
     }
-    return catalog.machines.map((m) => summarize(m, byPoint));
-  }, [catalog, rows]);
+    const out: (MachineInfo & { catalogPath: string; dbName: string })[] = [];
+    for (const cat of catalogs) {
+      for (const m of cat.machines) {
+        const info = summarize(m, byPoint);
+        out.push({ ...info, catalogPath: cat.path, dbName: sp3Filename(cat.path) });
+      }
+    }
+    return out;
+  }, [catalogs, rows]);
   const q = query.trim().toLowerCase();
   const shown = q
     ? infos.filter((i) =>
-        `${i.machine.name} ${i.machine.plantName} ${i.machine.note}`.toLowerCase().includes(q)
+        `${i.machine.name} ${i.machine.plantName} ${i.machine.note} ${i.dbName}`.toLowerCase().includes(q)
       )
     : infos;
   const plants = useMemo(() => {
-    const map = new Map<string, MachineInfo[]>();
+    const map = new Map<string, (MachineInfo & { catalogPath: string; dbName: string })[]>();
     for (const i of shown) {
-      const key = i.machine.plantName || "—";
+      const key = `${i.machine.plantName || "—"} · ${i.dbName}`;
       map.set(key, [...(map.get(key) ?? []), i]);
     }
     return [...map.entries()];
   }, [shown]);
-  const order = plants.flatMap(([, list]) => list.map((i) => i.machine.machineId));
+  const order = plants.flatMap(([, list]) => list.map((i) => keyFor(i.catalogPath, i.machine.machineId)));
 
-  const inReport = (id: string) => !!catalog && isMachineAdded(items, catalog.path, id);
+  const inReport = (path: string, id: string) => isMachineAdded(items, path, id);
 
   const toggle = (id: string, shift: boolean) => {
     setSelected((prev) => {
@@ -169,31 +226,42 @@ export function MachinePicker({
       return next;
     });
 
-  const selectedInfos = infos.filter((i) => selected.has(i.machine.machineId));
-  const toAdd = selectedInfos.filter((i) => !inReport(i.machine.machineId));
-  const toRemove = selectedInfos.filter((i) => inReport(i.machine.machineId));
+  const selectedInfos = infos.filter((i) => selected.has(keyFor(i.catalogPath, i.machine.machineId)));
+  const toAdd = selectedInfos.filter((i) => !inReport(i.catalogPath, i.machine.machineId));
+  const toRemove = selectedInfos.filter((i) => inReport(i.catalogPath, i.machine.machineId));
+
+  const catalogByPath = useMemo(() => {
+    const m = new Map<string, SpectraCatalog>();
+    for (const c of catalogs) m.set(c.path, c);
+    return m;
+  }, [catalogs]);
 
   const addSelected = async () => {
-    if (!catalog || toAdd.length === 0) return;
+    if (catalogs.length === 0 || toAdd.length === 0) return;
     setBusy(true);
     try {
       const built: EquipmentItem[] = [];
-      // Limited concurrency so UI stays responsive and pictures load progressively
       const CONC = 3;
       for (let i = 0; i < toAdd.length; i += CONC) {
         const chunk = toAdd.slice(i, i + CONC);
-        const part = await Promise.all(chunk.map((x) => equipmentFromMachine(catalog, x.machine)));
+        const part = await Promise.all(
+          chunk.map((x) => {
+            const cat = catalogByPath.get(x.catalogPath);
+            if (!cat) throw new Error(`Catalog not loaded for ${x.dbName}`);
+            return equipmentFromMachine(cat, x.machine);
+          })
+        );
         built.push(...part);
       }
       if (addMode === "replace") {
-        if (items.length > 0 && !confirm(`Replace ${items.length} machines with ${built.length} from ${sp3Filename(catalog.path)}?`))
+        if (items.length > 0 && !confirm(`Replace ${items.length} machines with ${built.length} selected machines?`))
           return;
         onChange(built);
-        toast.success(`Replaced report with ${built.length} machines from ${sp3Filename(catalog.path)}.`);
+        toast.success(`Replaced report with ${built.length} machines.`);
       } else {
         onChange([...items, ...built]);
         toast.success(
-          built.length === 1 ? `Added ${built[0].name}.` : `Added ${built.length} machines.`
+          built.length === 1 ? `Added ${built[0].name}.` : `Added ${built.length} machines from ${toAdd.length > 1 ? "multiple DBs" : toAdd[0].dbName}.`
         );
       }
       setSelected(new Set());
@@ -203,9 +271,14 @@ export function MachinePicker({
   };
 
   const removeSelected = () => {
-    if (!catalog) return;
-    const ids = new Set(toRemove.map((i) => i.machine.machineId));
-    onChange(items.filter((e) => !(e.sp3Path === catalog.path && ids.has(e.machineId ?? ""))));
+    if (catalogs.length === 0) return;
+    const toRemoveKeys = new Set(toRemove.map((i) => keyFor(i.catalogPath, i.machine.machineId)));
+    onChange(
+      items.filter((e) => {
+        const k = e.sp3Path && e.machineId ? keyFor(e.sp3Path, e.machineId) : "";
+        return !toRemoveKeys.has(k);
+      })
+    );
     setSelected(new Set());
   };
 
@@ -218,7 +291,7 @@ export function MachinePicker({
     );
   }
 
-  if (!sp3Path && !catalog) {
+  if (effectivePaths.length === 0 && catalogs.length === 0) {
     return (
       <EmptyState
         icon={<DatabaseZap />}
@@ -231,7 +304,7 @@ export function MachinePicker({
         }
       >
         The plants and machines in that database are listed here so you can choose what the report
-        covers.
+        covers. You can select multiple .sp3 files at once (Shift/Cmd in the picker) or drag several onto the window.
       </EmptyState>
     );
   }
@@ -258,17 +331,17 @@ export function MachinePicker({
             size="sm"
             onClick={() =>
               setMany(
-                shown.filter((i) => i.measurements > 0).map((i) => i.machine.machineId),
+                shown.filter((i) => i.measurements > 0).map((i) => keyFor(i.catalogPath, i.machine.machineId)),
                 true
               )
             }
-            disabled={!catalog}
+            disabled={catalogs.length === 0}
           >
             Select all with data
           </Button>
           <Button variant="outline" size="sm" onClick={() => void openOther()}>
             <FolderOpen aria-hidden="true" />
-            Other database…
+            Other databases…
           </Button>
         </div>
         {loading ? (
@@ -299,7 +372,7 @@ export function MachinePicker({
                 </tr>
               </thead>
               {plants.map(([plant, list]) => {
-                const ids = list.map((i) => i.machine.machineId);
+                const ids = list.map((i) => keyFor(i.catalogPath, i.machine.machineId));
                 const all = ids.every((id) => selected.has(id));
                 const some = !all && ids.some((id) => selected.has(id));
                 const closed = collapsed.has(plant);
@@ -348,12 +421,13 @@ export function MachinePicker({
                       ? null
                       : list.map((i) => {
                           const id = i.machine.machineId;
-                          const on = selected.has(id);
-                          const added = inReport(id);
+                          const key = keyFor(i.catalogPath, id);
+                          const on = selected.has(key);
+                          const added = inReport(i.catalogPath, id);
                           return (
                             <tr
-                              key={id}
-                              onClick={(e) => toggle(id, e.shiftKey)}
+                              key={key}
+                              onClick={(e) => toggle(key, e.shiftKey)}
                               className={cn(
                                 "cursor-default border-t select-none",
                                 on ? "bg-accent/70" : "hover:bg-muted/60",
@@ -366,7 +440,7 @@ export function MachinePicker({
                                   className="h-4 w-4"
                                   aria-label={`Select ${i.machine.name}`}
                                   checked={on}
-                                  onChange={() => toggle(id, false)}
+                                  onChange={() => toggle(key, false)}
                                 />
                               </td>
                               <td className="px-2 py-1.5">
@@ -402,7 +476,7 @@ export function MachinePicker({
                 <tbody>
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
-                      {catalog ? "No machines match." : "No machine tree loaded."}
+                      {catalogs.length ? "No machines match." : "No machine tree loaded."}
                     </td>
                   </tr>
                 </tbody>
@@ -476,19 +550,22 @@ export function MachinePicker({
                 <X aria-hidden="true" />
                 Clear all
               </Button>
-              {catalog && items.some((e) => e.sp3Path === catalog.path) ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    const n = items.filter((e) => e.sp3Path === catalog.path).length;
-                    if (confirm(`Remove ${n} machines from ${sp3Filename(catalog.path)}?`))
-                      onChange(items.filter((e) => e.sp3Path !== catalog.path));
-                  }}
-                >
-                  Remove from this DB
-                </Button>
-              ) : null}
+              {catalogs.map((cat) =>
+                items.some((e) => e.sp3Path === cat.path) ? (
+                  <Button
+                    key={cat.path}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const n = items.filter((e) => e.sp3Path === cat.path).length;
+                      if (confirm(`Remove ${n} machines from ${sp3Filename(cat.path)}?`))
+                        onChange(items.filter((e) => e.sp3Path !== cat.path));
+                    }}
+                  >
+                    Remove from {sp3Filename(cat.path)}
+                  </Button>
+                ) : null
+              )}
             </div>
             {[...groupEquipmentsByDb(items).entries()].map(([db, list]) => (
               <div key={db} className="border-t first:border-t-0">

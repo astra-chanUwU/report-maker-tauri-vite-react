@@ -104,6 +104,7 @@ function App() {
   const [dragOver, setDragOver] = useState(false);
   const [recentTick, setRecentTick] = useState(0);
   const [sp3Path, setSp3Path] = useState<string | null>(null);
+  const [sp3Paths, setSp3Paths] = useState<string[]>([]);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress>(IDLE_EXPORT);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
@@ -149,12 +150,16 @@ function App() {
     setAiDraft(null);
     setCsvFile(r && r.meta.source === "spec-csv" ? file : null);
     setTrendSnap(null);
-    setSp3Path(r ? pendingSp3PathRef.current : null);
+    const opened = pendingSp3PathRef.current;
+    setSp3Path(r ? opened : null);
+    if (r && opened) {
+      setSp3Paths((prev) => (prev.includes(opened) ? prev : [...prev, opened]));
+    }
     if (r) {
-      const opened = pendingSp3PathRef.current;
-      if (opened) {
+      const openedInner = pendingSp3PathRef.current;
+      if (openedInner) {
         void addRecentDb({
-          path: opened,
+          path: openedInner,
           filename: r.meta.filename,
           size: r.meta.size,
           source: r.meta.source,
@@ -246,6 +251,20 @@ function App() {
       }
     },
     [enqueueJob, patchJob, dismissJob, ingest, handleParsed]
+  );
+
+  const runPathsWithJobs = useCallback(
+    async (paths: string[]) => {
+      const filtered = paths.filter((p) => shouldHandleNativeDrop(p));
+      if (filtered.length === 0) return;
+      // Sequential to avoid thundering herd on 500 MB files, UI stays responsive via jobs
+      for (const p of filtered) {
+        await runPathWithJob(p);
+        // yield between DBs so progress pills update and app switching stays smooth
+        await new Promise<void>((r) => setTimeout(r, 0));
+      }
+    },
+    [runPathWithJob]
   );
 
   /** Switching measurements keeps the file/CSV source for further picks. */
@@ -411,10 +430,12 @@ function App() {
           } else if (p.type === "leave") setDragOver(false);
           else if (p.type === "drop") {
             setDragOver(false);
-            const first = p.paths[0];
-            if (!first || !shouldHandleNativeDrop(first)) return;
+            const paths = p.paths ?? [];
+            const ingestPaths = paths.filter((x) => shouldHandleNativeDrop(x));
+            if (ingestPaths.length === 0) return;
             setPage("data");
-            void runPathWithJob(first);
+            if (ingestPaths.length === 1) void runPathWithJob(ingestPaths[0]);
+            else void runPathsWithJobs(ingestPaths);
           }
         })
       )
@@ -518,20 +539,20 @@ function App() {
       return;
     }
     try {
-      const [{ open }] = await Promise.all([
-        import("@tauri-apps/plugin-dialog"),
-        import("@tauri-apps/api/core"),
-      ]);
+      const { open } = await import("@tauri-apps/plugin-dialog");
       const picked = await open({
         filters: [{ name: "SP3 / MDB", extensions: ["sp3", "mdb"] }],
-        multiple: false,
+        multiple: true,
       });
-      if (!picked || Array.isArray(picked)) return;
-      await runPathWithJob(picked as string);
+      if (!picked) return;
+      const arr = Array.isArray(picked) ? (picked as string[]) : [picked as string];
+      if (arr.length === 0) return;
+      if (arr.length === 1) await runPathWithJob(arr[0]);
+      else await runPathsWithJobs(arr);
     } catch (e) {
       if (e instanceof Error && e.message === "cancelled") return;
     }
-  }, [runPathWithJob]);
+  }, [runPathWithJob, runPathsWithJobs]);
   const ingestWithPath = { ...ingest, openSp3: handleOpenSp3 };
 
   const noData = (
@@ -657,6 +678,7 @@ function App() {
             <Page active={page === "machines"}>
               <MachinePicker
                 sp3Path={sp3Path ?? equipments.find((e) => e.sp3Path)?.sp3Path ?? null}
+                sp3Paths={sp3Paths.length > 0 ? sp3Paths : undefined}
                 isTauri={ingest.isTauri}
                 items={equipments}
                 onChange={updateEquipments}

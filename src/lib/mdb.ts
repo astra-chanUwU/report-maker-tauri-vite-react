@@ -391,6 +391,19 @@ export async function pickSp3Path(): Promise<string> {
   return picked;
 }
 
+/** Pick multiple .sp3/.mdb files. Throws Error("cancelled") when none chosen. */
+export async function pickSp3Paths(): Promise<string[]> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const picked = await open({
+    filters: [{ name: "SP3 / MDB", extensions: ["sp3", "mdb"] }],
+    multiple: true,
+  });
+  if (!picked) throw new Error("cancelled");
+  const arr = Array.isArray(picked) ? picked : [picked];
+  if (arr.length === 0) throw new Error("cancelled");
+  return arr.filter((p): p is string => typeof p === "string" && p.length > 0);
+}
+
 export interface EnvelopeSample {
   pointId: string;
   directionId?: string;
