@@ -388,9 +388,10 @@ func redactPhone(phone string) string {
 	return "***" + phone[len(phone)-4:]
 }
 
-// EmailSenderFromEnv builds the production email adapter from environment variables.
-// Defaults to LocalOutbox when unset so local/dev remains safe without secrets.
-func EmailSenderFromEnv() EmailSender {
+// EmailSenderFromEnv builds the email adapter from environment variables.
+// In development, defaults to LocalOutbox when unset. In production, never
+// silently falls back to LocalOutbox — missing config yields nil for ValidateConfig.
+func EmailSenderFromEnv(devMode bool) EmailSender {
 	provider := strings.ToLower(strings.TrimSpace(os.Getenv("REPORT_EMAIL_PROVIDER")))
 	switch provider {
 	case "noop", "none", "disabled":
@@ -401,8 +402,14 @@ func EmailSenderFromEnv() EmailSender {
 		if apiURL := strings.TrimSpace(os.Getenv("REPORT_EMAIL_API_URL")); apiURL != "" && strings.TrimSpace(os.Getenv("REPORT_EMAIL_API_KEY")) != "" {
 			return newHTTPEmailSenderFromEnv()
 		}
+		if !devMode {
+			return nil
+		}
 		return &LocalOutbox{}
 	default:
+		if !devMode {
+			return nil
+		}
 		return &LocalOutbox{}
 	}
 }
@@ -420,8 +427,10 @@ func newHTTPEmailSenderFromEnv() *HTTPEmailSender {
 	}
 }
 
-// SMSSenderFromEnv builds the production SMS adapter from environment variables.
-func SMSSenderFromEnv() SMSSender {
+// SMSSenderFromEnv builds the SMS adapter from environment variables.
+// In development, defaults to FakeSMS when unset. In production, never
+// silently falls back to FakeSMS — missing config yields nil for ValidateConfig.
+func SMSSenderFromEnv(devMode bool) SMSSender {
 	provider := strings.ToLower(strings.TrimSpace(os.Getenv("REPORT_SMS_PROVIDER")))
 	switch provider {
 	case "noop", "none", "disabled":
@@ -432,8 +441,14 @@ func SMSSenderFromEnv() SMSSender {
 		if apiURL := strings.TrimSpace(os.Getenv("REPORT_SMS_API_URL")); apiURL != "" && strings.TrimSpace(os.Getenv("REPORT_SMS_API_KEY")) != "" {
 			return newHTTPSMSSenderFromEnv()
 		}
+		if !devMode {
+			return nil
+		}
 		return &FakeSMS{}
 	default:
+		if !devMode {
+			return nil
+		}
 		return &FakeSMS{}
 	}
 }

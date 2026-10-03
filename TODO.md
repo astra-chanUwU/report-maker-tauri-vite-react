@@ -398,16 +398,19 @@ on the same commit.
 **Owner:** Grok 4.5 High review; Composer 2.5 High implementation
 **Depends on:** C04
 
-- Demo payments require an explicit development-only flag.
-- Production startup fails without persistent signing and license-delivery keys,
-  a database path, and required provider configuration.
-- Do not silently use `FakeSMS`, `LocalOutbox`, or the demo gateway in production.
-- Keep provider errors bounded, redacted, timed out, and observable to admin
-  support without exposing secrets.
-- Add request-size limits, secure cookie checks, CSP, and local HTMX assets.
+**Status:** Implemented on `feat/c06-prod-fail-closed` (see `CURSOR_REPORT_C06.md`).
+
+- [x] Demo payments require explicit `REPORT_ALLOW_DEMO_PAYMENTS=1` (DevMode only).
+- [x] Production startup fails without persistent signing and license-delivery keys,
+  a database path, HTTPS public URL, and required provider configuration.
+- [x] Do not silently use `FakeSMS`, `LocalOutbox`, or the demo gateway in production.
+- [x] Provider errors bounded, redacted, timed out; admin page notes secret-free support.
+- [x] Request-size limits, Secure cookies on HTTPS, CSP headers, local HTMX under `server/static/`.
+- [x] Tests: production-config rejects unsafe defaults; development still runs without credentials.
 
 **Acceptance:** a production-config test rejects unsafe defaults; development
-configuration still runs without external credentials.
+configuration still runs without external credentials. `go test ./...` and
+`go vet ./...` pass.
 
 ### C07 — Publish real release artifacts
 

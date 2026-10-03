@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -76,8 +75,7 @@ func (a *App) adminLogout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(adminSessionCookie); err == nil && cookie.Value != "" {
 		_ = a.store.DeleteAdminSession(hashToken(cookie.Value))
 	}
-	secure := strings.HasPrefix(strings.ToLower(a.cfg.PublicBaseURL), "https://")
-	http.SetCookie(w, &http.Cookie{Name: adminSessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: adminSessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: a.cfg.cookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 
@@ -90,10 +88,10 @@ func (a *App) adminHome(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 		return
 	}
+	body := "Signed in as admin. Customer session cookies are not accepted on admin routes. Provider errors are redacted in logs; support can inspect order status without secrets."
 	renderPage(w, "admin", PageData{
 		Title: "Admin", Heading: "Admin",
-		Body: "Signed in as admin. Customer session cookies are not accepted on admin routes.",
-		CSRFToken: a.ensureCSRF(w, r), ShowAdminLogout: true,
+		Body: body, CSRFToken: a.ensureCSRF(w, r), ShowAdminLogout: true,
 	})
 }
 
@@ -122,10 +120,9 @@ func (a *App) issueAdminSession(w http.ResponseWriter) error {
 	}); err != nil {
 		return err
 	}
-	secure := strings.HasPrefix(strings.ToLower(a.cfg.PublicBaseURL), "https://")
 	http.SetCookie(w, &http.Cookie{
 		Name: adminSessionCookie, Value: token, Path: "/", HttpOnly: true,
-		Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 8 * 60 * 60,
+		Secure: a.cfg.cookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: 8 * 60 * 60,
 	})
 	return nil
 }

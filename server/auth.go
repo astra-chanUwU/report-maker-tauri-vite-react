@@ -414,8 +414,7 @@ func (a *App) issueCustomerSession(w http.ResponseWriter, customerID string) err
 	if err := a.store.PutCustomerSession(&CustomerSession{ID: randomID("ses_"), CustomerID: customerID, TokenHash: hashToken(token), ExpiresAt: now.Add(30 * 24 * time.Hour), CreatedAt: now, LastSeenAt: now}); err != nil {
 		return err
 	}
-	secure := strings.HasPrefix(strings.ToLower(a.cfg.PublicBaseURL), "https://")
-	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60})
+	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: a.cfg.cookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60})
 	return nil
 }
 
@@ -430,8 +429,7 @@ func (a *App) logoutCustomer(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(customerSessionCookie); err == nil && cookie.Value != "" {
 		_ = a.store.DeleteCustomerSession(hashToken(cookie.Value))
 	}
-	secure := strings.HasPrefix(strings.ToLower(a.cfg.PublicBaseURL), "https://")
-	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: a.cfg.cookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	if strings.Contains(r.Header.Get("Accept"), "text/html") {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return

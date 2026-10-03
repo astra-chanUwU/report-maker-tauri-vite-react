@@ -8,8 +8,6 @@ import (
 	"html"
 	"io"
 	"net/http"
-	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -18,82 +16,30 @@ import (
 )
 
 type Config struct {
-	SigningPrivateKey  string
-	SigningKeyID       string
-	LicenseDeliveryKey []byte
-	LeaseDays          int
-	AllowDevSeed       bool
-	PublicBaseURL      string
+	SigningPrivateKey    string
+	SigningKeyID         string
+	LicenseDeliveryKey   []byte
+	LeaseDays            int
+	AllowDevSeed         bool
+	AllowDemoPayments    bool
+	DevMode              bool
+	PublicBaseURL        string
 	// DatabasePath selects the SQLite database file. An empty value keeps
 	// NewApp's isolated in-memory behavior, which is useful for tests.
-	DatabasePath    string
-	WebAuthnRPID    string
-	WebAuthnOrigins []string
-	WebAuthnRPName  string
-	AdminPassword   string
-	Gateway            PaymentGateway
-	EmailSender        EmailSender
-	SMSSender          SMSSender
-	ArtifactRoot       string
-	ReleaseManifest    string
+	DatabasePath         string
+	WebAuthnRPID         string
+	WebAuthnOrigins      []string
+	WebAuthnRPName       string
+	AdminPassword        string
+	Gateway              PaymentGateway
+	EmailSender          EmailSender
+	SMSSender            SMSSender
+	ArtifactRoot         string
+	ReleaseManifest      string
 	DownloadLinkTTLHours int
 	DownloadRateLimit    int
 }
 
-func ConfigFromEnv() Config {
-	days := 30
-	if raw := os.Getenv("REPORT_LEASE_DAYS"); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil && value > 0 && value <= 365 {
-			days = value
-		}
-	}
-	allow := os.Getenv("REPORT_ALLOW_DEV_SEED") == "1"
-	base := os.Getenv("PUBLIC_BASE_URL")
-	if base == "" {
-		base = "http://localhost:8080"
-	}
-	databasePath := os.Getenv("REPORT_DB_PATH")
-	if databasePath == "" {
-		databasePath = "report-maker.db"
-	}
-	rpID := strings.TrimSpace(os.Getenv("REPORT_WEB_AUTHN_RP_ID"))
-	if rpID == "" {
-		if parsed, err := url.Parse(base); err == nil && parsed.Hostname() != "" {
-			rpID = parsed.Hostname()
-		} else {
-			rpID = "localhost"
-		}
-	}
-	origins := strings.Fields(strings.ReplaceAll(os.Getenv("REPORT_WEB_AUTHN_ORIGINS"), ",", " "))
-	if len(origins) == 0 {
-		origins = []string{strings.TrimRight(base, "/")}
-	}
-	rpName := valueOr(os.Getenv("REPORT_WEB_AUTHN_RP_NAME"), "Report Maker")
-	var gateway PaymentGateway = DemoGateway{BaseURL: base}
-	if merchant := strings.TrimSpace(os.Getenv("ZARINPAL_MERCHANT_ID")); merchant != "" {
-		apiBase := strings.TrimSpace(os.Getenv("ZARINPAL_BASE_URL"))
-		if apiBase == "" {
-			apiBase = strings.TrimSpace(os.Getenv("ZARINPAL_API_URL"))
-		}
-		if apiBase == "" {
-			apiBase = "https://api.zarinpal.com"
-		}
-		gateway = ZarinPalGateway{MerchantID: merchant, BaseURL: apiBase}
-	}
-	deliveryKey, _ := LoadDeliveryKey(os.Getenv("REPORT_LICENSE_DELIVERY_KEY"))
-	return Config{
-		SigningPrivateKey: os.Getenv("REPORT_SIGNING_PRIVATE_KEY"), SigningKeyID: valueOr(os.Getenv("REPORT_SIGNING_KEY_ID"), "lease-dev-1"),
-		LicenseDeliveryKey: deliveryKey, LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
-		WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, AdminPassword: os.Getenv("REPORT_ADMIN_PASSWORD"),
-		Gateway:              gateway,
-		EmailSender:          EmailSenderFromEnv(),
-		SMSSender:            SMSSenderFromEnv(),
-		ArtifactRoot:         os.Getenv("REPORT_ARTIFACT_ROOT"),
-		ReleaseManifest:      os.Getenv("REPORT_RELEASE_MANIFEST"),
-		DownloadLinkTTLHours: downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_LINK_TTL_HOURS"), 24),
-		DownloadRateLimit:    downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_RATE_LIMIT"), 30),
-	}
-}
 func valueOr(value, fallback string) string {
 	if value == "" {
 		return fallback
@@ -115,18 +61,39 @@ type App struct {
 }
 
 func NewApp(cfg Config) (*App, error) {
+	// Unit tests often omit DevMode while injecting local fakes.
+	if !cfg.DevMode && looksLikeTestConfig(cfg) {
+		cfg.DevMode = true
+		cfg.AllowDemoPayments = true
+	}
+	if err := ValidateConfig(cfg); err != nil {
+		return nil, err
+	}
+	if !cfg.DevMode && strings.TrimSpace(cfg.SigningPrivateKey) == "" {
+		return nil, fmt.Errorf("REPORT_SIGNING_PRIVATE_KEY is required in production")
+	}
 	key, err := LoadSigningKey(cfg.SigningPrivateKey)
 	if err != nil {
 		return nil, err
 	}
 	if len(cfg.LicenseDeliveryKey) != 32 {
+		if !cfg.DevMode {
+			return nil, fmt.Errorf("REPORT_LICENSE_DELIVERY_KEY is required in production")
+		}
 		cfg.LicenseDeliveryKey, err = LoadDeliveryKey("")
 		if err != nil {
 			return nil, err
 		}
 	}
 	if cfg.Gateway == nil {
-		cfg.Gateway = DemoGateway{BaseURL: cfg.PublicBaseURL}
+		if cfg.DevMode && cfg.AllowDemoPayments {
+			cfg.Gateway = DemoGateway{BaseURL: cfg.PublicBaseURL}
+		} else {
+			return nil, fmt.Errorf("payment gateway not configured (set ZARINPAL_MERCHANT_ID or REPORT_ALLOW_DEMO_PAYMENTS=1 in development)")
+		}
+	}
+	if _, ok := cfg.Gateway.(DemoGateway); ok && (!cfg.DevMode || !cfg.AllowDemoPayments) {
+		return nil, fmt.Errorf("DemoGateway is not allowed without development demo-payments flag")
 	}
 	store, err := OpenStore(cfg.DatabasePath)
 	if err != nil {
@@ -147,11 +114,29 @@ func NewApp(cfg Config) (*App, error) {
 	}
 	email := cfg.EmailSender
 	if email == nil {
+		if !cfg.DevMode {
+			store.Close()
+			return nil, fmt.Errorf("email sender not configured")
+		}
 		email = &LocalOutbox{}
 	}
 	sms := cfg.SMSSender
 	if sms == nil {
+		if !cfg.DevMode {
+			store.Close()
+			return nil, fmt.Errorf("sms sender not configured")
+		}
 		sms = &FakeSMS{}
+	}
+	if !cfg.DevMode {
+		if _, ok := email.(*LocalOutbox); ok {
+			store.Close()
+			return nil, fmt.Errorf("LocalOutbox cannot be used in production")
+		}
+		if _, ok := sms.(*FakeSMS); ok {
+			store.Close()
+			return nil, fmt.Errorf("FakeSMS cannot be used in production")
+		}
 	}
 	releases, err := LoadReleaseCatalog(cfg.ArtifactRoot, cfg.ReleaseManifest)
 	if err != nil {
@@ -167,13 +152,34 @@ func NewApp(cfg Config) (*App, error) {
 		app.store.SeedLicense("RM-TEST-1234-KEY0", "perpetual", map[string]bool{"core_export": true, "hosted_ai": true}, 3)
 	}
 	app.routes()
+	app.staticRoutes()
 	app.authRoutes()
 	app.phoneRoutes()
 	app.adminRoutes()
 	app.downloadRoutes()
 	return app, nil
 }
-func (a *App) Handler() http.Handler { return a.requestLog(a.mux) }
+
+func looksLikeTestConfig(cfg Config) bool {
+	if cfg.AllowDevSeed {
+		return true
+	}
+	if cfg.EmailSender != nil || cfg.SMSSender != nil {
+		return true
+	}
+	if cfg.Gateway != nil {
+		if _, ok := cfg.Gateway.(DemoGateway); ok {
+			return true
+		}
+	}
+	// Explicit in-memory helpers with a key id and non-HTTPS local base URL.
+	if cfg.SigningKeyID != "" && (cfg.DatabasePath == "" || cfg.DatabasePath == ":memory:") && cfg.PublicBaseURL != "" && !strings.HasPrefix(strings.ToLower(cfg.PublicBaseURL), "https://") {
+		return true
+	}
+	return false
+}
+
+func (a *App) Handler() http.Handler { return a.withSecurity(a.mux) }
 func (a *App) Close() error {
 	if a == nil || a.store == nil {
 		return nil
@@ -195,12 +201,6 @@ func (a *App) routes() {
 	a.mux.HandleFunc("DELETE /v1/activations/{id}", a.revoke)
 	a.mux.HandleFunc("POST /v1/ai/draft", a.aiDraft)
 	a.mux.HandleFunc("POST /v1/telemetry/batch", a.telemetry)
-}
-func (a *App) requestLog(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		next.ServeHTTP(w, r)
-	})
 }
 func (a *App) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "report-maker-control-plane"})

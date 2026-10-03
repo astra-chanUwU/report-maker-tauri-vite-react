@@ -73,7 +73,7 @@ func (g ZarinPalGateway) httpClient() *http.Client {
 	if g.Client != nil {
 		return g.Client
 	}
-	return http.DefaultClient
+	return &http.Client{Timeout: defaultProviderTimeout}
 }
 
 func (g ZarinPalGateway) baseURL() string {
@@ -119,15 +119,15 @@ func (g ZarinPalGateway) Start(ctx context.Context, request PaymentRequest) (Pay
 	req.Header.Set("Accept", "application/json")
 	resp, err := g.httpClient().Do(req)
 	if err != nil {
-		return PaymentResult{}, err
+		return PaymentResult{}, fmt.Errorf("zarinpal request transport: %w", err)
 	}
 	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxProviderResponse))
 	if err != nil {
 		return PaymentResult{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return PaymentResult{}, fmt.Errorf("zarinpal request failed: status %d body %s", resp.StatusCode, string(respBody))
+		return PaymentResult{}, fmt.Errorf("zarinpal request failed: status %d body %s", resp.StatusCode, redactSecrets(string(respBody)))
 	}
 	var parsed struct {
 		Data struct {
@@ -141,7 +141,7 @@ func (g ZarinPalGateway) Start(ctx context.Context, request PaymentRequest) (Pay
 		return PaymentResult{}, fmt.Errorf("invalid zarinpal response: %w", err)
 	}
 	if parsed.Data.Code != 100 {
-		return PaymentResult{}, fmt.Errorf("zarinpal request failed: code %d message %s errors %s", parsed.Data.Code, parsed.Data.Message, string(parsed.Errors))
+		return PaymentResult{}, fmt.Errorf("zarinpal request failed: code %d message %s errors %s", parsed.Data.Code, redactSecrets(parsed.Data.Message), redactSecrets(string(parsed.Errors)))
 	}
 	if strings.TrimSpace(parsed.Data.Authority) == "" {
 		return PaymentResult{}, fmt.Errorf("zarinpal request missing authority")
@@ -175,15 +175,15 @@ func (g ZarinPalGateway) Verify(ctx context.Context, authority string, amount in
 	req.Header.Set("Accept", "application/json")
 	resp, err := g.httpClient().Do(req)
 	if err != nil {
-		return PaymentVerification{}, err
+		return PaymentVerification{}, fmt.Errorf("zarinpal verify transport: %w", err)
 	}
 	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxProviderResponse))
 	if err != nil {
 		return PaymentVerification{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return PaymentVerification{}, fmt.Errorf("zarinpal verify failed: status %d body %s", resp.StatusCode, string(respBody))
+		return PaymentVerification{}, fmt.Errorf("zarinpal verify failed: status %d body %s", resp.StatusCode, redactSecrets(string(respBody)))
 	}
 	var parsed struct {
 		Data struct {
@@ -197,7 +197,7 @@ func (g ZarinPalGateway) Verify(ctx context.Context, authority string, amount in
 		return PaymentVerification{}, fmt.Errorf("invalid zarinpal verify response: %w", err)
 	}
 	if parsed.Data.Code != 100 && parsed.Data.Code != 101 {
-		return PaymentVerification{}, fmt.Errorf("zarinpal verify failed: code %d message %s errors %s", parsed.Data.Code, parsed.Data.Message, string(parsed.Errors))
+		return PaymentVerification{}, fmt.Errorf("zarinpal verify failed: code %d message %s errors %s", parsed.Data.Code, redactSecrets(parsed.Data.Message), redactSecrets(string(parsed.Errors)))
 	}
 	ref := ""
 	if len(parsed.Data.RefID) > 0 && string(parsed.Data.RefID) != "null" {
