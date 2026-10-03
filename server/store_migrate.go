@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const currentSchemaVersion = 4
+const currentSchemaVersion = 5
 
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
@@ -21,6 +21,7 @@ func migrate(db *sql.DB) error {
 		migrationV2CustomerIdentity,
 		migrationV3LicenseDelivery,
 		migrationV4DeliveryOutbox,
+		migrationV5AdminSupport,
 	}
 	for version < currentSchemaVersion {
 		if err := steps[version](db); err != nil {
@@ -184,5 +185,16 @@ func migrationV4DeliveryOutbox(db *sql.DB) error {
  last_error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, sent_at TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS delivery_outbox_idem_idx ON delivery_outbox(channel, idempotency_key) WHERE idempotency_key <> '';
 CREATE INDEX IF NOT EXISTS delivery_outbox_pending_idx ON delivery_outbox(status, updated_at);`)
+	return err
+}
+
+func migrationV5AdminSupport(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS admin_audit_log (id TEXT PRIMARY KEY, admin_session_id TEXT NOT NULL, action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS admin_audit_target_idx ON admin_audit_log(target_type, target_id);
+CREATE TABLE IF NOT EXISTS support_notes (id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), admin_session_id TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS support_notes_order_idx ON support_notes(order_id);
+CREATE INDEX IF NOT EXISTS orders_payment_ref_idx ON orders(payment_ref) WHERE payment_ref <> '';
+CREATE INDEX IF NOT EXISTS orders_email_idx ON orders(email);
+CREATE INDEX IF NOT EXISTS orders_phone_idx ON orders(phone) WHERE phone <> '';`)
 	return err
 }
