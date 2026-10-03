@@ -127,12 +127,28 @@ pub async fn export_mdb_csv(
     tool: Option<String>,
     on_progress: Channel<MdbExportProgress>,
 ) -> Result<MdbExportResult, String> {
+    let is_data = table.as_deref().unwrap_or("Data") == "Data";
+    if is_data {
+        if let Some(hit) = crate::cache::get_cached(&input).await {
+            return Ok(MdbExportResult {
+                csv_path: hit.csv_path,
+                bytes: hit.bytes,
+                rows: hit.rows,
+                head: hit.head,
+            });
+        }
+    }
+    let input_for_put = input.clone();
     let on_progress_outer = on_progress.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let res = tauri::async_runtime::spawn_blocking(move || {
         export_mdb_csv_blocking(input, table, tool, on_progress_outer)
     })
     .await
-    .map_err(|e| format!("export task failed: {e}"))?
+    .map_err(|e| format!("export task failed: {e}"))??;
+    if is_data {
+        crate::cache::put_cached(&input_for_put, res.csv_path.clone(), res.bytes, res.rows, res.head.clone()).await;
+    }
+    Ok(res)
 }
 
 fn export_mdb_csv_blocking(

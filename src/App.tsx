@@ -14,6 +14,7 @@ import { DataOverview, DropZone, FileBar, IngestError, useIngest } from "./compo
 import { RecentDbsCard } from "./components/recent-dbs";
 import { LicenseCard } from "./components/license";
 import { MachinePicker } from "./components/machine-picker";
+import { CacheSettings } from "./components/cache-settings";
 import { MdbToolSettings } from "./components/mdb-import";
 import { MeasurementPicker } from "./components/measurement-picker";
 import { DatabaseSummary, MeasuringTable, useMeasureRows } from "./components/measuring-table";
@@ -1027,6 +1028,7 @@ function App() {
                   status={ingest.tool}
                   onRefresh={ingest.refreshTool}
                 />
+                <CacheSettings />
                 <LicenseCard />
                 <AiSettingsCard />
                 <TelemetryCard />

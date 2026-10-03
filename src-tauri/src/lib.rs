@@ -1,4 +1,5 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+mod cache;
 mod license;
 mod mdb;
 
@@ -18,6 +19,15 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Evict stale temps on startup without blocking UI
+                let _ = handle;
+                crate::cache::evict_on_startup().await;
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             license::validate_license,
@@ -27,7 +37,9 @@ pub fn run() {
             mdb::read_csv_row,
             mdb::list_spectra_catalog,
             mdb::extract_machine_picture,
-            mdb::list_envelope_samples
+            mdb::list_envelope_samples,
+            cache::clear_export_cache,
+            cache::cache_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
