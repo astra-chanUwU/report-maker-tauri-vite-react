@@ -16,7 +16,8 @@ Useful environment variables:
 - `HTTP_ADDR` (default `:8080`)
 - `PUBLIC_BASE_URL` (default `http://localhost:8080`)
 - `REPORT_ALLOW_DEV_SEED=1` for local activation tests
-- `REPORT_PERPETUAL_PRICE_RIALS` for the server-side plan price
+- `REPORT_PERPETUAL_PRICE_RIALS` for the server-side perpetual plan price (catalog-owned; clients cannot override)
+- `REPORT_LICENSE_DELIVERY_KEY` — base64url-encoded 32-byte AES key for encrypting recoverable license keys at rest (required in production; generated per process if unset in dev)
 - `REPORT_SIGNING_PRIVATE_KEY` and `REPORT_SIGNING_KEY_ID` for persistent lease signing
 
 The `PaymentGateway` interface in `payment.go` is the boundary for a domestic redirect processor such as ZarinPal/ZarinPay. `DemoGateway` is only a local flow that exercises pending order, redirect, callback, server-side verification, and idempotent paid state. A production adapter must call the provider's request and verification APIs and compare the verified amount to the stored order amount before provisioning a license.

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -52,6 +53,8 @@ func (a *App) authRoutes() {
 	a.mux.HandleFunc("POST /auth/passkey/login/finish", a.finishPasskeyLogin)
 	a.mux.HandleFunc("POST /auth/logout", a.logoutCustomer)
 	a.mux.HandleFunc("GET /account", a.customerAccount)
+	a.mux.HandleFunc("GET /account/purchases", a.customerPurchases)
+	a.mux.HandleFunc("POST /account/purchases/reveal", a.revealPurchaseLicense)
 }
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
@@ -450,6 +453,86 @@ func (a *App) customerAccount(w http.ResponseWriter, r *http.Request) {
 		Body: "Signed in as " + customer.Email, CSRFToken: a.ensureCSRF(w, r),
 		Email: customer.Email, Phone: customer.Phone, PhoneVerified: phoneStatus,
 		ExtraScript: true, ShowPasskeyRegister: true, ShowPhoneVerify: true, ShowLogout: true,
+		ShowPurchasesLink: true,
+	})
+}
+
+func (a *App) customerPurchases(w http.ResponseWriter, r *http.Request) {
+	customer, ok := a.customerFromRequest(r)
+	if !ok {
+		http.Redirect(w, r, "/login?return_to="+url.QueryEscape(r.URL.Path), http.StatusSeeOther)
+		return
+	}
+	orders, err := a.store.ListCustomerOrders(customer.ID)
+	if err != nil {
+		http.Error(w, "could not load purchases", http.StatusInternalServerError)
+		return
+	}
+	purchases := make([]PurchaseView, 0, len(orders))
+	for _, order := range orders {
+		view := PurchaseView{OrderID: order.ID, Plan: order.Plan, Status: order.Status}
+		if order.PaidAt != nil {
+			view.PaidAt = order.PaidAt.Format("2006-01-02 15:04 UTC")
+		}
+		if order.LicenseID != "" {
+			if license, ok := a.store.FindLicenseByID(order.LicenseID); ok && license.DeliveryCiphertext != "" {
+				if plain, err := DecryptLicenseKey(a.cfg.LicenseDeliveryKey, license.DeliveryCiphertext); err == nil {
+					view.MaskedKey = MaskLicenseKey(plain)
+					view.CanReveal = order.Status == "paid"
+				}
+			}
+		}
+		purchases = append(purchases, view)
+	}
+	renderPage(w, "purchases", PageData{
+		Title: "Your purchases", Heading: "Purchases and licenses",
+		Body: "Orders linked to your account. Reveal a license key when you need to activate the desktop app.",
+		CSRFToken: a.ensureCSRF(w, r), Purchases: purchases, ExtraScript: true, ShowLogout: true,
+	})
+}
+
+func (a *App) revealPurchaseLicense(w http.ResponseWriter, r *http.Request) {
+	customer, ok := a.customerFromRequest(r)
+	if !ok {
+		http.Error(w, "sign in required", http.StatusUnauthorized)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if !a.requireCSRF(w, r) {
+		return
+	}
+	orderID := strings.TrimSpace(r.FormValue("order_id"))
+	order, ok := a.store.GetOrder(orderID)
+	if !ok || order.CustomerID != customer.ID || order.Status != "paid" || order.LicenseID == "" {
+		http.Error(w, "purchase not found", http.StatusNotFound)
+		return
+	}
+	license, ok := a.store.FindLicenseByID(order.LicenseID)
+	if !ok || license.DeliveryCiphertext == "" {
+		http.Error(w, "license unavailable", http.StatusNotFound)
+		return
+	}
+	plain, err := DecryptLicenseKey(a.cfg.LicenseDeliveryKey, license.DeliveryCiphertext)
+	if err != nil {
+		http.Error(w, "license unavailable", http.StatusInternalServerError)
+		return
+	}
+	if r.Header.Get("HX-Request") != "" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<code>" + html.EscapeString(plain) + "</code>"))
+		return
+	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		writeJSON(w, http.StatusOK, map[string]string{"license_key": plain, "masked_key": MaskLicenseKey(plain)})
+		return
+	}
+	renderPage(w, "purchases", PageData{
+		Title: "Your purchases", Heading: "Purchases and licenses",
+		Body: "License key for order " + orderID, CSRFToken: a.ensureCSRF(w, r),
+		LicenseKey: plain, LicenseMasked: MaskLicenseKey(plain), ExtraScript: true, ShowLogout: true,
 	})
 }
 

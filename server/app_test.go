@@ -16,7 +16,8 @@ import (
 func testApp(t *testing.T) (*App, *httptest.Server, ed25519.PrivateKey, string) {
 	t.Helper()
 	_, device, _ := ed25519.GenerateKey(rand.Reader)
-	cfg := Config{SigningKeyID: "test-key", LeaseDays: 30, AllowDevSeed: true, PublicBaseURL: "http://example.test"}
+	deliveryKey, _ := LoadDeliveryKey(EncodeBytes(make([]byte, 32)))
+	cfg := Config{SigningKeyID: "test-key", LeaseDays: 30, AllowDevSeed: true, PublicBaseURL: "http://example.test", LicenseDeliveryKey: deliveryKey}
 	app, err := NewApp(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -138,8 +139,8 @@ func TestPaymentRedirectCallbackIsIdempotent(t *testing.T) {
 	}
 	defer callback.Body.Close()
 	body, _ := io.ReadAll(callback.Body)
-	if !strings.Contains(string(body), "Payment received") {
-		t.Fatalf("callback did not complete payment: %s", body)
+	if !strings.Contains(string(body), "Payment received") || !strings.Contains(string(body), "RM-") {
+		t.Fatalf("callback did not complete payment with license: %s", body)
 	}
 }
 
