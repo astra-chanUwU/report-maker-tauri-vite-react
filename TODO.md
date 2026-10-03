@@ -477,21 +477,19 @@ repeatable download journeys work in a real browser against the local service.
 
 **Owner:** GPT-Sol 6.1 High architecture; Composer 2.5 High implementation
 **Depends on:** C05–C10
+<<<<<<< HEAD
 **Status:** Open. No VPS restore/HTTPS evidence on integrate tip. Not on
 `origin` at C12 freeze.
+=======
+**Status:** Implemented on `feat/c11-vps-deploy` (see `CURSOR_REPORT_C11.md`).
+Live VPS/provider checks **unavailable** (no owner credentials).
+>>>>>>> origin/feat/c11-vps-deploy
 
-- Document the Iran-hosted VPS profile, domain, HTTPS reverse proxy, firewall,
-  service user, environment file, and artifact storage.
-- Add health/readiness checks and graceful shutdown.
-- Automate SQLite backup plus restore verification and separately protect signing
-  and delivery keys.
-- Configure the final WebAuthn RP ID/origin before enrolling production passkeys.
-- Record live provider checks as unavailable until credentials and domain DNS are
-  actually verified.
+- [x] VPS docs (`docs/deployment.md`); health/readiness + graceful shutdown.
+- [x] Backup/restore scripts; separate key protection documented.
+- [x] WebAuthn checklist; live checks marked unavailable.
 
-**Acceptance:** a clean VPS-style environment restores the database, starts the
-service, passes health checks, serves HTTPS, and supports the configured passkey
-origin.
+**Acceptance:** pending owner VPS/domain verification.
 
 ### C12 — Final review and cleanup
 

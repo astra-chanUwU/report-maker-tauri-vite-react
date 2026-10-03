@@ -135,3 +135,8 @@ REPORT_ENV=development REPORT_ARTIFACT_ROOT=testdata/artifacts REPORT_ALLOW_DEV_
 ```
 
 See [`docs/releases.md`](../docs/releases.md).
+
+## Production deployment
+
+[`docs/deployment.md`](../docs/deployment.md). Backup scripts:
+`server/scripts/backup-sqlite.*`, `verify-sqlite-restore.*`.
