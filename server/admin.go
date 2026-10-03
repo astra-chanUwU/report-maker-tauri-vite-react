@@ -29,7 +29,7 @@ func (a *App) adminLoginPage(w http.ResponseWriter, r *http.Request) {
 	}
 	renderPage(w, "admin-login", PageData{
 		Title: "Admin sign in", Heading: "Admin sign in",
-		CSRFToken: a.ensureCSRF(w, r), ShowAdminLogin: true,
+		CSRFToken: a.ensureCSRF(w, r), ShowAdminLogin: true, HideFooter: true,
 	})
 }
 
@@ -91,7 +91,7 @@ func (a *App) adminHome(w http.ResponseWriter, r *http.Request) {
 	body := "Signed in as admin. Customer session cookies are not accepted on admin routes. Provider errors are redacted in logs; support can inspect order status without secrets."
 	renderPage(w, "admin", PageData{
 		Title: "Admin", Heading: "Admin",
-		Body: body, CSRFToken: a.ensureCSRF(w, r), ShowAdminLogout: true,
+		Body: body, CSRFToken: a.ensureCSRF(w, r), ShowAdminLogout: true, HideFooter: true,
 	})
 }
 

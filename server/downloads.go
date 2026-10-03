@@ -61,11 +61,12 @@ func (a *App) customerDownloadsPage(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	renderPage(w, "downloads", PageData{
+	a.renderSite(w, r, "downloads", PageData{
 		Title: "Downloads", Heading: "Download Report Maker desktop",
 		Body:  "Install the offline desktop app on your machine. Verify the SHA-256 checksum after download.",
 		CSRFToken: a.ensureCSRF(w, r), ShowLogout: true, ExtraScript: false, ShowDownloads: true,
 		DownloadLinks: links, Entitled: entitled, OrderID: entitlement.OrderID,
+		ShowJourney: true, JourneyStep: 5,
 	})
 }
 
@@ -250,9 +251,12 @@ func (a *App) download(w http.ResponseWriter, r *http.Request) {
 		}
 		body = "Complete purchase to unlock downloads, or sign in with the account used at checkout."
 	}
-	renderPage(w, "home", PageData{
+	a.renderSite(w, r, "download-info", PageData{
 		Title: "Download", Heading: "Download Report Maker",
 		Body: body, CSRFToken: a.ensureCSRF(w, r),
+		ShowJourney: true, JourneyStep: 5,
+		PrimaryCTA: "Sign in", PrimaryCTAURL: "/login",
+		SecondaryCTA: "Pricing", SecondaryCTAURL: "/pricing",
 	})
 }
 

@@ -58,11 +58,12 @@ func (a *App) authRoutes() {
 }
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	renderPage(w, "login", PageData{
+	a.renderSite(w, r, "login", PageData{
 		Title: "Sign in", Heading: "Sign in to your Report Maker account",
 		Body: "Use a passkey first, or request a one-time sign-in link by email.",
 		CSRFToken: a.ensureCSRF(w, r), ExtraScript: true,
 		ShowPasskeyLogin: true, ShowMagicLink: true, ShowPasswordLogin: true,
+		ShowJourney: true, JourneyStep: 4,
 	})
 }
 
@@ -447,12 +448,13 @@ func (a *App) customerAccount(w http.ResponseWriter, r *http.Request) {
 	if customer.PhoneVerifiedAt != nil {
 		phoneStatus = "verified"
 	}
-	renderPage(w, "account", PageData{
+	a.renderSite(w, r, "account", PageData{
 		Title: "Your account", Heading: "Your Report Maker account",
 		Body: "Signed in as " + customer.Email, CSRFToken: a.ensureCSRF(w, r),
 		Email: customer.Email, Phone: customer.Phone, PhoneVerified: phoneStatus,
 		ExtraScript: true, ShowPasskeyRegister: true, ShowPhoneVerify: true, ShowLogout: true,
 		ShowPurchasesLink: true,
+		PrimaryCTA: "Downloads", PrimaryCTAURL: "/account/downloads",
 	})
 }
 
@@ -483,10 +485,11 @@ func (a *App) customerPurchases(w http.ResponseWriter, r *http.Request) {
 		}
 		purchases = append(purchases, view)
 	}
-	renderPage(w, "purchases", PageData{
+	a.renderSite(w, r, "purchases", PageData{
 		Title: "Your purchases", Heading: "Purchases and licenses",
 		Body: "Orders linked to your account. Reveal a license key when you need to activate the desktop app.",
 		CSRFToken: a.ensureCSRF(w, r), Purchases: purchases, ExtraScript: true, ShowLogout: true,
+		PrimaryCTA: "Downloads", PrimaryCTAURL: "/account/downloads",
 	})
 }
 
@@ -528,7 +531,7 @@ func (a *App) revealPurchaseLicense(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"license_key": plain, "masked_key": MaskLicenseKey(plain)})
 		return
 	}
-	renderPage(w, "purchases", PageData{
+	a.renderSite(w, r, "purchases", PageData{
 		Title: "Your purchases", Heading: "Purchases and licenses",
 		Body: "License key for order " + orderID, CSRFToken: a.ensureCSRF(w, r),
 		LicenseKey: plain, LicenseMasked: MaskLicenseKey(plain), ExtraScript: true, ShowLogout: true,

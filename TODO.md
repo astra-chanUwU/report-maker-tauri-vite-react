@@ -460,15 +460,13 @@ can resolve a paid order without direct SQL; mutations have audit records.
 
 **Owner:** Composer 2.5 High, product review by GPT-Sol 6.1 High
 **Depends on:** C04 and C07
-**Status:** Open. Basic `/`, `/pricing`, `/download`, account/download pages
-exist; Persian/RTL journey and policy pages incomplete. Not on `origin` at C12 freeze.
+**Status:** Implemented on `feat/c10-marketing-ux` (see `CURSOR_REPORT_C10.md`).
 
-- Add product explanation, pricing, purchase, sign-in, account, purchases, and
-  downloads pages as one coherent journey.
-- Add Persian/RTL-ready layout and copy without changing the desktop React app.
-- Add privacy, refund, support, offline-use, and checksum/install guidance.
-- Make pending, cancelled, failed, and successful payment states clear.
-- Avoid adding Next.js, Convex, or a separate SPA runtime.
+- [x] Coherent Go template + HTMX journey (product → pricing → payment → sign-in → downloads).
+- [x] Persian/RTL hooks (`REPORT_SITE_LANG`, `REPORT_SITE_DIR`) without changing desktop React app.
+- [x] Privacy, refund, support, offline-use, install/checksum, FAQ pages.
+- [x] Payment status badges: pending, cancelled, failed, success.
+- [x] C06 local HTMX/static and CSRF preserved.
 
 **Acceptance:** anonymous purchase, customer sign-in, purchase history, and
 repeatable download journeys work in a real browser against the local service.

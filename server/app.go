@@ -40,6 +40,8 @@ type Config struct {
 	ReleaseManifest      string
 	DownloadLinkTTLHours int
 	DownloadRateLimit    int
+	SiteLang             string
+	SiteDir              string
 }
 
 func valueOr(value, fallback string) string {
@@ -167,6 +169,7 @@ func NewApp(cfg Config) (*App, error) {
 	app.phoneRoutes()
 	app.adminRoutes()
 	app.downloadRoutes()
+	app.marketingRoutes()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -220,14 +223,21 @@ func (a *App) routes() {
 func (a *App) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "report-maker-control-plane"})
 }
-func (a *App) home(w http.ResponseWriter, _ *http.Request) {
-	renderPage(w, "home", PageData{Title: "Offline engineering reports", Heading: "Report Maker", Body: "Build polished engineering reports from your local data. Your report workflow stays on your machine."})
+func (a *App) home(w http.ResponseWriter, r *http.Request) {
+	a.renderSite(w, r, "home", PageData{
+		Title: "Offline engineering reports", Heading: "Report Maker",
+		Body:  "Build polished engineering reports from your local data. Your report workflow stays on your machine.",
+		ShowJourney: true, JourneyStep: 1,
+		PrimaryCTA: "View pricing", PrimaryCTAURL: "/pricing",
+		SecondaryCTA: "Download", SecondaryCTAURL: "/download",
+	})
 }
 func (a *App) pricing(w http.ResponseWriter, r *http.Request) {
-	renderPage(w, "pricing", PageData{
+	a.renderSite(w, r, "pricing", PageData{
 		Title: "Pricing", Heading: "Choose a license",
 		Body:  "Pay through a domestic payment gateway. The desktop app remains useful offline.",
 		Plans: catalogPlansForView(), CSRFToken: a.ensureCSRF(w, r),
+		ShowJourney: true, JourneyStep: 2,
 	})
 }
 func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
@@ -284,25 +294,44 @@ func (a *App) paymentCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	order, ok := a.store.GetOrder(orderID)
 	if !ok || order.Authority != authority {
-		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment could not be matched", Body: "The payment reference was not recognized. Contact support with your receipt.", Status: "Unmatched payment"})
+		data := paymentStatusView("failed", orderID)
+		data.Title = "Payment"
+		data.Heading = "Payment could not be matched"
+		data.Body = "The payment reference was not recognized. Contact support with your receipt."
+		a.renderSite(w, r, "checkout-status", data)
 		return
 	}
 	if strings.ToUpper(callbackParam(r, "status", "Status")) != "OK" {
-		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment cancelled", Body: "No charge was recorded."})
+		data := paymentStatusView("cancelled", order.ID)
+		data.Title = "Payment"
+		data.Heading = "Payment cancelled"
+		data.Body = "No charge was recorded."
+		a.renderSite(w, r, "checkout-status", data)
 		return
 	}
 	result, err := a.cfg.Gateway.Verify(r.Context(), authority, order.AmountRials)
 	if err != nil || !result.Paid {
-		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment is pending", Body: "We could not verify the payment yet. Keep your receipt and contact support if needed."})
+		data := paymentStatusView("pending", order.ID)
+		data.Title = "Payment"
+		data.Heading = "Payment is pending"
+		data.Body = "We could not verify the payment yet. Keep your receipt and contact support if needed."
+		a.renderSite(w, r, "checkout-status", data)
 		return
 	}
 	fulfilled, err := a.fulfillVerifiedPayment(order, result.Reference)
 	if err != nil {
-		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment status unavailable", Body: "Please contact support with your order ID."})
+		data := paymentStatusView("failed", order.ID)
+		data.Title = "Payment"
+		data.Heading = "Payment status unavailable"
+		data.Body = "Please contact support with your order ID."
+		a.renderSite(w, r, "checkout-status", data)
 		return
 	}
 	a.notifyAfterPaidOrder(r.Context(), fulfilled)
-	renderPage(w, "checkout-status", a.paymentCompleteDisclosure(w, r, fulfilled.Order, fulfilled.LicenseKey, fulfilled.Created))
+	data := a.paymentCompleteDisclosure(w, r, fulfilled.Order, fulfilled.LicenseKey, fulfilled.Created)
+	data.StatusKind = "success"
+	data.StatusLabel = "Payment successful"
+	a.renderSite(w, r, "checkout-status", data)
 }
 
 func (a *App) fulfillVerifiedPayment(order *Order, paymentRef string) (*FulfillResult, error) {
@@ -344,7 +373,12 @@ func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data := PageData{Title: "Checkout status", Heading: "Order status", Body: "Order " + html.EscapeString(order.ID), Status: order.Status}
+	kind, label := orderStatusBadge(order.Status)
+	data := PageData{
+		Title: "Checkout status", Heading: "Order status",
+		Body: "Order " + html.EscapeString(order.ID), Status: order.ID,
+		StatusKind: kind, StatusLabel: label,
+	}
 	if order.LicenseID != "" {
 		if license, ok := a.store.FindLicenseByID(order.LicenseID); ok && license.DeliveryCiphertext != "" {
 			if plain, err := DecryptLicenseKey(a.cfg.LicenseDeliveryKey, license.DeliveryCiphertext); err == nil {
@@ -359,7 +393,7 @@ func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	renderPage(w, "checkout-status", data)
+	a.renderSite(w, r, "checkout-status", data)
 }
 
 type activationRequest struct {
