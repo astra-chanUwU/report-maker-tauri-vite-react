@@ -281,6 +281,29 @@ git diff --check
 Also separate results for automated tests, HTTP tests, browser passkey/payment
 checks, desktop interoperability, and unavailable live-provider checks.
 
+## Cursor follow-up: C03
+
+### C03 — Close license-key disclosure paths
+
+**Owner:** Grok 4.5 High (architecture/security), implemented on `feat/c03-license-disclosure`
+**Depends on:** C02 (account-safe checkout); **base for this branch:** `origin/feat/s02-license-provisioning`
+**Status:** Implemented (see `CURSOR_REPORT_C03.md`). Rebase onto `integrate/control-plane` after C00/C01.
+
+- [x] Never show the plaintext license key on an unauthenticated callback (first
+  hit or replay).
+- [x] Post-payment / checkout status pages show order status and a masked key
+  only unless the customer has an authenticated session that owns the order.
+- [x] Authenticated reveal via `/account/purchases/reveal`; license-access email
+  uses a masked hint and account link with no secrets in logs or URLs.
+- [x] No reusable receipt bearer token; sign-in remains the recovery path.
+- [x] `REPORT_LICENSE_DELIVERY_KEY` (AES delivery) stays separate from Ed25519
+  lease signing (`REPORT_SIGNING_PRIVATE_KEY`).
+- [x] Tests: unauthenticated callback cannot recover full key; owning customer
+  can after sign-in; another customer cannot.
+- [x] `NotifyLicenseIssued` / `afterLicenseProvisioned` hook for C04 wiring.
+
+**Acceptance:** met on this branch (`go test ./...`, `go vet ./...`).
+
 ## Required report for the repository owner
 
 After each completed slice, and again at the end, write a report for review. Save
