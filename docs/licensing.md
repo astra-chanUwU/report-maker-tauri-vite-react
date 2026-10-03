@@ -1,20 +1,21 @@
-# Licensing (S09 decision)
+# Licensing
 
 ## Model
 
-- **Perpetual license key, offline-validated.** Buy once, use forever for the current major.
+- **Perpetual license key, offline-capable.** Buy once, use forever for the current major.
+- The server controls activation, device count, revocation, and hosted entitlements. The core report pipeline remains usable offline during the signed lease period.
 - Optional subscription later only for hosted extras (AI credits, template packs, priority updates). The core report pipeline never requires a subscription.
 - Dev builds (`npm run dev`, `vite dev`, `localhost` + no Tauri) are never hard-locked.
 
-## Key format (v1, placeholder checksum)
+## Current development validator (v1, placeholder checksum)
 
 `RM-XXXX-XXXX-XXXX` where each `X` is `A–Z0–9` and the 12 payload chars satisfy
 `sum(charValue) mod 36 == 0` (`0–9` → 0–9, `A–Z` → 10–35).
 
 This is intentionally simple: it proves the plumbing (Rust validator +
 TS mirror + persisted status + grace period) without pretending to be
-unbreakable. Before selling keys, replace the checksum with HMAC-SHA256
-(Rust `hmac` crate, server-side issuance, key = payload + tag) and bump to v2.
+production licensing. It must not be used to issue customer keys because
+anyone can generate another checksum-valid value.
 
 Example valid keys (checksum 0):
 
@@ -26,15 +27,37 @@ node scripts/gen-license.mjs          # prints a valid v1 key
 node scripts/gen-license.mjs RM-TEST-1234-XXXX  # brute-forces last 4 chars
 ```
 
-## Validation
+## Production validation design
 
-- Rust: `src-tauri/src/license.rs` → `validate_license` Tauri command.
-- Web/TS mirror: `src/lib/license.ts` (`checkKeyFormat`) — same checksum rule; used in `vite dev` and as fallback when `invoke` unavailable.
-- Stored via `tauri-plugin-store` when available, `localStorage` fallback in
-  `vite dev`. Record includes key, validated-at timestamp, dev flag.
-- Offline grace: a previously validated key stays valid for 30 days without
-  re-check. After 30 days the stored record reports `Grace period expired — re-validate online.` but never blocks export; dev flag always bypasses.
-- Dev bypass: `isDev()` (localhost without Tauri) returns a record with `dev: true` even without a key; production Tauri builds require a key only if you add a gate (currently no hard lock).
+The production app will use a Go HTTPS service that also owns the marketing
+site, checkout, and domestic payment callbacks. The license key is
+an opaque server-issued identifier; the desktop app does not decide whether a
+key is genuine by itself.
+
+- The Tauri backend generates a device keypair and stores the private key in
+  the OS keychain.
+- `POST /v1/activations` exchanges a license key and device public key for a
+  signed offline lease.
+- The lease is signed with Ed25519. The private signing key exists only on the
+  server; the app contains only the public verification key.
+- The Rust side verifies the lease before paid operations. The UI only displays
+  the result and never becomes the security boundary.
+- A perpetual license has no product expiry, but its lease is refreshed on a
+  schedule (for example, every 30 days) so revocations and device limits take
+  effect when the app reconnects.
+- The server stores a hash of the license key, the device public key needed for
+  proof verification, activation metadata, revocation state, and entitlements.
+  Report files stay on the user’s machine.
+- A purchase creates a pending order, redirects the customer to the selected
+  domestic payment gateway, and accepts the license only after the Go service
+  verifies the gateway authority and exact stored amount server-to-server.
+- The payment gateway is an adapter behind the Go service. It never owns
+  license state, activation state, or report data.
+
+- The current Rust validator and TypeScript mirror are localhost-only
+  development compatibility code. Release builds use the signed lease path.
+- Dev bypass: `isDev()` (localhost without Tauri) remains available and is
+  never hard-locked.
 
 ## Updates
 
@@ -47,9 +70,14 @@ Settings → License → “Check for updates” compares `tag_name` to the bund
 version and links to the release page. Zero network calls unless the user
 clicks. CI (`release.yml`) publishes the Tauri bundles as a draft GitHub Release on `v*` tags and on manual dispatch.
 
-## Selling checklist (before v2)
+## Implementation order
 
-1. Add Rust `hmac` + `sha2`, issue HMAC-SHA256 tags server-side, embed `payload.tag`.
-2. Rotate to `RM-...` v2, keep v1 validator for grace.
-3. Add server revocation list + periodic online check (retain 30-day offline grace).
-4. Sign Tauri updater keys (`tauri signer generate`) and switch to `tauri-plugin-updater` for auto-updates.
+1. Keep the Go service on a persistent SQLite database with WAL and offsite
+   backups; add Postgres only if deployment later needs multiple instances or
+   high-concurrency workers.
+2. Add the selected domestic gateway adapter and license delivery workflow.
+3. Provision the Go service with a persistent `REPORT_SIGNING_PRIVATE_KEY`,
+   allowlisted AI model, and provider key.
+4. Build release binaries with `REPORT_MAKER_LICENSE_PUBLIC_KEY` set to the
+   matching base64url Ed25519 public key.
+5. Keep Tauri updater signing separate from the license signing key.

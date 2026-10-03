@@ -4,8 +4,7 @@ import { loadTelemetry, saveTelemetry, track, type TelemetrySettings } from "../
 import { Activity } from "lucide-react";
 import { Button } from "./ui/button";
 import { Panel } from "./ui/card";
-import { CheckRow, Field } from "./ui/form";
-import { Input } from "./ui/input";
+import { CheckRow } from "./ui/form";
 import { toast } from "./ui/sonner";
 
 export function TelemetryCard() {
@@ -30,31 +29,8 @@ export function TelemetryCard() {
         checked={settings.enabled}
         onChange={(v) => set({ enabled: v })}
         label="Share anonymous usage & crash reports"
-        description="Events: app started, report generated/failed, license validated, crash. No personal data, no spectra."
+        description="Events: app started, report generated/failed, license validated, crash type. No personal data, no spectra."
       />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field
-          label="PostHog key"
-          htmlFor="ph-key"
-          hint="Optional. Without it events go to the console."
-        >
-          <Input
-            id="ph-key"
-            value={settings.posthogKey}
-            placeholder="phc_…"
-            disabled={!settings.enabled}
-            onChange={(e) => set({ posthogKey: e.target.value.trim() })}
-          />
-        </Field>
-        <Field label="PostHog host" htmlFor="ph-host">
-          <Input
-            id="ph-host"
-            value={settings.posthogHost}
-            disabled={!settings.enabled}
-            onChange={(e) => set({ posthogHost: e.target.value.trim() })}
-          />
-        </Field>
-      </div>
       <div>
         <Button
           size="sm"
@@ -62,9 +38,7 @@ export function TelemetryCard() {
           disabled={!settings.enabled}
           onClick={() => {
             void track("app_started", { manual_test: true }).then(() =>
-              toast.success(
-                settings.posthogKey ? "Test event sent." : "Mock event logged to console."
-              )
+              toast.success("Test event queued.")
             );
           }}
         >

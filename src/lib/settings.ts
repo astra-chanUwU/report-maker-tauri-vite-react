@@ -299,36 +299,3 @@ export function saveZoneLimits(s: ZoneLimitSet): void {
     // ignore — keeps working in-memory
   }
 }
-
-const AI_KEY = "report-maker:ai:v1";
-
-export interface AiSettings {
-  apiKey: string;
-  model: string;
-}
-
-export function defaultAiSettings(): AiSettings {
-  return { apiKey: "", model: "gpt-4o-mini" };
-}
-
-export function loadAiSettings(): AiSettings {
-  try {
-    const raw = localStorage.getItem(AI_KEY);
-    if (!raw) return defaultAiSettings();
-    const o = JSON.parse(raw) as Partial<AiSettings>;
-    return {
-      apiKey: typeof o.apiKey === "string" ? o.apiKey : "",
-      model: typeof o.model === "string" && o.model ? o.model : "gpt-4o-mini",
-    };
-  } catch {
-    return defaultAiSettings();
-  }
-}
-
-export function saveAiSettings(s: AiSettings): void {
-  try {
-    localStorage.setItem(AI_KEY, JSON.stringify(s));
-  } catch {
-    // ignore — key stays in-memory only
-  }
-}

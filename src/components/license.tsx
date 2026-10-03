@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useUi } from "../lib/i18n";
 import {
   APP_VERSION,
   checkForUpdates,
   clearLicense,
+  deactivateLicense,
+  licenseStatus,
   loadLicense,
+  refreshLicense,
   validateLicense,
   type LicenseRecord,
 } from "../lib/license";
@@ -27,6 +30,16 @@ export function LicenseCard() {
     error?: string;
   } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    void licenseStatus().then((status) => {
+      if (status) {
+        setRecord(status);
+        if (status.key) setKey(status.key);
+      }
+    });
+  }, []);
 
   const handleValidate = async () => {
     setBusy(true);
@@ -35,7 +48,7 @@ export function LicenseCard() {
       setRecord(rec);
       if (rec.valid) {
         void track("license_validated", {});
-        toast.success("License valid.");
+        toast.success("Device activated.");
       } else toast.error(rec.reason);
     } finally {
       setBusy(false);
@@ -61,7 +74,7 @@ export function LicenseCard() {
     <Panel
       icon={<KeyRound />}
       title={t("licenseTitle")}
-      description="Perpetual key, validated offline."
+      description="Activate this device with a signed offline lease."
       contentClassName="grid gap-3"
     >
       <div className="grid gap-1.5">
@@ -74,7 +87,7 @@ export function LicenseCard() {
             onChange={(e) => setKey(e.target.value)}
           />
           <Button onClick={handleValidate} disabled={busy || !key.trim()}>
-            {busy ? "Checking…" : "Validate"}
+            {busy ? "Activating…" : "Activate"}
           </Button>
         </div>
         {record ? (
@@ -85,21 +98,56 @@ export function LicenseCard() {
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            No key entered — app runs unlocked in dev.
+            No activated device — localhost web development remains unlocked.
           </p>
         )}
+        {record?.lease?.features ? (
+          <p className="text-xs text-muted-foreground">
+            Entitlements: {record.lease.features.core_export ? "local export" : ""}
+            {record.lease.features.core_export && record.lease.features.hosted_ai ? " · " : ""}
+            {record.lease.features.hosted_ai ? "hosted AI" : "none"}
+          </p>
+        ) : null}
         {record ? (
-          <div>
+          <div className="flex gap-2">
+            {record.activationId ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={refreshing}
+                onClick={async () => {
+                  setRefreshing(true);
+                  try {
+                    const next = await refreshLicense();
+                    setRecord(next);
+                    if (next.valid) toast.success("Lease refreshed.");
+                    else toast.error(next.reason);
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : String(error));
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+              >
+                {refreshing ? "Refreshing…" : "Refresh lease"}
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => {
-                clearLicense();
-                setRecord(null);
-                setKey("");
+              onClick={async () => {
+                try {
+                  await deactivateLicense();
+                  clearLicense();
+                  setRecord(null);
+                  setKey("");
+                  toast.success("Device deactivated.");
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : String(error));
+                }
               }}
             >
-              Remove key
+              Deactivate
             </Button>
           </div>
         ) : null}

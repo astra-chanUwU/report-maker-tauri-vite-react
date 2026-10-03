@@ -1,212 +1,315 @@
-# report-maker-tauri-vite-react — TODO
+# Report Maker implementation guide for Cursor
+
+This file is the handoff for finishing the Report Maker product from the current
+checkout. Work in small, reviewable slices. Do not rewrite the application or
+introduce a second backend stack.
+
+## Product and architecture decisions
+
+- The backend is a single Go modular monolith in `server/`.
+- The public website is Go `html/template` plus HTMX. The Tauri desktop app
+  remains React/TypeScript and talks to the Go JSON API under `/v1/*`.
+- SQLite is the first production database. Keep WAL, foreign keys, the busy
+  timeout, a single writer connection, persistent `REPORT_DB_PATH`, and tested
+  offsite backups. Do not replace SQLite with Postgres. A Postgres repository is
+  only a later scale option after measured need for multiple writers, workers,
+  or multiple service instances.
+- Report generation, `.sp3`/CSV data, DOCX export, and local files remain on the
+  desktop. The service receives only the metadata required by its contracts.
+- ZarinPal is the first payment provider. The flow is request → redirect →
+  callback → server-side verify → amount check → idempotent paid order.
+- Customer identity is separate from admin identity. Customers provide actual
+  first name, surname, email, and Iranian phone number. The intended order is
+  passkey first, email magic link/passwordless fallback, and optional password
+  fallback. Customer sessions must never authenticate desktop `/v1/*` routes.
+- A paid customer can download the release repeatedly. Downloads may be
+  authenticated or renewable expiring links with rate limits; they must not be
+  one-time links as the normal experience.
+- Email is required for receipts, magic links, and download access. SMS is for
+  phone verification or recovery. Keep provider calls behind interfaces.
+- AI and telemetry reuse the activation/entitlement boundary. Telemetry remains
+  consent-gated and must not contain report contents or identifying project data.
+
+## Current checkout: do not discard it
+
+The checkout already contains uncommitted implementation for:
+
+- Ed25519 device keys and signed offline leases in Rust.
+- Tauri licensing, AI entitlement, and consented telemetry changes.
+- Go health, activation, refresh, revoke, AI, and telemetry contracts.
+- SQLite persistence for customers, orders, licenses, activations, payment
+  attempts, challenges, sessions, and downloads.
+- ZarinPal request/verify adapter plus local demo gateway.
+- Go marketing/pricing/checkout/callback pages.
+- Customer passkey ceremony endpoints, magic-link sessions, and Argon2id
+  password fallback.
+
+Read these before editing:
+
+- `docs/go-architecture.md`
+- `docs/control-plane.md`
+- `docs/licensing.md`
+- `server/README.md`
+- `server/app.go`, `server/store.go`, `server/payment.go`, `server/auth.go`
+- the existing Tauri license/AI/telemetry files
+
+Preserve unrelated work. Inspect `git status`, the current diff, and the current
+runtime before changing anything.
+
+## Model allocation in Cursor
+
+Use the strongest available model for review and the implementation model for
+routine changes. If these model names are available in Cursor:
+
+- **Grok 4.5, high:** architecture, security review, payment/auth threat review,
+  schema decisions, difficult debugging, and final diff review.
+- **Composer 2.5, high:** implementation, tests, migrations, templates, and
+  routine integration work after the slice contract is clear.
+- If Cursor supports one model orchestrating the other, use Grok 4.5 high as
+  the reviewer/orchestrator and Composer 2.5 high as the implementer. The
+  orchestrator must give Composer a bounded slice and inspect its diff before
+  accepting it.
+- If either named model is unavailable, use the closest available high-quality
+  equivalent and record that substitution in the report.
+
+Do not split one slice across competing unreviewed edits. One implementation
+agent owns a slice; the reviewer checks the resulting diff and tests.
+
+## Slice protocol
+
+For every slice:
+
+1. Start by stating the slice objective, files likely to change, dependencies,
+   and acceptance checks.
+2. Inspect the real code and database schema before proposing changes.
+3. Implement the smallest vertical path that can be exercised locally.
+4. Add meaningful tests for contracts, persistence, idempotency, and security
+   boundaries. Do not add tests that merely mirror implementation details.
+5. Run the checks listed below and record exact results.
+6. Review the diff for accidental scope, secrets, privacy leaks, and stale docs.
+7. Commit the slice on a dedicated branch with a message such as
+   `feat(control-plane): license delivery slice`.
+8. Do not push or merge without an explicit instruction from the repository
+   owner.
+9. Write a concise handoff report before moving to the next slice.
+
+A slice is complete only when its acceptance checks pass and its remaining
+limitations are written down. Do not mark a browser/device acceptance test as
+passed because a Go unit test passed.
+
+## Remaining implementation slices
+
+### S01 — Finish customer identity for production use
+
+**Depends on:** current SQLite/auth groundwork.
 
-> Tauri 2 + Vite 8 + React 19 + TypeScript + Tailwind 4 + docx 9
-> Source of truth for logic to port: `../report-generator/src/{parseSp3,generateDocx,ai}.js`
-> Package manager: npm (tauri.conf currently says pnpm — see S00). Node 20+.
+Complete the passkey-first customer account flow:
 
-## Learned real format (refinement, verified on Elika Tejarat DB)
+- Add a small browser client for WebAuthn JSON ceremony responses, or use a
+  maintained browser helper without turning the site into an SPA.
+- Verify registration and discoverable login on the configured RP ID and origin.
+- Add CSRF protection for mutating browser forms, rate limits for magic links,
+  password login, and passkey attempts, and session rotation after login.
+- Store and update WebAuthn credential counters/flags correctly. Keep challenge
+  records single-use and expiring.
+- Add email-provider interface for magic links. Development mode may retain a
+  safe local outbox; production must not expose tokens in response headers.
+- Add phone verification state and an SMS-provider interface without making SMS
+  a prerequisite for local development.
+- Keep admin authentication separate and do not reuse customer cookies for admin.
 
-- `.sp3` = MS Access Jet DB (`Standard Jet DB` magic) — not readable in WebView.
-  Drop the raw file and the app explains the export path instead of silent fallback.
-- Supported ingest: CSV export of the `Data` table (`mdb-export file.sp3 Data`):
-  38 columns, `Specdata` blob = `\ooo` octal escapes of `NoLines` float32-LE amps.
-- Freq axis is derived: `freq(i) = (i+1) * BandWidth` (verified: decoded max ==
-  `ValuePeakMaxV`, `(argmax+1)*BW` == `FreqPeakMaxV` on 5 real rows).
-- `MeasDate` is an OLE Automation date → ISO. Overall RMS/Peak/Unit/Point travel
-  in `meta.overall` into preview + docx. Multi-row exports preview row 1 only.
-- Future: Tauri-side `mdb-export` integration so raw `.sp3` drops work directly
-  (`mdbtools-win` ships the binaries). 76–960 MB files + 296 MB CSVs exist —
-  never full-decode for sniffing; first-row-only parse is intentional.
+**Acceptance:** protocol tests pass; a real browser passkey registration and
+login are manually verified on the chosen domain; magic-link tokens are never
+returned in production responses; `go test ./...` and `go vet ./...` pass.
 
-Each slice is self-contained for one agent. Check the box when done. Respect `Depends on`.
+### S02 — Provision a license after verified payment
 
----
+**Depends on:** S01 and the existing ZarinPal adapter.
 
-### S00 — Chore: align toolchain
+- Define the license product and plan data in one server-owned catalog.
+- Generate a unique license key only after a verified payment.
+- Store only a hash for lookup plus encrypted/recoverable customer delivery data
+  according to the security review; never put the signing private key in the
+  client or browser.
+- Make provisioning transactionally idempotent across callback retries and
+  ZarinPal verification code `101`.
+- Associate the license with the customer and order. Do not provision on a
+  client-supplied callback amount or an unverified authority.
+- Add a customer purchase page showing order status and license entitlement.
 
-**Depends on:** none
-**Goal:** deterministic dev/build for every agent.
+**Acceptance:** demo gateway and a mocked ZarinPal server both prove that one
+paid order yields one license; failed, mismatched, repeated, and cancelled
+callbacks cannot create a license.
 
-- Decide `npm` vs `pnpm` (repo currently installed with `npm 10`; `src-tauri/tauri.conf.json` says `pnpm dev/build`). Pick one and fix `tauri.conf.json` + README.
-- Add scripts: `lint`, `format`, `typecheck` (tsc --noEmit). Add `.editorconfig` if missing.
-- Ensure `npm run build` and `cargo check` (if Rust toolchain present) both green.
-- Document `npm run dev` vs `npm run tauri` vs `npm run tauri dev`.
+### S03 — Repeatable release downloads
 
-**Done when:** `tauri.conf.json` matches chosen PM, README updated, `npm run build` passes.
+**Depends on:** S01 and S02.
 
----
+- Define release artifacts and versions outside the database seed path.
+- Add authenticated customer download routes and a purchase/download page.
+- Permit repeated downloads, with renewable expiry and rate limiting.
+- Record download audit rows without storing report contents.
+- Make the artifact path configurable and prevent path traversal or arbitrary
+  filesystem reads.
+- Include a clear offline desktop download path and checksum information.
 
-### S01 — Design system: Tailwind + shadcn
+**Acceptance:** an entitled customer can download the same artifact multiple
+  times, an expired link can be renewed after authentication, a non-entitled
+  customer cannot download it, and path traversal tests fail safely.
 
-**Depends on:** S00
-**Goal:** app doesn't look like Vite template.
+### S04 — Receipts, magic links, and provider adapters
 
-- Init `shadcn/ui` (works with Vite + Tailwind 4): `npx shadcn@latest init`, pick style/new-york, neutral base, CSS variables.
-- Add primitives needed early: `Button`, `Input`, `Label`, `Card`, `Table`, `Dialog`, `Tabs`, `Toast`/`Sonner`.
-- Replace `src/App.css` with Tailwind tokens + `src/index.css` via shadcn. Keep `App.tsx` minimal (shell only).
-- Verify dark mode + focus rings.
+**Depends on:** S01 and S02.
 
-**Done when:** `npx tsc --noEmit` passes, story/demo page renders shadcn components, no template CSS remains.
+- Add an email interface with a local outbox implementation for tests.
+- Add production configuration for the selected Iranian transactional email
+  provider and domain authentication.
+- Send purchase receipt, license access, magic-link, and download messages.
+- Add an SMS interface for phone verification/recovery and a local fake.
+- Keep provider timeouts, retries, redacted logs, and idempotency explicit.
 
----
+**Acceptance:** tests assert message type, recipient, order/license identifiers,
+  and that secrets/tokens are not logged. Provider outages leave the order state
+  recoverable and visible to support.
 
-### S02 — Core engine (no UI): parseSp3 + generateDocx + ai fallback
+### S05 — Harden the ZarinPal production path
 
-**Depends on:** S00
-**Goal:** port offline logic to `src/lib/` as pure TS, fully tested, no Tauri APIs.
+**Depends on:** S02 and S04.
 
-- `src/lib/parseSp3.ts` — port `../report-generator/src/parseSp3.js`:
-  - Input: `Uint8Array | ArrayBuffer`, filename. Output: `{ meta, spectra: {freq,amp}[] }`
-  - Preserve heuristics: text CSV → binary float32 LE pairs → synthetic demo fallback (keep same behavior for now).
-  - Export stats: `spectra_points`, `freq_min/max`, `amp_min/max`, `peak`.
-- `src/lib/generateDocx.ts` — port `generateDocx.js` to `docx@9` API:
-  - `buildDocx({ meta, spectra, options, aiDraft }) => Promise<Buffer|Blob>` using `Packer.toBlob` for browser.
-  - Keep editable tables + PNG chart via `renderChartPng`/`encodePng` (fix duplicated IDAT logic; use `zlib` only if available, else pure-JS fallback).
-  - No `fs`, no `Buffer` Node-only — use `Uint8Array` so it runs in WebView.
-- `src/lib/ai.ts` — port `ai.js`:
-  - Client-side `draftReport({meta,spectra,options})` with `OPENAI_API_KEY` optional; fallbackDraft when offline.
-  - Don't ship key; read from settings store (S08) or env for dev.
-- Add unit tests: `src/lib/__tests__/parseSp3.test.ts` + `generateDocx.test.ts` (vitest). Include 3 fixtures: text .sp3, binary float32 .sp3, empty → synthetic.
+- Keep all amounts in integer rials and compare the verified amount to the
+  stored order amount.
+- Validate authority, callback status, merchant configuration, and order
+  ownership. Treat verification codes `100` and `101` according to the provider
+  contract, with idempotent state transitions.
+- Add timeout, bounded response-body, retry, and redacted error handling.
+- Add a test server covering request, redirect, callback, verify success,
+  already-verified, mismatch, cancellation, provider error, and retry behavior.
+- Never trust `order_id`, email, or mobile values returned by the browser.
 
-**Done when:** tests green, `buildDocx` produces valid `.docx` (unzip check), no Node `require('zlib')` crash in WebView.
+**Acceptance:** all payment tests pass without live credentials; the live
+  sandbox/manual checklist is documented separately from automated tests.
 
----
+### S06 — Admin operations
 
-### S03 — Ingest UI: drop zone + preview
+**Depends on:** S01–S05.
 
-**Depends on:** S01, S02
-**Goal:** user can drop a `.sp3` and see data.
+Build a separate admin boundary for:
 
-- File drop + file picker (accept `.sp3`, `.txt`, `.csv` for dev). Use HTML5 File API; no Tauri fs yet.
-- Call `parseSp3`, show: filename, size, points, range, peak, warning if synthetic fallback.
-- Preview: spectra table (first 80 rows, virtualize if >500) + chart preview (canvas or SVG line chart — live, not just docx PNG).
-- Error/empty states.
+- admin login/session and CSRF protection;
+- customer/order/payment search;
+- license provisioning/revocation and activation inspection;
+- download and provider delivery status;
+- safe audit log and support lookup by order/customer/phone.
 
-**Done when:** dropping `report-generator` fixtures shows correct meta + table + chart, synthetic case shows banner.
+Do not expose customer passwords, passkey private material, raw magic-link
+contents, provider secrets, or the signing private key in admin views.
+
+**Acceptance:** admin routes reject customer sessions, support can resolve an
+order without direct database edits, and all mutating actions are audited.
 
----
+### S07 — Marketing website and purchase UX
 
-### S04 — Report form: metadata & defaults
+**Depends on:** S02–S04.
 
-**Depends on:** S01
-**Goal:** predictable defaults, no blank report.
-
-- Fields: `projectName`, `engineer`, `reportDate` (default today), `units` (SI/metric toggle), `norm` (Default/normalization string), `notes` (textarea).
-- Validation (zod or simple): required: projectName, engineer. Date = ISO yyyy-mm-dd.
-- Persist defaults to Tauri store (see S08, but make this slice work with `localStorage` fallback so it doesn't block).
-- `Reset to defaults` + `Clear`.
-
-**Done when:** form values feed `options` for S05/S06, persists across reload.
-
----
-
-### S05 — Export: .docx generation + save
-
-**Depends on:** S02, S03, S04
-**Goal:** one click → editable Word file on disk.
-
-- Wire `Generate Report` button: `buildDocx({meta,spectra,options,aiDraft})` → save.
-- Tauri path: use `@tauri-apps/plugin-dialog` `save()` + `@tauri-apps/plugin-fs` (or `writeFile` via Rust) to write Blob. Web fallback: anchor download.
-- Filename: `${projectName}-${date}.docx` sanitized.
-- Toast on success + `Open folder` (via `plugin-opener`).
-- Handle large spectra (80–500 rows) without OOM.
-
-**Done when:** dropped file + form → generates and saves `.docx` that opens in Word/LibreOffice with editable tables + chart image.
-
----
-
-### S06 — Live chart editing
-
-**Depends on:** S03, S05
-**Goal:** edit before export, not after.
-
-- Chart component with editable data points (drag or table inline edit) — updates preview + `spectra` array.
-- Controls: smoothing, peak highlight toggle, point limit (80/120/400).
-- Edits are in-memory only; export uses edited `spectra`.
-
-**Done when:** editing a point/table cell updates chart + exported docx table + PNG.
-
----
-
-### S07 — Templates & branding
-
-**Depends on:** S01, S05
-**Goal:** template gallery + custom cover/logo.
-
-- Gallery: 2–3 docx templates (cover layout, color, fonts) selectable before export. Store choice in settings.
-- Branding: upload logo (png/svg) + cover image, preview on cover. Persist via store.
-- `generateDocx` accepts `templateId` + `branding` (logo as base64 ImageRun).
-
-**Done when:** switching template changes docx cover/headings/colors; logo appears on cover and header.
-
----
-
-### S08 — History & persistence (past reports)
-
-**Depends on:** S01, S02
-**Goal:** past reports list, no server.
-
-- Choose Tauri store: `tauri-plugin-store` or `tauri-plugin-sql` (SQLite). Keep `localStorage` adapter for `vite dev`.
-- Store: report history entries `{ id, projectName, engineer, date, filename, meta, options }` (not full spectra Blob beyond threshold — store file path or truncated).
-- UI: `Past Reports` tab — list, search, reopen, delete, `Reveal in Finder`.
-- Cap history at 100 entries.
-
-**Done when:** generating a report adds to history; reload restores list; delete works.
-
----
-
-### S09 — Licensing & updates
-
-**Depends on:** S05
-**Goal:** perpetual key + optional subscription check, Tauri-native.
-
-- Decide model: perpetual license key (offline-validated) + optional subscription for updates/AI. Document decision in `docs/licensing.md`.
-- Implement key validation in Rust (`src-tauri/src/license.rs`): HMAC or JWT, stored via `tauri-plugin-store`. Offline grace period.
-- UI: `Settings → License` — enter key, status, `Check for updates` (via `tauri-plugin-updater` or manual GitHub Releases).
-- No hard lock on dev builds.
-
-**Done when:** license enter/validate persists; app runs without license in dev; updater check works.
-
----
-
-### S10 — Telemetry & crashes (PostHog)
-
-**Depends on:** S01, S08
-**Goal:** opt-in analytics, no surprise tracking.
-
-- Add PostHog JS (`posthog-js`) or Tauri-compatible proxy. Disabled by default.
-- Settings toggle: `Share anonymous usage & crash reports` (default OFF). When off, zero network calls.
-- Events: `report_generated`, `report_failed`, `app_started`, `license_validated` — no PII, no spectra contents.
-- Crash: hook `window.onerror` + Rust panic via `tauri` logging to PostHog.
-
-**Done when:** toggle off = no requests (verified in devtools); toggle on = events flow to PostHog (or console mock).
-
----
-
-### S11 — AI drafts (online, optional)
-
-**Depends on:** S02, S04
-**Goal:** `AI Assist` is additive, never required.
-
-- Settings: `OpenAI API key` + `Model` (default `gpt-4o-mini`), stored locally, never committed.
-- UI: `Draft with AI` button on report form — calls `draftReport`, fills `Summary/Methodology/Observations/Recommendations/Conclusion` fields (editable).
-- Offline/failed → fallbackDraft + toast, never block export.
-- Rate-limit / 30s timeout.
-
-**Done when:** with key → AI fills fields; without key/offline → fallback fills fields; user can edit before export.
-
----
-
-## Agent rules
-
-- One slice = one branch/PR. Keep diffs < 400 lines where possible.
-- Run `npm run build` before pushing. Don't `cargo` break `src-tauri`.
-- Don't invent `.sp3` format — keep heuristics, add fixtures instead of guessing.
-- Ask in PR description: "Slice S0X — ..." and check the box here when merged.
-
-## Suggested order for parallel work
-
-- Wave 1 (no deps): S00
-- Wave 2: S01, S02
-- Wave 3: S03, S04, S08-start, S11-start
-- Wave 4: S05, S06, S07, S09, S10
+Keep the website server-rendered with Go templates and HTMX:
+
+- landing page explaining offline report generation;
+- pricing/product page;
+- checkout form for name, surname, email, and Iranian phone;
+- ZarinPal redirect and clear pending/success/failure pages;
+- sign-in/account/purchases/downloads pages;
+- FAQ, privacy, refund/support, and contact pages;
+- responsive RTL-capable styling if Persian copy is introduced.
+
+Do not add Next.js, Convex, or a second frontend runtime for this service.
+
+**Acceptance:** anonymous marketing, checkout, authenticated account, and repeat
+ download journeys work in a browser against the local Go service.
+
+### S08 — AI and telemetry production boundaries
+
+**Depends on:** S02 and existing desktop contract.
+
+- Require a valid activation/entitlement for hosted AI.
+- Keep provider keys server-side, allowlist models, apply per-activation limits,
+  and preserve deterministic fallback behavior when unavailable.
+- Keep telemetry disabled until explicit consent, validate an event allowlist,
+  redact payloads, and provide retention/deletion controls.
+- Add integration tests proving the service never receives `.sp3` bytes, paths,
+  project names, report text, or raw exception messages.
+
+**Acceptance:** desktop contract tests remain green, unauthorized AI is rejected,
+  consent-off telemetry makes no request, and privacy tests pass.
+
+### S09 — Deployment, backups, and release operations
+
+**Depends on:** S01–S08.
+
+- Document an Iran-hosted VPS deployment with 2–4 vCPU, 4 GB RAM, 40–80 GB NVMe,
+  public IPv4, HTTPS, outbound provider access, and offsite backups.
+- Add service configuration, migrations, health checks, graceful shutdown, log
+  redaction, firewall/reverse-proxy guidance, and artifact storage.
+- Automate SQLite backup plus restore verification. Back up the signing key
+  separately with restricted access.
+- Choose and configure the final domain before production passkey enrollment.
+- Document ZarinPal, email, SMS, domain, and VPS secrets without committing any
+  values.
+
+**Acceptance:** a clean VPS-style environment can restore the database, start the
+service, pass health checks, and serve HTTPS with the configured WebAuthn origin.
+
+### S10 — Final verification and handoff
+
+**Depends on:** all required slices.
+
+Run and record:
+
+```text
+cd server && go test ./...
+cd server && go vet ./...
+npm run typecheck
+npm test -- --run
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml -q
+git diff --check
+```
+
+Also separate results for automated tests, HTTP tests, browser passkey/payment
+checks, desktop interoperability, and unavailable live-provider checks.
+
+## Required report for the repository owner
+
+After each completed slice, and again at the end, write a report for review. Save
+the final report as `CURSOR_REPORT.md` and also return it in the Cursor response.
+Do not claim work is complete merely because files changed.
+
+Use this structure:
+
+1. **Slice and outcome** — what was implemented and what remains.
+2. **Files changed** — grouped by backend, website, desktop, docs, and tests.
+3. **Architecture decisions** — choices made and why they fit the SQLite-first
+   Go monolith.
+4. **Security/privacy review** — auth boundary, secrets, CSRF, rate limits,
+   payment verification, download authorization, and telemetry redaction.
+5. **Validation evidence** — exact commands and pass/fail results, separated by
+   automated, HTTP, browser/device, and live-provider checks.
+6. **Known limitations** — especially anything not verified with a real browser,
+   ZarinPal credentials, SMS, email, VPS, or domain.
+7. **Next slice** — one bounded recommendation with dependencies and acceptance
+   checks.
+8. **Git state** — branch, commit, changed files, and whether anything remains
+   uncommitted. Never include secrets.
+
+The report should be factual, concise, and suitable for another engineer to
+review. If blocked, explain the exact external dependency and leave the checkout
+in a recoverable state.
+
+## Historical format notes
+
+- `.sp3` is an MS Access Jet database. Raw `.sp3` is not readable in the WebView.
+- CSV export of the `Data` table is the supported current ingestion path.
+- `Specdata` contains `\ooo` octal escapes for float32 little-endian amplitudes.
+- Frequency is derived as `(i + 1) * BandWidth`.
+- Large files must not be fully decoded just to sniff their format.
+- Preserve existing offline report generation and DOCX behavior while service work
+  proceeds.

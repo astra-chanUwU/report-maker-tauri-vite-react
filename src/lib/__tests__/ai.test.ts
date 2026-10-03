@@ -1,6 +1,13 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { draftReport, fallbackDraft, type AiDraftInput } from "../ai";
 
+vi.mock("../license", () => ({
+  getHostedRequestAuth: vi.fn(),
+  getControlPlaneUrl: vi.fn().mockResolvedValue("http://127.0.0.1:8787"),
+  signHostedRequest: vi.fn(),
+}));
+import { getHostedRequestAuth, signHostedRequest } from "../license";
+
 function input(over?: Partial<AiDraftInput>): AiDraftInput {
   return {
     meta: { filename: "data.csv", source: "spec-csv" },
@@ -58,39 +65,55 @@ describe("draftReport", () => {
     globalThis.fetch = origFetch;
   });
 
-  it("returns fallback when no key (zero network)", async () => {
+  it("returns fallback when no hosted entitlement (zero network)", async () => {
     const spy = vi.fn();
     globalThis.fetch = spy as unknown as typeof fetch;
-    const r = await draftReport(input(), { apiKey: "" });
+    vi.mocked(getHostedRequestAuth).mockResolvedValue(null);
+    const r = await draftReport(input());
     expect(r.usedFallback).toBe(true);
     expect(r.draft.summary).toBeTruthy();
     expect(spy).not.toHaveBeenCalled();
   });
 
   it("times out and falls back without hanging", async () => {
+    vi.mocked(getHostedRequestAuth).mockResolvedValue({
+      activationId: "act_test",
+      headers: { Authorization: "Bearer test" },
+    });
+    vi.mocked(signHostedRequest).mockResolvedValue("signature");
     globalThis.fetch = ((_: string, opts?: { signal?: AbortSignal }) =>
       new Promise((_resolve, reject) => {
         opts?.signal?.addEventListener("abort", () =>
           reject(Object.assign(new Error("aborted"), { name: "AbortError" }))
         );
       })) as unknown as typeof fetch;
-    const p = draftReport(input(), { apiKey: "sk-test", timeoutMs: 30 });
-    vi.advanceTimersByTime(40);
+    const p = draftReport(input(), { timeoutMs: 30 });
+    await vi.advanceTimersByTimeAsync(40);
     const r = await p;
     expect(r.usedFallback).toBe(true);
     expect(r.warning).toMatch(/timed out|unavailable/i);
   });
 
   it("uses fallback when API returns non-JSON", async () => {
+    vi.mocked(getHostedRequestAuth).mockResolvedValue({
+      activationId: "act_test",
+      headers: { Authorization: "Bearer test" },
+    });
+    vi.mocked(signHostedRequest).mockResolvedValue("signature");
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ choices: [{ message: { content: "not json at all" } }] }),
+      json: async () => ({ answer: "not a draft" }),
     } as unknown as Response);
-    const r = await draftReport(input(), { apiKey: "sk-x" });
+    const r = await draftReport(input());
     expect(r.usedFallback).toBe(true);
   });
 
   it("parses valid JSON from model response", async () => {
+    vi.mocked(getHostedRequestAuth).mockResolvedValue({
+      activationId: "act_test",
+      headers: { Authorization: "Bearer test" },
+    });
+    vi.mocked(signHostedRequest).mockResolvedValue("signature");
     const draft = {
       summary: "s",
       methodology: "m",
@@ -100,9 +123,9 @@ describe("draftReport", () => {
     };
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ choices: [{ message: { content: JSON.stringify(draft) } }] }),
+      json: async () => ({ draft }),
     } as unknown as Response);
-    const r = await draftReport(input(), { apiKey: "sk-x" });
+    const r = await draftReport(input());
     expect(r.usedFallback).toBe(false);
     expect(r.draft).toEqual(draft);
   });

@@ -2,6 +2,7 @@ export interface AiDraftInput {
   meta: { filename: string; source: string };
   spectra: { freq: number; amp: number }[];
   options: {
+    locale?: string;
     projectName: string;
     engineer: string;
     reportDate: string;
@@ -45,39 +46,55 @@ export function fallbackDraft(input: AiDraftInput): DraftResult["draft"] {
 
 export async function draftReport(
   input: AiDraftInput,
-  opts?: { apiKey?: string; model?: string; timeoutMs?: number }
+  opts?: { timeoutMs?: number }
 ): Promise<DraftResult> {
-  const apiKey = opts?.apiKey?.trim();
-  if (!apiKey) return { draft: fallbackDraft(input), usedFallback: true };
-  const model = opts?.model?.trim() || "gpt-4o-mini";
   const timeoutMs = opts?.timeoutMs ?? 30000;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    const license = (await import("./license")) as unknown as {
+      getHostedRequestAuth?: () => Promise<{
+        activationId: string;
+        headers: Record<string, string>;
+      } | null>;
+      getControlPlaneUrl?: () => Promise<string>;
+      signHostedRequest?: (action: string, requestId: string, payload: unknown) => Promise<string | null>;
+    };
+    const auth = await license.getHostedRequestAuth?.();
+    if (!auth) {
+      return {
+        draft: fallbackDraft(input),
+        usedFallback: true,
+        warning: "Activate a license with hosted AI enabled to use Draft with AI.",
+      };
+    }
+    const requestId = globalThis.crypto?.randomUUID?.() ?? `ai-${Date.now()}-${Math.random()}`;
+    const payload = {
+      locale: input.options.locale ?? "en",
+      units: input.options.units,
+      norm: input.options.norm,
+      statistics: input.stats,
+      notes: input.options.notes,
+      model: null,
+    };
+    const deviceSignature = await license.signHostedRequest?.("ai_draft", requestId, payload);
+    if (!deviceSignature) {
+      return {
+        draft: fallbackDraft(input),
+        usedFallback: true,
+        warning: "Hosted AI requires the activated desktop app; used offline draft.",
+      };
+    }
+    const base = (await license.getControlPlaneUrl?.()) ?? "http://127.0.0.1:8787";
+    const res = await fetch(`${base}/v1/ai/draft`, {
       method: "POST",
       signal: ctrl.signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Write a concise engineering spectral report. Return JSON with keys summary, methodology, observations, recommendations, conclusion.",
-          },
-          {
-            role: "user",
-            content: `Project ${input.options.projectName} by ${input.options.engineer}. File ${input.meta.filename} (${input.meta.source}), points ${input.stats.spectra_points}, freq ${input.stats.freq_min}-${input.stats.freq_max}, amp ${input.stats.amp_min}-${input.stats.amp_max}, peak ${input.stats.peak.amp}@${input.stats.peak.freq}. Units ${input.options.units}. Norm ${input.options.norm}. Notes ${input.options.notes}`,
-          },
-        ],
-      }),
+      headers: { "Content-Type": "application/json", ...auth.headers },
+      body: JSON.stringify({ ...payload, request_id: requestId, device_signature: deviceSignature }),
     });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}`);
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const content = json.choices?.[0]?.message?.content ?? "";
-    const parsed = tryParseDraftJson(content);
+    if (!res.ok) throw new Error(`Control plane ${res.status}`);
+    const json = (await res.json()) as { draft?: unknown } & Record<string, unknown>;
+    const parsed = isDraft(json.draft) ? json.draft : isDraft(json) ? json : null;
     if (!parsed) throw new Error("unparseable");
     return { draft: parsed, usedFallback: false };
   } catch (e) {
@@ -94,17 +111,10 @@ export async function draftReport(
   }
 }
 
-function tryParseDraftJson(content: string) {
-  const start = content.indexOf("{");
-  const end = content.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    const o = JSON.parse(content.slice(start, end + 1)) as Record<string, unknown>;
-    for (const k of ["summary", "methodology", "observations", "recommendations", "conclusion"]) {
-      if (typeof o[k] !== "string") return null;
-    }
-    return o as DraftResult["draft"];
-  } catch {
-    return null;
-  }
+function isDraft(value: unknown): value is DraftResult["draft"] {
+  if (!value || typeof value !== "object") return false;
+  const o = value as Record<string, unknown>;
+  return ["summary", "methodology", "observations", "recommendations", "conclusion"].every(
+    (k) => typeof o[k] === "string"
+  );
 }

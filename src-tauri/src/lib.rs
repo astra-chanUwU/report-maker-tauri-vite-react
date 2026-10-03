@@ -30,7 +30,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             greet,
-            license::validate_license,
+            license::device_identity_command,
+            license::license_status,
+            license::get_control_plane_url,
+            license::sign_control_plane_request,
+            license::activate_license,
+            license::refresh_license,
+            license::deactivate_license,
+            license::validate_license_dev,
             mdb::mdb_tool_status,
             mdb::export_mdb_csv,
             mdb::list_csv_rows,

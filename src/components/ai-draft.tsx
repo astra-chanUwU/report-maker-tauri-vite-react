@@ -2,12 +2,10 @@ import { useState } from "react";
 import { useUi } from "../lib/i18n";
 import { draftReport, fallbackDraft, type AiDraftInput } from "../lib/ai";
 import type { ParseResult, ReportOptions } from "../lib/parseSp3";
-import { loadAiSettings, saveAiSettings } from "../lib/settings";
 import { FileText, Loader2, Sparkles } from "lucide-react";
 import { Button } from "./ui/button";
 import { Panel } from "./ui/card";
 import { Field } from "./ui/form";
-import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { toast } from "./ui/sonner";
 
@@ -30,40 +28,18 @@ const COOLDOWN_MS = 15000;
 
 export function AiSettingsCard() {
   const { t } = useUi();
-  const [settings, setSettings] = useState(() => loadAiSettings());
 
   return (
     <Panel
       icon={<Sparkles />}
       title={t("aiTitle")}
-      description="Optional. The key stays on this computer and is only used when you press Draft with AI."
-      contentClassName="grid gap-3 md:grid-cols-2"
+      description="Hosted AI uses the active license entitlement. No provider key is stored in the app."
+      contentClassName="grid gap-3"
     >
-      <Field label="OpenAI API key" htmlFor="ai-key">
-        <Input
-          id="ai-key"
-          type="password"
-          autoComplete="off"
-          placeholder="sk-… (optional)"
-          value={settings.apiKey}
-          onChange={(e) => {
-            const next = { ...settings, apiKey: e.target.value };
-            setSettings(next);
-            saveAiSettings(next);
-          }}
-        />
-      </Field>
-      <Field label="Model" htmlFor="ai-model">
-        <Input
-          id="ai-model"
-          value={settings.model}
-          onChange={(e) => {
-            const next = { ...settings, model: e.target.value };
-            setSettings(next);
-            saveAiSettings(next);
-          }}
-        />
-      </Field>
+      <p className="text-sm text-muted-foreground">
+        The report data stays local unless you explicitly choose <strong>Draft with AI</strong>.
+        Hosted requests contain only the fields needed to produce the five editable sections.
+      </p>
     </Panel>
   );
 }
@@ -103,6 +79,7 @@ export function AiDraftCard({
         meta: parsed.meta,
         spectra: parsed.spectra,
         options: {
+          locale: options.language,
           projectName: options.projectName,
           engineer: options.engineer,
           reportDate: options.reportDate,
@@ -117,8 +94,7 @@ export function AiDraftCard({
         setFallbackUsed(true);
         toast.success("Offline draft filled — edit before export.");
       } else {
-        const { apiKey, model } = loadAiSettings();
-        const res = await draftReport(input, { apiKey, model });
+        const res = await draftReport(input);
         onChange({ ...res.draft });
         setFallbackUsed(res.usedFallback);
         if (res.usedFallback) toast.success(res.warning ?? "AI unavailable — offline draft used.");
