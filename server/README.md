@@ -35,19 +35,23 @@ Production hooks (set only on the host; never commit values):
 
 | Variable | Purpose |
 | --- | --- |
-| `REPORT_EMAIL_PROVIDER` | `local` (default), `http` / `transactional`, or `noop` |
+| `REPORT_EMAIL_PROVIDER` | `local` (default), `kavenegar` / `http`, `smtp`, `outbox`, or `noop` |
 | `REPORT_EMAIL_API_URL` | Transactional HTTP API endpoint (Iranian provider or compatible) |
 | `REPORT_EMAIL_API_KEY` | Provider API token (secret) |
 | `REPORT_EMAIL_FROM` | From address on an authenticated sending domain |
 | `REPORT_EMAIL_FROM_NAME` | Display name (default `Report Maker`) |
 | `REPORT_EMAIL_TIMEOUT_MS` | HTTP timeout (default `8000`) |
 | `REPORT_EMAIL_MAX_RETRIES` | Retries on transient failures (default `2`) |
-| `REPORT_SMS_PROVIDER` | `fake` (default), `http` / `kavenegar`, or `noop` |
-| `REPORT_SMS_API_URL` | SMS HTTP API endpoint |
-| `REPORT_SMS_API_KEY` | SMS provider API token (secret) |
+| `REPORT_SMTP_HOST` / `REPORT_SMTP_PORT` | Generic SMTP relay fallback |
+| `REPORT_SMTP_USER` / `REPORT_SMTP_PASSWORD` | SMTP credentials (secrets) |
+| `REPORT_SMS_PROVIDER` | `fake` (default), `kavenegar`, `http`, or `noop` |
+| `REPORT_SMS_API_KEY` | Kavenegar or HTTP API token (secret) |
 | `REPORT_SMS_SENDER` | Provider sender line / number |
+| `REPORT_SMS_TEMPLATE` | Optional OTP template name |
+| `REPORT_SMS_API_URL` | Custom SMS HTTP endpoint |
 | `REPORT_SMS_TIMEOUT_MS` | HTTP timeout (default `8000`) |
 | `REPORT_SMS_MAX_RETRIES` | Retries on transient failures (default `2`) |
+| `REPORT_OUTBOX_MAX_ATTEMPTS` | SQLite outbox retry cap (default `10`) |
 
 Domain authentication before production email:
 
@@ -59,8 +63,10 @@ Domain authentication before production email:
 
 Provider adapters use bounded timeouts, limited response bodies, idempotency keys
 on sends, and redacted logs (no API keys, magic-link tokens, or SMS codes). A
-provider outage after payment verification must not undo a paid order; support
-can still resolve the order by ID.
+SQLite `delivery_outbox` table records pending deliveries and retries them after
+process restart. See [`docs/providers.md`](../docs/providers.md) for SPF/DKIM/DMARC,
+SMS templates, and outbox behaviour. A provider outage after payment verification
+must not undo a paid order; support can still resolve the order by ID.
 
 The `PaymentGateway` interface in `payment.go` is the boundary for a domestic redirect processor such as ZarinPal/ZarinPay. `DemoGateway` is only a local flow that exercises pending order, redirect, callback, server-side verification, and idempotent paid state. A production adapter must call the provider's request and verification APIs and compare the verified amount to the stored order amount before provisioning a license.
 

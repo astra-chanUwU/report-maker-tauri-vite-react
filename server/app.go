@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
@@ -86,8 +88,6 @@ func ConfigFromEnv() Config {
 		LicenseDeliveryKey: deliveryKey, LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
 		WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, AdminPassword: os.Getenv("REPORT_ADMIN_PASSWORD"),
 		Gateway:              gateway,
-		EmailSender:          EmailSenderFromEnv(),
-		SMSSender:            SMSSenderFromEnv(),
 		ArtifactRoot:         os.Getenv("REPORT_ARTIFACT_ROOT"),
 		ReleaseManifest:      os.Getenv("REPORT_RELEASE_MANIFEST"),
 		DownloadLinkTTLHours: downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_LINK_TTL_HOURS"), 24),
@@ -111,7 +111,8 @@ type App struct {
 	email         EmailSender
 	sms           SMSSender
 	rateLimits    *rateLimiter
-	releases      *ReleaseCatalog
+	releases        *ReleaseCatalog
+	lastOutboxFlush atomic.Int64
 }
 
 func NewApp(cfg Config) (*App, error) {
@@ -145,13 +146,18 @@ func NewApp(cfg Config) (*App, error) {
 		store.Close()
 		return nil, err
 	}
+	explicitProviders := cfg.EmailSender != nil || cfg.SMSSender != nil
 	email := cfg.EmailSender
 	if email == nil {
-		email = &LocalOutbox{}
+		email = EmailSenderFromEnv()
 	}
 	sms := cfg.SMSSender
 	if sms == nil {
-		sms = &FakeSMS{}
+		sms = SMSSenderFromEnv()
+	}
+	if !explicitProviders {
+		email = wrapPersistentEmail(store, email)
+		sms = wrapPersistentSMS(store, sms)
 	}
 	releases, err := LoadReleaseCatalog(cfg.ArtifactRoot, cfg.ReleaseManifest)
 	if err != nil {
@@ -171,6 +177,11 @@ func NewApp(cfg Config) (*App, error) {
 	app.phoneRoutes()
 	app.adminRoutes()
 	app.downloadRoutes()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		app.flushPendingDeliveries(ctx)
+	}()
 	return app, nil
 }
 func (a *App) Handler() http.Handler { return a.requestLog(a.mux) }
@@ -199,6 +210,7 @@ func (a *App) routes() {
 func (a *App) requestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		a.maybeFlushOutbox(r.Context())
 		next.ServeHTTP(w, r)
 	})
 }

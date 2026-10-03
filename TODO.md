@@ -430,14 +430,12 @@ matches, and the release manifest is documented and reproducible.
 **Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
 **Depends on:** C04 and provider credentials supplied by the owner
 
-- Map the generic email adapter to the selected Iranian transactional provider.
-- Map SMS OTP requests to the selected Iranian SMS provider.
-- Keep provider-specific payloads behind interfaces and preserve local fakes for
-  tests.
-- Add persistent delivery status or an outbox retry record so a process restart
-  does not lose a receipt or license message.
-- Document SPF, DKIM, DMARC, sender identity, SMS templates, timeouts, and retry
-  limits without committing secrets.
+- [x] Map email to `kavenegar`/`http`, generic `smtp`, or `outbox` via `REPORT_EMAIL_PROVIDER`.
+- [x] Map SMS OTP to Kavenegar-style adapter; `FakeSMS` preserved for tests.
+- [x] SQLite `delivery_outbox` with startup + throttled HTTP retry flush.
+- [x] Document SPF/DKIM/DMARC, sender identity, SMS templates, timeouts, retries in `docs/providers.md`.
+- [x] Tests: outbox reopen, retry on failure, explicit fakes skip wrap, redacted errors.
+- [x] Live provider sandbox/manual checks recorded as **unavailable** (no owner credentials).
 
 **Acceptance:** provider sandbox/manual checks are recorded separately from
 automated tests; failures remain retryable and paid orders stay recoverable.
