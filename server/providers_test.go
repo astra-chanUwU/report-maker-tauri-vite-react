@@ -117,8 +117,22 @@ func TestPaymentCallbackSendsReceiptAndSurvivesEmailOutage(t *testing.T) {
 			t.Fatalf("order not paid: %#v", paid)
 		}
 		msgs := outbox.Snapshot()
-		if len(msgs) != 1 || msgs[0].Kind != EmailKindReceipt || msgs[0].To != "ok@example.com" || msgs[0].OrderID != order.ID {
-			t.Fatalf("receipt outbox mismatch: %#v", msgs)
+		if len(msgs) != 3 {
+			t.Fatalf("expected receipt, license, and download emails: %#v", msgs)
+		}
+		byKind := map[string]EmailMessage{}
+		for _, msg := range msgs {
+			byKind[msg.Kind] = msg
+		}
+		receipt := byKind[EmailKindReceipt]
+		if receipt.To != "ok@example.com" || receipt.OrderID != order.ID {
+			t.Fatalf("receipt outbox mismatch: %#v", receipt)
+		}
+		if license := byKind[EmailKindLicenseAccess]; license.OrderID != order.ID || license.LicenseID == "" {
+			t.Fatalf("license email missing after provisioning: %#v", license)
+		}
+		if download := byKind[EmailKindDownloadAccess]; download.OrderID != order.ID {
+			t.Fatalf("download email missing after provisioning: %#v", download)
 		}
 	})
 
