@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const currentSchemaVersion = 4
+const currentSchemaVersion = 3
 
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
