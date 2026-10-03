@@ -106,6 +106,7 @@ function App() {
   const [recentTick, setRecentTick] = useState(0);
   const [sp3Path, setSp3Path] = useState<string | null>(null);
   const [sp3Paths, setSp3Paths] = useState<string[]>([]);
+  const [selectedDbPaths, setSelectedDbPaths] = useState<string[]>([]);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress>(IDLE_EXPORT);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
@@ -155,6 +156,7 @@ function App() {
     setSp3Path(r ? opened : null);
     if (r && opened) {
       setSp3Paths((prev) => (prev.includes(opened) ? prev : [...prev, opened]));
+      setSelectedDbPaths((prev) => (prev.includes(opened) ? prev : [...prev, opened]));
     }
     if (r) {
       const openedInner = pendingSp3PathRef.current;
@@ -674,7 +676,129 @@ function App() {
 
           <main id="main" className="relative min-h-0 flex-1">
             <Page active={page === "data"}>
-              {!effective ? (
+              {sp3Paths.length > 0 ? (
+                <div className="grid gap-4">
+                  <Card className="overflow-hidden p-0">
+                    <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+                      <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <h2 className="text-sm font-semibold">Uploaded databases</h2>
+                      <span className="text-xs text-muted-foreground">
+                        — {sp3Paths.length} DB{sp3Paths.length > 1 ? "s" : ""} · select which to use next
+                      </span>
+                      <span className="ms-auto flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => void handleOpenSp3()}>
+                          <Database className="h-4 w-4" aria-hidden="true" />
+                          Add databases…
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={selectedDbPaths.length === 0}
+                          onClick={() => setSelectedDbPaths([...sp3Paths])}
+                        >
+                          Select all
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={selectedDbPaths.length === 0}
+                          onClick={() => {
+                            if (confirm(`Clear all ${sp3Paths.length} uploaded databases from this session?`)) {
+                              setSp3Paths([]);
+                              setSelectedDbPaths([]);
+                              setSp3Path(null);
+                            }
+                          }}
+                        >
+                          Clear all
+                        </Button>
+                      </span>
+                    </div>
+                    <ul className="divide-y">
+                      {sp3Paths.map((p) => {
+                        const filename = p.split(/[/\\]/).pop() || p;
+                        const checked = selectedDbPaths.includes(p);
+                        const isActive = sp3Path === p;
+                        return (
+                          <li key={p} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={checked}
+                              onChange={(e) => {
+                                setSelectedDbPaths((prev) =>
+                                  e.target.checked ? [...prev, p] : prev.filter((x) => x !== p)
+                                );
+                              }}
+                              aria-label={`Select ${filename}`}
+                            />
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                              <Database className="h-4 w-4" aria-hidden="true" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2">
+                                <span className="truncate text-sm font-medium" title={p}>
+                                  {filename}
+                                </span>
+                                {isActive ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">Active</span> : null}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground" title={p}>
+                                {p}
+                              </span>
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setSp3Paths((prev) => prev.filter((x) => x !== p));
+                                setSelectedDbPaths((prev) => prev.filter((x) => x !== p));
+                                if (sp3Path === p) setSp3Path(null);
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </Card>
+                  {effective ? <FileBar result={effective} ingest={ingestWithPath} /> : null}
+                  {ingest.error ? <IngestError message={ingest.error} /> : null}
+                  {hasRowSource ? (
+                    <>
+                      {rowsLoading && !measureRows ? (
+                        <p className="text-[13px] text-muted-foreground">Reading measurements…</p>
+                      ) : (
+                        <DatabaseSummary rows={measureRows} limits={zoneLimits} />
+                      )}
+                      <DiagnosticsPanel rows={measureRows} equipments={equipments} limits={zoneLimits} />
+                    </>
+                  ) : effective ? (
+                    <DataOverview result={effective} limits={zoneLimits} />
+                  ) : null}
+                  <Card className="flex flex-wrap items-center gap-4 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-semibold">
+                        {selectedDbPaths.length > 0
+                          ? `${selectedDbPaths.length} database${selectedDbPaths.length > 1 ? "s" : ""} selected`
+                          : "Select databases to continue"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Next shows machines from the selected DBs. You can go back here anytime to change the selection.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => setPage("machines")}
+                      disabled={selectedDbPaths.length === 0}
+                      title={selectedDbPaths.length === 0 ? "Select at least one database" : `Continue with ${selectedDbPaths.length} DBs`}
+                    >
+                      {t("next")}: {t("navMachines")}
+                      <ArrowRight className="rtl:rotate-180" aria-hidden="true" />
+                    </Button>
+                  </Card>
+                  <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
+                </div>
+              ) : !effective ? (
                 <div className="grid gap-4">
                   <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
                     <DropZone ingest={ingestWithPath} />
@@ -718,8 +842,8 @@ function App() {
 
             <Page active={page === "machines"}>
               <MachinePicker
-                sp3Path={sp3Path ?? equipments.find((e) => e.sp3Path)?.sp3Path ?? null}
-                sp3Paths={sp3Paths.length > 0 ? sp3Paths : undefined}
+                sp3Path={selectedDbPaths[0] ?? sp3Path ?? equipments.find((e) => e.sp3Path)?.sp3Path ?? null}
+                sp3Paths={selectedDbPaths.length > 0 ? selectedDbPaths : sp3Paths.length > 0 ? sp3Paths : undefined}
                 isTauri={ingest.isTauri}
                 items={equipments}
                 onChange={updateEquipments}
