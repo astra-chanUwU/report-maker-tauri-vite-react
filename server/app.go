@@ -29,9 +29,13 @@ type Config struct {
 	WebAuthnOrigins []string
 	WebAuthnRPName  string
 	AdminPassword   string
-	Gateway         PaymentGateway
-	EmailSender     EmailSender
-	SMSSender       SMSSender
+	Gateway              PaymentGateway
+	EmailSender          EmailSender
+	SMSSender            SMSSender
+	ArtifactRoot         string
+	ReleaseManifest      string
+	DownloadLinkTTLHours int
+	DownloadRateLimit    int
 }
 
 func ConfigFromEnv() Config {
@@ -79,6 +83,10 @@ func ConfigFromEnv() Config {
 		LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
 		WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, AdminPassword: os.Getenv("REPORT_ADMIN_PASSWORD"),
 		Gateway: gateway,
+		ArtifactRoot:         os.Getenv("REPORT_ARTIFACT_ROOT"),
+		ReleaseManifest:      os.Getenv("REPORT_RELEASE_MANIFEST"),
+		DownloadLinkTTLHours: downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_LINK_TTL_HOURS"), 24),
+		DownloadRateLimit:    downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_RATE_LIMIT"), 30),
 	}
 }
 func valueOr(value, fallback string) string {
@@ -98,6 +106,7 @@ type App struct {
 	email         EmailSender
 	sms           SMSSender
 	rateLimits    *rateLimiter
+	releases      *ReleaseCatalog
 }
 
 func NewApp(cfg Config) (*App, error) {
@@ -133,9 +142,15 @@ func NewApp(cfg Config) (*App, error) {
 	if sms == nil {
 		sms = &FakeSMS{}
 	}
+	releases, err := LoadReleaseCatalog(cfg.ArtifactRoot, cfg.ReleaseManifest)
+	if err != nil {
+		store.Close()
+		return nil, err
+	}
 	app := &App{
 		cfg: cfg, store: store, signingKey: key, signingPublic: key.Public().(ed25519.PublicKey),
 		mux: http.NewServeMux(), webAuthn: webAuthnService, email: email, sms: sms, rateLimits: newRateLimiter(),
+		releases: releases,
 	}
 	if cfg.AllowDevSeed {
 		app.store.SeedLicense("RM-TEST-1234-KEY0", "perpetual", map[string]bool{"core_export": true, "hosted_ai": true}, 3)
@@ -144,6 +159,7 @@ func NewApp(cfg Config) (*App, error) {
 	app.authRoutes()
 	app.phoneRoutes()
 	app.adminRoutes()
+	app.downloadRoutes()
 	return app, nil
 }
 func (a *App) Handler() http.Handler { return a.requestLog(a.mux) }
@@ -188,9 +204,6 @@ func (a *App) pricing(w http.ResponseWriter, r *http.Request) {
 		Plans: []PlanView{{ID: "perpetual", Name: "Perpetual", Description: "Core report creation and export for one major version.", Price: "Contact for current price"}},
 		CSRFToken: a.ensureCSRF(w, r),
 	})
-}
-func (a *App) download(w http.ResponseWriter, _ *http.Request) {
-	renderPage(w, "home", PageData{Title: "Download", Heading: "Download Report Maker", Body: "Download links will be shown here after the release package is published."})
 }
 func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {

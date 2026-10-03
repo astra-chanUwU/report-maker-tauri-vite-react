@@ -101,6 +101,7 @@ type CustomerSession struct {
 type Order struct {
 	ID          string
 	CustomerID  string
+	LicenseID   string
 	Plan        string
 	FirstName   string
 	LastName    string
@@ -132,6 +133,12 @@ type DownloadRecord struct {
 	LicenseID string
 	Artifact  string
 	CreatedAt time.Time
+}
+
+// DownloadEntitlement is the paid-order + license boundary S02 will populate after verify.
+type DownloadEntitlement struct {
+	OrderID   string
+	LicenseID string
 }
 
 type Store struct{ db *sql.DB }
@@ -207,7 +214,7 @@ CREATE TABLE IF NOT EXISTS activations (
 CREATE INDEX IF NOT EXISTS activations_license_idx ON activations(license_id);
 CREATE UNIQUE INDEX IF NOT EXISTS activations_live_device_idx ON activations(license_id, device_public_key) WHERE revoked_at IS NULL;
 CREATE TABLE IF NOT EXISTS orders (
- id TEXT PRIMARY KEY, customer_id TEXT REFERENCES customers(id), plan TEXT NOT NULL,
+ id TEXT PRIMARY KEY, customer_id TEXT REFERENCES customers(id), license_id TEXT REFERENCES licenses(id), plan TEXT NOT NULL,
  first_name TEXT NOT NULL DEFAULT '', last_name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL,
  phone TEXT NOT NULL DEFAULT '', amount_rials INTEGER NOT NULL, authority TEXT UNIQUE,
  payment_ref TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, created_at TEXT NOT NULL, paid_at TEXT
@@ -247,6 +254,7 @@ CREATE INDEX IF NOT EXISTS admin_sessions_expiry_idx ON admin_sessions(expires_a
 		`ALTER TABLE customers ADD COLUMN webauthn_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE customers ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE customers ADD COLUMN phone_verified_at TEXT`,
+		`ALTER TABLE orders ADD COLUMN license_id TEXT REFERENCES licenses(id)`,
 	} {
 		if _, alterErr := db.Exec(statement); alterErr != nil && !strings.Contains(strings.ToLower(alterErr.Error()), "duplicate column") {
 			return alterErr
@@ -572,21 +580,21 @@ func (s *Store) DeleteAdminSession(tokenHash string) error {
 	return err
 }
 func (s *Store) PutOrder(value *Order) error {
-	_, err := s.db.Exec(`INSERT INTO orders(id,customer_id,plan,first_name,last_name,email,phone,amount_rials,authority,payment_ref,status,created_at,paid_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, value.ID, nullableString(value.CustomerID), value.Plan, value.FirstName, value.LastName, value.Email, value.Phone, value.AmountRials, nullableString(value.Authority), value.PaymentRef, value.Status, formatTime(value.CreatedAt), nullableTime(value.PaidAt))
+	_, err := s.db.Exec(`INSERT INTO orders(id,customer_id,license_id,plan,first_name,last_name,email,phone,amount_rials,authority,payment_ref,status,created_at,paid_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, value.ID, nullableString(value.CustomerID), nullableString(value.LicenseID), value.Plan, value.FirstName, value.LastName, value.Email, value.Phone, value.AmountRials, nullableString(value.Authority), value.PaymentRef, value.Status, formatTime(value.CreatedAt), nullableTime(value.PaidAt))
 	return err
 }
 func (s *Store) GetOrder(id string) (*Order, bool) {
-	row := s.db.QueryRow(`SELECT id,COALESCE(customer_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id,COALESCE(customer_id,''),COALESCE(license_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, id)
 	return scanOrder(row)
 }
 func (s *Store) FindOrderByAuthority(authority string) (*Order, bool) {
-	row := s.db.QueryRow(`SELECT id,COALESCE(customer_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE authority=?`, authority)
+	row := s.db.QueryRow(`SELECT id,COALESCE(customer_id,''),COALESCE(license_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE authority=?`, authority)
 	return scanOrder(row)
 }
 func scanOrder(row interface{ Scan(...any) error }) (*Order, bool) {
 	var value Order
 	var created, paid sql.NullString
-	if err := row.Scan(&value.ID, &value.CustomerID, &value.Plan, &value.FirstName, &value.LastName, &value.Email, &value.Phone, &value.AmountRials, &value.Authority, &value.PaymentRef, &value.Status, &created, &paid); err != nil {
+	if err := row.Scan(&value.ID, &value.CustomerID, &value.LicenseID, &value.Plan, &value.FirstName, &value.LastName, &value.Email, &value.Phone, &value.AmountRials, &value.Authority, &value.PaymentRef, &value.Status, &created, &paid); err != nil {
 		return nil, false
 	}
 	value.CreatedAt, _ = parseTime(created.String)
@@ -602,7 +610,7 @@ func (s *Store) MarkOrderPaid(id, paymentRef string) (*Order, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
-	row := tx.QueryRow(`SELECT id,COALESCE(customer_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, id)
+	row := tx.QueryRow(`SELECT id,COALESCE(customer_id,''),COALESCE(license_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, id)
 	order, ok := scanOrder(row)
 	if !ok {
 		return nil, errors.New("order not found")
@@ -631,6 +639,79 @@ func (s *Store) RecordDownload(value *DownloadRecord) error {
 	_, err := s.db.Exec(`INSERT INTO download_records(id,order_id,license_id,artifact,created_at) VALUES(?,?,?,?,?)`, value.ID, nullableString(value.OrderID), nullableString(value.LicenseID), value.Artifact, formatTime(value.CreatedAt))
 	return err
 }
+
+func (s *Store) CustomerDownloadEntitlement(customerID string) (DownloadEntitlement, bool) {
+	row := s.db.QueryRow(`
+SELECT id, COALESCE(license_id,'') FROM orders
+WHERE customer_id=? AND status='paid' AND license_id IS NOT NULL AND license_id <> ''
+ORDER BY COALESCE(paid_at, created_at) DESC LIMIT 1`, customerID)
+	var ent DownloadEntitlement
+	if err := row.Scan(&ent.OrderID, &ent.LicenseID); err != nil || ent.LicenseID == "" {
+		return DownloadEntitlement{}, false
+	}
+	return ent, true
+}
+
+func (s *Store) CustomerEntitledForLicense(customerID, licenseID string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM orders WHERE customer_id=? AND status='paid' AND license_id=?`, customerID, licenseID).Scan(&count)
+	return count > 0, err
+}
+
+func (s *Store) FindLicensesByCustomer(customerID string) ([]License, error) {
+	rows, err := s.db.Query(`
+SELECT l.id,l.key_hash,l.plan,l.status,l.features_json,l.max_devices,l.created_at
+FROM licenses l
+INNER JOIN orders o ON o.license_id=l.id
+WHERE o.customer_id=? AND o.status='paid'
+GROUP BY l.id
+ORDER BY l.created_at DESC`, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var licenses []License
+	for rows.Next() {
+		license, ok := scanLicense(rows)
+		if !ok {
+			continue
+		}
+		licenses = append(licenses, *license)
+	}
+	return licenses, rows.Err()
+}
+
+// InsertPaidOrderWithLicense is a test helper until S02 owns real provisioning.
+func (s *Store) InsertPaidOrderWithLicense(customerID string, license *License, orderID string) (*Order, error) {
+	if license == nil {
+		return nil, errors.New("license required")
+	}
+	encoded, err := json.Marshal(license.Features)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	order := &Order{ID: orderID, CustomerID: customerID, LicenseID: license.ID, Plan: license.Plan, Status: "paid", CreatedAt: now, PaidAt: &now}
+	if orderID == "" {
+		order.ID = "ord_test_" + license.ID
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO licenses(id,key_hash,plan,status,features_json,max_devices,created_at) VALUES(?,?,?,?,?,?,?)`, license.ID, license.KeyHash, license.Plan, license.Status, string(encoded), license.MaxDevices, formatTime(now)); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`INSERT INTO orders(id,customer_id,license_id,plan,first_name,last_name,email,phone,amount_rials,authority,payment_ref,status,created_at,paid_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, order.ID, order.CustomerID, order.LicenseID, order.Plan, "Test", "Customer", "test@example.com", "09120000000", 1000000, nil, "test-ref", order.Status, formatTime(order.CreatedAt), formatTime(now)); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return order, nil
+}
+
 func (s *Store) Idempotent(scope, key string) ([]byte, bool) {
 	var response []byte
 	if err := s.db.QueryRow(`SELECT response FROM idempotency WHERE scope=? AND key=?`, scope, key).Scan(&response); err != nil {

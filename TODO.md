@@ -147,13 +147,14 @@ callbacks cannot create a license.
 
 **Depends on:** S01 and S02.
 
-- Define release artifacts and versions outside the database seed path.
-- Add authenticated customer download routes and a purchase/download page.
-- Permit repeated downloads, with renewable expiry and rate limiting.
-- Record download audit rows without storing report contents.
-- Make the artifact path configurable and prevent path traversal or arbitrary
-  filesystem reads.
-- Include a clear offline desktop download path and checksum information.
+**Status:** Implemented on `feat/s03-release-downloads` (see `CURSOR_REPORT_S03.md`).
+
+- [x] Define release artifacts and versions outside the database seed path (`server/releases.json`, `REPORT_ARTIFACT_ROOT`, optional `REPORT_RELEASE_MANIFEST`).
+- [x] Add authenticated customer download routes and a purchase/download page (`/account/downloads`, `/downloads/{artifact_id}`, expiring `/downloads/link/{token}`).
+- [x] Permit repeated downloads, with renewable expiry and rate limiting (HMAC tokens, CSRF renew form, per-customer/IP limits).
+- [x] Record download audit rows without storing report contents (`RecordDownload` → `download_records`).
+- [x] Make the artifact path configurable and prevent path traversal or arbitrary filesystem reads (`ResolveArtifactPath` + tests).
+- [x] Include a clear offline desktop download path and checksum information (downloads page shows platform, filename, SHA-256).
 
 **Acceptance:** an entitled customer can download the same artifact multiple
   times, an expired link can be renewed after authentication, a non-entitled

@@ -1,0 +1,11 @@
+[
+  {
+    "id": "desktop-windows-x64",
+    "version": "1.0.0",
+    "filename": "ReportMaker_1.0.0_x64-setup.exe",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "relative_path": "windows-x64/ReportMaker_1.0.0_x64-setup.exe",
+    "platform": "Windows x64",
+    "description": "Offline desktop installer for Windows 10/11 (64-bit)."
+  }
+]
