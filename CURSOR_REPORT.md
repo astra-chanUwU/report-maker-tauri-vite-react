@@ -1,7 +1,7 @@
 # CURSOR_REPORT - C12 final review (integrate tip)
 
 **Model:** Grok 4.5 High  
-**Branch:** `feat/c12-final-review`  
+**Branch:** `feat/c12-final-review` @ **`fdf52f1`** (pushed)  
 **Base / integrate tip reviewed:** `origin/integrate/control-plane` @ **`a2f2f03`**  
 **Date:** 2026-10-04  
 **main:** **not merged** (owner action only)
@@ -102,7 +102,7 @@ Go 1.27.0 windows/amd64.
 | `npm run typecheck` | **pass** (exit 0 on integrate tip tree) |
 | `npm test -- --run` | **unavailable here** — isolated worktree lacked `node_modules` / local `vitest` on PATH |
 | `npm run build` | **unavailable here** — same (`tsc`/`vite` not on PATH without install) |
-| `cargo test --manifest-path src-tauri/Cargo.toml -q` | **unavailable here** — not re-run in C12 freeze window; owner/CI should confirm |
+| `cargo test --manifest-path src-tauri/Cargo.toml -q` | **unavailable here** (exit 101 — crates.io download of `keyring` timed out). Owner or GitHub Actions must confirm. |
 | `git diff --check` | Clean on C12 commit tree |
 
 Frontend + Rust CI still run via `.github/workflows/ci.yml` on PRs; that workflow does **not** yet include Go (C05 open).
@@ -165,9 +165,10 @@ git merge --no-ff origin/feat/c12-final-review -m "merge: C12 final review and d
 recorded, and browser/provider/restore blockers above are cleared or explicitly
 accepted as launch exclusions.
 
-## 10. Git state (expected after C12 push)
+## 10. Git state
 
-- **Branch:** `feat/c12-final-review` (pushed)
-- **Tracks work from:** `origin/integrate/control-plane` @ `a2f2f03` + C12 docs commit
+- **Branch:** `feat/c12-final-review` @ `fdf52f1` (pushed to `origin`)
+- **Based on:** `origin/integrate/control-plane` @ `a2f2f03`
 - **main:** untouched
+- **Working tree:** clean on the C12 branch after push
 - **Secrets:** none committed
