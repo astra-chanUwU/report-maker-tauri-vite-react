@@ -148,6 +148,7 @@ interface Group {
   id: string;
   title: string;
   sub: string;
+  fullPath: string;
   limits: ZoneLimitSet;
   rows: CsvRowSummary[];
   labels?: Record<string, string>;
@@ -240,12 +241,13 @@ export function MeasuringTable({
   const groups: Group[] = useMemo(() => {
     const linked = equipments.filter((e) => (e.pointIds?.length ?? 0) > 0);
     if (linked.length === 0) {
-      return [{ id: "all", title: "All measuring points", sub: "", limits, rows: source }];
+      return [{ id: "all", title: "All measuring points", sub: "", fullPath: "", limits, rows: source }];
     }
     return linked.map((e) => ({
       id: e.id,
       title: e.name || "Machine",
       sub: [e.plant, sp3Filename(e.sp3Path)].filter(Boolean).join(" · "),
+      fullPath: e.sp3Path ?? "",
       limits: e.limits ?? limits,
       rows: rowsForPoints(source, e.pointIds),
       labels: e.labels,
@@ -309,7 +311,7 @@ export function MeasuringTable({
           <section key={g.id} className="overflow-hidden rounded-md border">
             <header className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b bg-muted/50 px-3 py-2">
               <h3 className="text-[13px] font-semibold">{g.title}</h3>
-              {g.sub ? <span className="text-xs text-muted-foreground">{g.sub}</span> : null}
+              {g.sub ? <span className="text-xs text-muted-foreground" title={g.fullPath || g.sub}>{g.sub}</span> : null}
               <span className="ms-auto text-xs text-muted-foreground tabular-nums">
                 V {formatLimits(g.limits.velocity)} · {sec.short}{" "}
                 {formatLimits(secondaryLimits(g.limits, secondary))}
