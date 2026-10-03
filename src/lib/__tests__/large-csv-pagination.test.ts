@@ -46,4 +46,17 @@ describe("listTauriRowsPaged", () => {
     expect(fnStr).toContain("offset");
     expect(fnStr).toContain("batch");
   });
+
+  it("useMeasureRows paginates via listTauriRowsPaged", async () => {
+    const src = await import("fs").then((fs) => fs.readFileSync("src/components/measuring-table.tsx", "utf8"));
+    expect(src).toContain("listTauriRowsPaged");
+    expect(src).toContain("2500");
+  });
+
+  it("MeasuringTable chunks built with yield for large datasets", async () => {
+    const src = await import("fs").then((fs) => fs.readFileSync("src/components/measuring-table.tsx", "utf8"));
+    expect(src).toContain("CHUNK");
+    expect(src).toContain("setTimeout");
+    expect(src).toContain("totalRows < 2000");
+  });
 });

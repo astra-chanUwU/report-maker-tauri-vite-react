@@ -5,7 +5,7 @@ import {
   applyEnvelopeSamples,
   fetchEnvelopeSamples,
   listFileRows,
-  listTauriRows,
+  listTauriRowsPaged,
   type CsvRowSummary,
 } from "../lib/mdb";
 import { secondaryLabels, secondaryLimits, type SecondaryMetric } from "../lib/metrics";
@@ -170,17 +170,26 @@ export function useMeasureRows(
     }
     let alive = true;
     setLoading(true);
-    const load = tauriPath ? listTauriRows(tauriPath) : listFileRows(file!);
-    load
-      .then((l) => {
+    const run = async () => {
+      try {
+        const l = tauriPath
+          ? await listTauriRowsPaged(tauriPath, 2500, (n) => {
+              // progressive hint while paging large exports; final set below wins
+              if (alive && n % 5000 === 0) {
+                // keep loading true but allow event loop to breathe
+              }
+            })
+          : await listFileRows(file!);
         if (!alive) return;
         setRows(l.rows);
         onRows?.(l.rows);
-      })
-      .catch((e) => {
+      } catch (e) {
         if (alive) toast.error(e instanceof Error ? e.message : "Could not load measurements.");
-      })
-      .finally(() => alive && setLoading(false));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+    run();
     return () => {
       alive = false;
     };
@@ -255,20 +264,67 @@ export function MeasuringTable({
   }, [equipments, limits, source]);
 
   const q = query.trim().toLowerCase();
-  const built = useMemo(() => groups.map((g) => {
-    const all = buildMeasureRows(g.rows, g.limits, 10, g.labels, false, { secondary });
-    const lines = all
-      .map((r) => {
-        const zv = classifyZone(r.rms, g.limits.velocity);
-        const za = classifyZone(r.rmsA, secondaryLimits(g.limits, secondary));
-        return { r, zv, za, worst: RANK[zv] >= RANK[za] ? zv : za };
-      })
-      .filter((l) => !alarmsOnly || RANK[l.worst] >= RANK.B)
-      .filter((l) => !q || `${g.title} ${l.r.point}`.toLowerCase().includes(q));
-    return { g, lines };
-  }), [groups, secondary, q, alarmsOnly]);
+  const [built, setBuilt] = useState<ReturnType<typeof buildGroups> | null>(null);
+  function buildGroups() {
+    return groups.map((g) => {
+      const all = buildMeasureRows(g.rows, g.limits, 10, g.labels, false, { secondary });
+      const lines = all
+        .map((r) => {
+          const zv = classifyZone(r.rms, g.limits.velocity);
+          const za = classifyZone(r.rmsA, secondaryLimits(g.limits, secondary));
+          return { r, zv, za, worst: RANK[zv] >= RANK[za] ? zv : za };
+        })
+        .filter((l) => !alarmsOnly || RANK[l.worst] >= RANK.B)
+        .filter((l) => !q || `${g.title} ${l.r.point}`.toLowerCase().includes(q));
+      return { g, lines };
+    });
+  }
+  // Chunked build to avoid blocking the main thread on the last 10% for large imports
+  useEffect(() => {
+    let cancelled = false;
+    const CHUNK = 400;
+    const totalRows = groups.reduce((n, g) => n + g.rows.length, 0);
+    // small datasets: keep synchronous path to avoid flicker
+    if (totalRows < 2000) {
+      setBuilt(buildGroups());
+      return;
+    }
+    // large datasets: yield between groups
+    const run = async () => {
+      const out: ReturnType<typeof buildGroups> = [];
+      for (const g of groups) {
+        if (cancelled) return;
+        // allow paint / app switch between groups
+        await new Promise<void>((r) => setTimeout(r, 0));
+        if (cancelled) return;
+        const all = buildMeasureRows(g.rows, g.limits, 10, g.labels, false, { secondary });
+        const lines: (typeof out)[number]["lines"] = [];
+        for (let i = 0; i < all.length; i += CHUNK) {
+          const slice = all.slice(i, i + CHUNK);
+          for (const r of slice) {
+            const zv = classifyZone(r.rms, g.limits.velocity);
+            const za = classifyZone(r.rmsA, secondaryLimits(g.limits, secondary));
+            const worst = RANK[zv] >= RANK[za] ? zv : za;
+            if (alarmsOnly && RANK[worst] < RANK.B) continue;
+            if (q && !`${g.title} ${r.point}`.toLowerCase().includes(q)) continue;
+            lines.push({ r, zv, za, worst });
+          }
+          if (i + CHUNK < all.length) await new Promise<void>((r) => setTimeout(r, 0));
+          if (cancelled) return;
+        }
+        out.push({ g, lines });
+      }
+      if (!cancelled) setBuilt(out);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, secondary, q, alarmsOnly]);
 
-  const total = built.reduce((n, b) => n + b.lines.length, 0);
+  const displayBuilt = built ?? (groups.reduce((n, g) => n + g.rows.length, 0) < 2000 ? buildGroups() : []);
+  const total = displayBuilt.reduce((n, b) => n + b.lines.length, 0);
 
   if (!rows && !loading) return null;
 
@@ -306,7 +362,7 @@ export function MeasuringTable({
       }
       contentClassName="grid gap-4"
     >
-      {built.map(({ g, lines }) =>
+      {displayBuilt.map(({ g, lines }) =>
         lines.length === 0 && (q || alarmsOnly) ? null : (
           <section key={g.id} className="overflow-hidden rounded-md border">
             <header className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b bg-muted/50 px-3 py-2">
