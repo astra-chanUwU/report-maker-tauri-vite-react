@@ -103,20 +103,22 @@ passed because a Go unit test passed.
 
 **Depends on:** current SQLite/auth groundwork.
 
+**Status:** Implemented in control plane (see `CURSOR_REPORT.md`). Remaining manual check: real browser passkey registration/login on configured RP ID/origin.
+
 Complete the passkey-first customer account flow:
 
-- Add a small browser client for WebAuthn JSON ceremony responses, or use a
-  maintained browser helper without turning the site into an SPA.
-- Verify registration and discoverable login on the configured RP ID and origin.
-- Add CSRF protection for mutating browser forms, rate limits for magic links,
-  password login, and passkey attempts, and session rotation after login.
-- Store and update WebAuthn credential counters/flags correctly. Keep challenge
-  records single-use and expiring.
-- Add email-provider interface for magic links. Development mode may retain a
-  safe local outbox; production must not expose tokens in response headers.
-- Add phone verification state and an SMS-provider interface without making SMS
-  a prerequisite for local development.
-- Keep admin authentication separate and do not reuse customer cookies for admin.
+- [x] Add a small browser client for WebAuthn JSON ceremony responses (inline JS
+  on login/account pages; no npm/SPA).
+- [ ] Verify registration and discoverable login on the configured RP ID and
+  origin (**manual browser check remaining**).
+- [x] CSRF protection for mutating browser forms; rate limits for magic links,
+  password login, and passkey attempts; session rotation after login.
+- [x] WebAuthn credential counters via `TouchWebAuthnCredential`; challenges
+  remain single-use and expiring.
+- [x] Email-provider interface (`LocalOutbox`); production path omits token from
+  responses/headers (`X-Dev-Magic-Link` only when `AllowDevSeed`).
+- [x] Phone verification (`phone_verified_at`, `FakeSMS` interface).
+- [x] Separate admin auth (`report_maker_admin_session`, `REPORT_ADMIN_PASSWORD`).
 
 **Acceptance:** protocol tests pass; a real browser passkey registration and
 login are manually verified on the chosen domain; magic-link tokens are never

@@ -54,13 +54,24 @@ func (a *App) authRoutes() {
 	a.mux.HandleFunc("GET /account", a.customerAccount)
 }
 
-func (a *App) loginPage(w http.ResponseWriter, _ *http.Request) {
-	renderPage(w, "login", PageData{Title: "Sign in", Heading: "Sign in to your Report Maker account", Body: "Use a passkey first, or request a one-time sign-in link by email."})
+func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
+	renderPage(w, "login", PageData{
+		Title: "Sign in", Heading: "Sign in to your Report Maker account",
+		Body: "Use a passkey first, or request a one-time sign-in link by email.",
+		CSRFToken: a.ensureCSRF(w, r), ExtraScript: true,
+		ShowPasskeyLogin: true, ShowMagicLink: true, ShowPasswordLogin: true,
+	})
 }
 
 func (a *App) requestMagicLink(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if !a.requireCSRF(w, r) {
+		return
+	}
+	if !a.rateLimit(w, r, "magic-link-request", 5, 15*time.Minute) {
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(r.FormValue("email")))
@@ -70,8 +81,6 @@ func (a *App) requestMagicLink(w http.ResponseWriter, r *http.Request) {
 	}
 	customer, ok := a.store.FindCustomerByEmail(email)
 	if !ok {
-		// Do not reveal whether an address has an account. Purchases create the
-		// customer record; support can reconcile a new purchase separately.
 		writeJSON(w, http.StatusAccepted, map[string]string{"status": "If the account exists, a sign-in link has been sent."})
 		return
 	}
@@ -85,11 +94,13 @@ func (a *App) requestMagicLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save sign-in link", http.StatusInternalServerError)
 		return
 	}
-	// Email delivery is a separate provider adapter. Exposing this header is
-	// deliberately limited to local development so the flow can be exercised
-	// before an SMTP/API provider is configured.
+	linkURL := a.cfg.PublicBaseURL + "/auth/magic-link/consume?token=" + url.QueryEscape(token)
+	_ = a.email.Send(r.Context(), EmailMessage{
+		To: customer.Email, Subject: "Sign in to Report Maker",
+		Body: "Open this link to sign in: " + linkURL, Kind: "magic_link",
+	})
 	if a.cfg.AllowDevSeed {
-		w.Header().Set("X-Dev-Magic-Link", a.cfg.PublicBaseURL+"/auth/magic-link/consume?token="+url.QueryEscape(token))
+		w.Header().Set("X-Dev-Magic-Link", linkURL)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "If the account exists, a sign-in link has been sent."})
 }
@@ -101,7 +112,7 @@ func (a *App) consumeMagicLink(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sign-in link is invalid or expired", http.StatusUnauthorized)
 		return
 	}
-	if err := a.issueCustomerSession(w, link.CustomerID); err != nil {
+	if err := a.rotateCustomerSession(w, r, link.CustomerID); err != nil {
 		http.Error(w, "could not create session", http.StatusInternalServerError)
 		return
 	}
@@ -112,6 +123,9 @@ func (a *App) setCustomerPassword(w http.ResponseWriter, r *http.Request) {
 	customer, ok := a.customerFromRequest(r)
 	if !ok {
 		http.Error(w, "sign in required", http.StatusUnauthorized)
+		return
+	}
+	if !a.requireCSRF(w, r) {
 		return
 	}
 	var body struct {
@@ -136,26 +150,55 @@ func (a *App) setCustomerPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) loginWithPassword(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if !decodeJSON(w, r, &body) {
+	if !a.requireCSRF(w, r) {
 		return
 	}
-	customer, ok := a.store.FindCustomerByEmail(strings.TrimSpace(strings.ToLower(body.Email)))
-	if !ok || customer.PasswordHash == "" || !verifyPassword(customer.PasswordHash, body.Password) {
+	if !a.rateLimit(w, r, "password-login", 10, 15*time.Minute) {
+		return
+	}
+	email := ""
+	password := ""
+	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		var body struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		email = strings.TrimSpace(strings.ToLower(body.Email))
+		password = body.Password
+	} else {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		email = strings.TrimSpace(strings.ToLower(r.FormValue("email")))
+		password = r.FormValue("password")
+	}
+	customer, ok := a.store.FindCustomerByEmail(email)
+	if !ok || customer.PasswordHash == "" || !verifyPassword(customer.PasswordHash, password) {
 		errorJSON(w, http.StatusUnauthorized, "invalid_credentials", "Email or password is incorrect.")
 		return
 	}
-	if err := a.issueCustomerSession(w, customer.ID); err != nil {
+	if err := a.rotateCustomerSession(w, r, customer.ID); err != nil {
 		http.Error(w, "could not create session", http.StatusInternalServerError)
+		return
+	}
+	if strings.Contains(r.Header.Get("Accept"), "text/html") || r.FormValue("email") != "" {
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_in", "customer_id": customer.ID})
 }
 
 func (a *App) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request) {
+	if !a.requireCSRF(w, r) {
+		return
+	}
+	if !a.rateLimit(w, r, "passkey", 20, 15*time.Minute) {
+		return
+	}
 	customer, ok := a.customerFromRequest(r)
 	if !ok {
 		http.Error(w, "sign in required", http.StatusUnauthorized)
@@ -194,6 +237,12 @@ func (a *App) beginPasskeyRegistration(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) finishPasskeyRegistration(w http.ResponseWriter, r *http.Request) {
+	if !a.requireCSRF(w, r) {
+		return
+	}
+	if !a.rateLimit(w, r, "passkey", 20, 15*time.Minute) {
+		return
+	}
 	customer, ok := a.customerFromRequest(r)
 	if !ok {
 		http.Error(w, "sign in required", http.StatusUnauthorized)
@@ -228,7 +277,13 @@ func (a *App) finishPasskeyRegistration(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "passkey_registered"})
 }
 
-func (a *App) beginPasskeyLogin(w http.ResponseWriter, _ *http.Request) {
+func (a *App) beginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
+	if !a.requireCSRF(w, r) {
+		return
+	}
+	if !a.rateLimit(w, r, "passkey", 20, 15*time.Minute) {
+		return
+	}
 	assertion, session, err := a.webAuthn.BeginDiscoverableLogin()
 	if err != nil {
 		http.Error(w, "could not begin passkey login", http.StatusInternalServerError)
@@ -243,6 +298,12 @@ func (a *App) beginPasskeyLogin(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *App) finishPasskeyLogin(w http.ResponseWriter, r *http.Request) {
+	if !a.requireCSRF(w, r) {
+		return
+	}
+	if !a.rateLimit(w, r, "passkey", 20, 15*time.Minute) {
+		return
+	}
 	challengeID := strings.TrimSpace(r.URL.Query().Get("challenge_id"))
 	challenge, ok := a.store.ConsumeWebAuthnChallenge(challengeID, "login")
 	if !ok {
@@ -264,9 +325,10 @@ func (a *App) finishPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "passkey account is invalid", http.StatusUnauthorized)
 		return
 	}
+	// TouchWebAuthnCredential persists the updated sign counter and last-used timestamp.
 	encoded, _ := json.Marshal(credential)
 	_ = a.store.TouchWebAuthnCredential(base64.RawURLEncoding.EncodeToString(credential.ID), encoded)
-	if err := a.issueCustomerSession(w, customerUser.customer.ID); err != nil {
+	if err := a.rotateCustomerSession(w, r, customerUser.customer.ID); err != nil {
 		http.Error(w, "could not create session", http.StatusInternalServerError)
 		return
 	}
@@ -329,6 +391,16 @@ func (a *App) customerFromRequest(r *http.Request) (*Customer, bool) {
 	return a.store.GetCustomer(session.CustomerID)
 }
 
+func (a *App) rotateCustomerSession(w http.ResponseWriter, r *http.Request, customerID string) error {
+	if cookie, err := r.Cookie(customerSessionCookie); err == nil && cookie.Value != "" {
+		_ = a.store.DeleteCustomerSession(hashToken(cookie.Value))
+	}
+	if err := a.store.DeleteCustomerSessions(customerID); err != nil {
+		return err
+	}
+	return a.issueCustomerSession(w, customerID)
+}
+
 func (a *App) issueCustomerSession(w http.ResponseWriter, customerID string) error {
 	token, err := randomToken(32)
 	if err != nil {
@@ -343,8 +415,23 @@ func (a *App) issueCustomerSession(w http.ResponseWriter, customerID string) err
 	return nil
 }
 
-func (a *App) logoutCustomer(w http.ResponseWriter, _ *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: "", Path: "/", HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteLaxMode})
+func (a *App) logoutCustomer(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if !a.requireCSRF(w, r) {
+		return
+	}
+	if cookie, err := r.Cookie(customerSessionCookie); err == nil && cookie.Value != "" {
+		_ = a.store.DeleteCustomerSession(hashToken(cookie.Value))
+	}
+	secure := strings.HasPrefix(strings.ToLower(a.cfg.PublicBaseURL), "https://")
+	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})
 }
 
@@ -354,7 +441,16 @@ func (a *App) customerAccount(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?return_to="+url.QueryEscape(r.URL.Path), http.StatusSeeOther)
 		return
 	}
-	renderPage(w, "account", PageData{Title: "Your account", Heading: "Your Report Maker account", Body: "Signed in as " + customer.Email})
+	phoneStatus := "not verified"
+	if customer.PhoneVerifiedAt != nil {
+		phoneStatus = "verified"
+	}
+	renderPage(w, "account", PageData{
+		Title: "Your account", Heading: "Your Report Maker account",
+		Body: "Signed in as " + customer.Email, CSRFToken: a.ensureCSRF(w, r),
+		Email: customer.Email, Phone: customer.Phone, PhoneVerified: phoneStatus,
+		ExtraScript: true, ShowPasskeyRegister: true, ShowPhoneVerify: true, ShowLogout: true,
+	})
 }
 
 func randomToken(size int) (string, error) {
@@ -414,4 +510,20 @@ func validPassword(value string) bool { return len([]rune(value)) >= 12 }
 func validEmail(value string) bool {
 	parsed, err := url.Parse("mailto:" + value)
 	return err == nil && parsed.Opaque != "" && strings.Contains(parsed.Opaque, "@")
+}
+
+// LocalOutboxRef returns the email outbox when the app uses LocalOutbox.
+func (a *App) LocalOutboxRef() *LocalOutbox {
+	if outbox, ok := a.email.(*LocalOutbox); ok {
+		return outbox
+	}
+	return nil
+}
+
+// FakeSMSRef returns the fake SMS store when the app uses FakeSMS.
+func (a *App) FakeSMSRef() *FakeSMS {
+	if fake, ok := a.sms.(*FakeSMS); ok {
+		return fake
+	}
+	return nil
 }

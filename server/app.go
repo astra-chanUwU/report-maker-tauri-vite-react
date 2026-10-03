@@ -28,7 +28,10 @@ type Config struct {
 	WebAuthnRPID    string
 	WebAuthnOrigins []string
 	WebAuthnRPName  string
+	AdminPassword   string
 	Gateway         PaymentGateway
+	EmailSender     EmailSender
+	SMSSender       SMSSender
 }
 
 func ConfigFromEnv() Config {
@@ -71,7 +74,12 @@ func ConfigFromEnv() Config {
 		}
 		gateway = ZarinPalGateway{MerchantID: merchant, BaseURL: apiBase}
 	}
-	return Config{SigningPrivateKey: os.Getenv("REPORT_SIGNING_PRIVATE_KEY"), SigningKeyID: valueOr(os.Getenv("REPORT_SIGNING_KEY_ID"), "lease-dev-1"), LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath, WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, Gateway: gateway}
+	return Config{
+		SigningPrivateKey: os.Getenv("REPORT_SIGNING_PRIVATE_KEY"), SigningKeyID: valueOr(os.Getenv("REPORT_SIGNING_KEY_ID"), "lease-dev-1"),
+		LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
+		WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, AdminPassword: os.Getenv("REPORT_ADMIN_PASSWORD"),
+		Gateway: gateway,
+	}
 }
 func valueOr(value, fallback string) string {
 	if value == "" {
@@ -87,6 +95,9 @@ type App struct {
 	signingPublic ed25519.PublicKey
 	mux           *http.ServeMux
 	webAuthn      *webauthn.WebAuthn
+	email         EmailSender
+	sms           SMSSender
+	rateLimits    *rateLimiter
 }
 
 func NewApp(cfg Config) (*App, error) {
@@ -114,12 +125,25 @@ func NewApp(cfg Config) (*App, error) {
 		store.Close()
 		return nil, err
 	}
-	app := &App{cfg: cfg, store: store, signingKey: key, signingPublic: key.Public().(ed25519.PublicKey), mux: http.NewServeMux(), webAuthn: webAuthnService}
+	email := cfg.EmailSender
+	if email == nil {
+		email = &LocalOutbox{}
+	}
+	sms := cfg.SMSSender
+	if sms == nil {
+		sms = &FakeSMS{}
+	}
+	app := &App{
+		cfg: cfg, store: store, signingKey: key, signingPublic: key.Public().(ed25519.PublicKey),
+		mux: http.NewServeMux(), webAuthn: webAuthnService, email: email, sms: sms, rateLimits: newRateLimiter(),
+	}
 	if cfg.AllowDevSeed {
 		app.store.SeedLicense("RM-TEST-1234-KEY0", "perpetual", map[string]bool{"core_export": true, "hosted_ai": true}, 3)
 	}
 	app.routes()
 	app.authRoutes()
+	app.phoneRoutes()
+	app.adminRoutes()
 	return app, nil
 }
 func (a *App) Handler() http.Handler { return a.requestLog(a.mux) }
@@ -157,8 +181,13 @@ func (a *App) health(w http.ResponseWriter, _ *http.Request) {
 func (a *App) home(w http.ResponseWriter, _ *http.Request) {
 	renderPage(w, "home", PageData{Title: "Offline engineering reports", Heading: "Report Maker", Body: "Build polished engineering reports from your local data. Your report workflow stays on your machine."})
 }
-func (a *App) pricing(w http.ResponseWriter, _ *http.Request) {
-	renderPage(w, "pricing", PageData{Title: "Pricing", Heading: "Choose a license", Body: "Pay through a domestic payment gateway. The desktop app remains useful offline.", Plans: []PlanView{{ID: "perpetual", Name: "Perpetual", Description: "Core report creation and export for one major version.", Price: "Contact for current price"}}})
+func (a *App) pricing(w http.ResponseWriter, r *http.Request) {
+	renderPage(w, "pricing", PageData{
+		Title: "Pricing", Heading: "Choose a license",
+		Body:  "Pay through a domestic payment gateway. The desktop app remains useful offline.",
+		Plans: []PlanView{{ID: "perpetual", Name: "Perpetual", Description: "Core report creation and export for one major version.", Price: "Contact for current price"}},
+		CSRFToken: a.ensureCSRF(w, r),
+	})
 }
 func (a *App) download(w http.ResponseWriter, _ *http.Request) {
 	renderPage(w, "home", PageData{Title: "Download", Heading: "Download Report Maker", Body: "Download links will be shown here after the release package is published."})
@@ -166,6 +195,9 @@ func (a *App) download(w http.ResponseWriter, _ *http.Request) {
 func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", 400)
+		return
+	}
+	if !a.requireCSRF(w, r) {
 		return
 	}
 	plan := strings.TrimSpace(r.FormValue("plan"))

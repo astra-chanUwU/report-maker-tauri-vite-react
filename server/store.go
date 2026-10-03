@@ -34,15 +34,33 @@ type Activation struct {
 }
 
 type Customer struct {
-	ID           string
-	FirstName    string
-	LastName     string
-	Email        string
-	Phone        string
-	WebAuthnID   string
-	PasswordHash string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID              string
+	FirstName       string
+	LastName        string
+	Email           string
+	Phone           string
+	PhoneVerifiedAt *time.Time
+	WebAuthnID      string
+	PasswordHash    string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type PhoneChallenge struct {
+	ID         string
+	CustomerID string
+	CodeHash   string
+	ExpiresAt  time.Time
+	ConsumedAt *time.Time
+	CreatedAt  time.Time
+}
+
+type AdminSession struct {
+	ID         string
+	TokenHash  string
+	ExpiresAt  time.Time
+	CreatedAt  time.Time
+	LastSeenAt time.Time
 }
 
 type WebAuthnChallenge struct {
@@ -208,7 +226,17 @@ CREATE TABLE IF NOT EXISTS download_records (
 CREATE TABLE IF NOT EXISTS idempotency (
  scope TEXT NOT NULL, key TEXT NOT NULL, response BLOB NOT NULL, created_at TEXT NOT NULL,
  PRIMARY KEY(scope, key)
-);`)
+);
+CREATE TABLE IF NOT EXISTS phone_challenges (
+ id TEXT PRIMARY KEY, customer_id TEXT NOT NULL REFERENCES customers(id), code_hash TEXT NOT NULL,
+ expires_at TEXT NOT NULL, consumed_at TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS phone_challenges_customer_idx ON phone_challenges(customer_id);
+CREATE TABLE IF NOT EXISTS admin_sessions (
+ id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL,
+ created_at TEXT NOT NULL, last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS admin_sessions_expiry_idx ON admin_sessions(expires_at);`)
 	if err != nil {
 		return err
 	}
@@ -218,6 +246,7 @@ CREATE TABLE IF NOT EXISTS idempotency (
 	for _, statement := range []string{
 		`ALTER TABLE customers ADD COLUMN webauthn_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE customers ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE customers ADD COLUMN phone_verified_at TEXT`,
 	} {
 		if _, alterErr := db.Exec(statement); alterErr != nil && !strings.Contains(strings.ToLower(alterErr.Error()), "duplicate column") {
 			return alterErr
@@ -303,28 +332,33 @@ func (s *Store) RevokeActivation(id string) bool {
 	return err == nil
 }
 func (s *Store) PutCustomer(value *Customer) error {
-	_, err := s.db.Exec(`INSERT INTO customers(id,first_name,last_name,email,phone,webauthn_id,password_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,last_name=excluded.last_name,email=excluded.email,phone=excluded.phone,webauthn_id=CASE WHEN excluded.webauthn_id <> '' THEN excluded.webauthn_id ELSE customers.webauthn_id END,password_hash=CASE WHEN excluded.password_hash <> '' THEN excluded.password_hash ELSE customers.password_hash END,updated_at=excluded.updated_at`, value.ID, value.FirstName, value.LastName, value.Email, value.Phone, value.WebAuthnID, value.PasswordHash, formatTime(value.CreatedAt), formatTime(value.UpdatedAt))
+	_, err := s.db.Exec(`INSERT INTO customers(id,first_name,last_name,email,phone,phone_verified_at,webauthn_id,password_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,last_name=excluded.last_name,email=excluded.email,phone=excluded.phone,phone_verified_at=COALESCE(excluded.phone_verified_at,customers.phone_verified_at),webauthn_id=CASE WHEN excluded.webauthn_id <> '' THEN excluded.webauthn_id ELSE customers.webauthn_id END,password_hash=CASE WHEN excluded.password_hash <> '' THEN excluded.password_hash ELSE customers.password_hash END,updated_at=excluded.updated_at`, value.ID, value.FirstName, value.LastName, value.Email, value.Phone, nullableTime(value.PhoneVerifiedAt), value.WebAuthnID, value.PasswordHash, formatTime(value.CreatedAt), formatTime(value.UpdatedAt))
 	return err
 }
 
 func (s *Store) GetCustomer(id string) (*Customer, bool) {
-	row := s.db.QueryRow(`SELECT id,first_name,last_name,email,phone,webauthn_id,password_hash,created_at,updated_at FROM customers WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id,first_name,last_name,email,phone,phone_verified_at,webauthn_id,password_hash,created_at,updated_at FROM customers WHERE id=?`, id)
 	return scanCustomer(row)
 }
 
 func (s *Store) FindCustomerByEmail(email string) (*Customer, bool) {
-	row := s.db.QueryRow(`SELECT id,first_name,last_name,email,phone,webauthn_id,password_hash,created_at,updated_at FROM customers WHERE lower(email)=lower(?) ORDER BY created_at LIMIT 1`, strings.TrimSpace(email))
+	row := s.db.QueryRow(`SELECT id,first_name,last_name,email,phone,phone_verified_at,webauthn_id,password_hash,created_at,updated_at FROM customers WHERE lower(email)=lower(?) ORDER BY created_at LIMIT 1`, strings.TrimSpace(email))
 	return scanCustomer(row)
 }
 
 func scanCustomer(row interface{ Scan(...any) error }) (*Customer, bool) {
 	var value Customer
 	var created, updated string
-	if err := row.Scan(&value.ID, &value.FirstName, &value.LastName, &value.Email, &value.Phone, &value.WebAuthnID, &value.PasswordHash, &created, &updated); err != nil {
+	var phoneVerified sql.NullString
+	if err := row.Scan(&value.ID, &value.FirstName, &value.LastName, &value.Email, &value.Phone, &phoneVerified, &value.WebAuthnID, &value.PasswordHash, &created, &updated); err != nil {
 		return nil, false
 	}
 	value.CreatedAt, _ = parseTime(created)
 	value.UpdatedAt, _ = parseTime(updated)
+	if phoneVerified.Valid {
+		parsed, _ := parseTime(phoneVerified.String)
+		value.PhoneVerifiedAt = &parsed
+	}
 	return &value, true
 }
 
@@ -357,7 +391,7 @@ func (s *Store) ListWebAuthnCredentials(customerID string) ([]WebAuthnCredential
 }
 
 func (s *Store) FindCustomerByWebAuthnID(id string) (*Customer, bool) {
-	row := s.db.QueryRow(`SELECT id,first_name,last_name,email,phone,webauthn_id,password_hash,created_at,updated_at FROM customers WHERE webauthn_id=?`, id)
+	row := s.db.QueryRow(`SELECT id,first_name,last_name,email,phone,phone_verified_at,webauthn_id,password_hash,created_at,updated_at FROM customers WHERE webauthn_id=?`, id)
 	return scanCustomer(row)
 }
 
@@ -459,6 +493,82 @@ func (s *Store) FindCustomerSession(tokenHash string) (*CustomerSession, bool) {
 
 func (s *Store) TouchCustomerSession(id string) error {
 	_, err := s.db.Exec(`UPDATE customer_sessions SET last_seen_at=? WHERE id=?`, formatTime(time.Now().UTC()), id)
+	return err
+}
+
+func (s *Store) DeleteCustomerSessions(customerID string) error {
+	_, err := s.db.Exec(`DELETE FROM customer_sessions WHERE customer_id=?`, customerID)
+	return err
+}
+
+func (s *Store) DeleteCustomerSession(tokenHash string) error {
+	_, err := s.db.Exec(`DELETE FROM customer_sessions WHERE token_hash=?`, tokenHash)
+	return err
+}
+
+func (s *Store) PutPhoneChallenge(value *PhoneChallenge) error {
+	_, err := s.db.Exec(`INSERT INTO phone_challenges(id,customer_id,code_hash,expires_at,consumed_at,created_at) VALUES(?,?,?,?,?,?)`, value.ID, value.CustomerID, value.CodeHash, formatTime(value.ExpiresAt), nullableTime(value.ConsumedAt), formatTime(value.CreatedAt))
+	return err
+}
+
+func (s *Store) ConsumePhoneChallenge(customerID, codeHash string) (*PhoneChallenge, bool) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, false
+	}
+	defer tx.Rollback()
+	var value PhoneChallenge
+	var expires, consumed, created sql.NullString
+	if err := tx.QueryRow(`SELECT id,customer_id,code_hash,expires_at,consumed_at,created_at FROM phone_challenges WHERE customer_id=? AND code_hash=? ORDER BY created_at DESC LIMIT 1`, customerID, codeHash).Scan(&value.ID, &value.CustomerID, &value.CodeHash, &expires, &consumed, &created); err != nil {
+		return nil, false
+	}
+	value.ExpiresAt, _ = parseTime(expires.String)
+	value.CreatedAt, _ = parseTime(created.String)
+	if consumed.Valid {
+		parsed, _ := parseTime(consumed.String)
+		value.ConsumedAt = &parsed
+	}
+	if value.ConsumedAt != nil || !value.ExpiresAt.After(time.Now().UTC()) {
+		return nil, false
+	}
+	now := time.Now().UTC()
+	if _, err := tx.Exec(`UPDATE phone_challenges SET consumed_at=? WHERE id=? AND consumed_at IS NULL`, formatTime(now), value.ID); err != nil {
+		return nil, false
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false
+	}
+	value.ConsumedAt = &now
+	return &value, true
+}
+
+func (s *Store) PutAdminSession(value *AdminSession) error {
+	_, err := s.db.Exec(`INSERT INTO admin_sessions(id,token_hash,expires_at,created_at,last_seen_at) VALUES(?,?,?,?,?)`, value.ID, value.TokenHash, formatTime(value.ExpiresAt), formatTime(value.CreatedAt), formatTime(value.LastSeenAt))
+	return err
+}
+
+func (s *Store) FindAdminSession(tokenHash string) (*AdminSession, bool) {
+	var value AdminSession
+	var expires, created, last string
+	if err := s.db.QueryRow(`SELECT id,token_hash,expires_at,created_at,last_seen_at FROM admin_sessions WHERE token_hash=?`, tokenHash).Scan(&value.ID, &value.TokenHash, &expires, &created, &last); err != nil {
+		return nil, false
+	}
+	value.ExpiresAt, _ = parseTime(expires)
+	value.CreatedAt, _ = parseTime(created)
+	value.LastSeenAt, _ = parseTime(last)
+	if !value.ExpiresAt.After(time.Now().UTC()) {
+		return nil, false
+	}
+	return &value, true
+}
+
+func (s *Store) TouchAdminSession(id string) error {
+	_, err := s.db.Exec(`UPDATE admin_sessions SET last_seen_at=? WHERE id=?`, formatTime(time.Now().UTC()), id)
+	return err
+}
+
+func (s *Store) DeleteAdminSession(tokenHash string) error {
+	_, err := s.db.Exec(`DELETE FROM admin_sessions WHERE token_hash=?`, tokenHash)
 	return err
 }
 func (s *Store) PutOrder(value *Order) error {

@@ -101,12 +101,17 @@ func TestActivationRefreshAndRevoke(t *testing.T) {
 
 func TestPaymentRedirectCallbackIsIdempotent(t *testing.T) {
 	_, server, _, _ := testApp(t)
-	form := url.Values{"plan": {"perpetual"}, "first_name": {"Customer"}, "last_name": {"Example"}, "email": {"customer@example.com"}, "phone": {"09120000000"}}
+	client := server.Client()
+	csrf, csrfCookies := fetchCSRF(t, client, server.URL)
+	form := url.Values{"plan": {"perpetual"}, "first_name": {"Customer"}, "last_name": {"Example"}, "email": {"customer@example.com"}, "phone": {"09120000000"}, "csrf_token": {csrf}}
 	request, _ := http.NewRequest(http.MethodPost, server.URL+"/checkout/start", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	client := *server.Client()
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	response, err := client.Do(request)
+	for _, c := range csrfCookies {
+		request.AddCookie(c)
+	}
+	noRedirect := *client
+	noRedirect.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := noRedirect.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +123,7 @@ func TestPaymentRedirectCallbackIsIdempotent(t *testing.T) {
 	if location == "" {
 		t.Fatal("checkout did not redirect")
 	}
-	redirected, err := client.Get(location)
+	redirected, err := noRedirect.Get(location)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +132,7 @@ func TestPaymentRedirectCallbackIsIdempotent(t *testing.T) {
 	if callbackLocation == "" {
 		t.Fatal("gateway redirect did not produce callback")
 	}
-	callback, err := client.Get(server.URL + callbackLocation)
+	callback, err := noRedirect.Get(server.URL + callbackLocation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,10 +171,15 @@ func TestCustomerMagicLinkAndPasswordAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	form := url.Values{"email": {"auth@example.com"}}
+	client := server.Client()
+	csrf, csrfCookies := fetchCSRF(t, client, server.URL)
+	form := url.Values{"email": {"auth@example.com"}, "csrf_token": {csrf}}
 	request, _ := http.NewRequest(http.MethodPost, server.URL+"/auth/magic-link/request", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	response, err := server.Client().Do(request)
+	for _, c := range csrfCookies {
+		request.AddCookie(c)
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,9 +192,9 @@ func TestCustomerMagicLinkAndPasswordAuth(t *testing.T) {
 		t.Fatal("development magic-link header missing")
 	}
 
-	client := *server.Client()
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	response, err = client.Get(magicLink)
+	noRedirect := *server.Client()
+	noRedirect.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	response, err = noRedirect.Get(magicLink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,8 +206,14 @@ func TestCustomerMagicLinkAndPasswordAuth(t *testing.T) {
 
 	passwordRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/auth/password/set", strings.NewReader(`{"password":"a-long-development-password"}`))
 	passwordRequest.Header.Set("Content-Type", "application/json")
+	passwordRequest.Header.Set("X-CSRF-Token", csrf)
 	passwordRequest.AddCookie(cookie)
-	passwordResponse, err := server.Client().Do(passwordRequest)
+	for _, c := range csrfCookies {
+		if c.Name == csrfCookieName {
+			passwordRequest.AddCookie(c)
+		}
+	}
+	passwordResponse, err := noRedirect.Do(passwordRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +224,13 @@ func TestCustomerMagicLinkAndPasswordAuth(t *testing.T) {
 
 	loginRequest, _ := http.NewRequest(http.MethodPost, server.URL+"/auth/password/login", strings.NewReader(`{"email":"auth@example.com","password":"a-long-development-password"}`))
 	loginRequest.Header.Set("Content-Type", "application/json")
-	loginResponse, err := server.Client().Do(loginRequest)
+	loginRequest.Header.Set("X-CSRF-Token", csrf)
+	for _, c := range csrfCookies {
+		if c.Name == csrfCookieName {
+			loginRequest.AddCookie(c)
+		}
+	}
+	loginResponse, err := noRedirect.Do(loginRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
