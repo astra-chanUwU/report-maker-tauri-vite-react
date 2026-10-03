@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"crypto/tls"
+	"net"
 	"net/http"
+	"net/smtp"
 	"os"
 	"regexp"
 	"strconv"
@@ -388,6 +391,92 @@ func redactPhone(phone string) string {
 	return "***" + phone[len(phone)-4:]
 }
 
+// SMTPEmailSender sends mail through a generic SMTP relay (Iranian host or fallback).
+type SMTPEmailSender struct {
+	Host, Port, Username, Password, FromEmail, FromName string
+	MaxRetries                                          int
+}
+
+func (s *SMTPEmailSender) Send(ctx context.Context, msg EmailMessage) error {
+	host := strings.TrimSpace(s.Host)
+	if host == "" {
+		return errors.New("smtp host not configured")
+	}
+	port := valueOr(strings.TrimSpace(s.Port), "587")
+	from := valueOr(strings.TrimSpace(s.FromEmail), "noreply@localhost")
+	addr := net.JoinHostPort(host, port)
+	header := fmt.Sprintf("From: %s <%s>\r\nTo: %s\r\nSubject: %s\r\n\r\n", valueOr(s.FromName, "Report Maker"), from, msg.To, msg.Subject)
+	auth := smtp.PlainAuth("", s.Username, s.Password, host)
+	if port == "465" {
+		conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+		if err != nil {
+			return fmt.Errorf("email provider transport: %w", err)
+		}
+		client, err := smtp.NewClient(conn, host)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		if s.Username != "" {
+			_ = client.Auth(auth)
+		}
+		_ = client.Mail(from)
+		_ = client.Rcpt(msg.To)
+		w, _ := client.Data()
+		_, _ = w.Write([]byte(header + msg.Body))
+		return w.Close()
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	return smtp.SendMail(addr, auth, from, []string{msg.To}, []byte(header+msg.Body))
+}
+
+// KavenegarSMSSender posts OTP SMS through the Kavenegar REST API.
+type KavenegarSMSSender struct {
+	APIKey, Sender, Template string
+	Client                   *http.Client
+	MaxRetries               int
+}
+
+func (s *KavenegarSMSSender) Send(ctx context.Context, msg SMSMessage) error {
+	key := strings.TrimSpace(s.APIKey)
+	if key == "" {
+		return errors.New("sms provider api key not configured")
+	}
+	endpoint := fmt.Sprintf("https://api.kavenegar.com/v1/%s/sms/send.json", key)
+	payload, _ := json.Marshal(map[string]any{
+		"receptor": msg.To,
+		"sender":   valueOr(s.Sender, "1000"),
+		"message":  msg.Body,
+		"kind":     msg.Kind,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.httpClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("sms provider transport: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, maxProviderResponse))
+		return fmt.Errorf("sms provider status %d: %s", resp.StatusCode, redactSecrets(string(b)))
+	}
+	return nil
+}
+
+func (s *KavenegarSMSSender) httpClient() *http.Client {
+	if s.Client != nil {
+		return s.Client
+	}
+	return &http.Client{Timeout: defaultProviderTimeout}
+}
+
 // EmailSenderFromEnv builds the production email adapter from environment variables.
 // Defaults to LocalOutbox when unset so local/dev remains safe without secrets.
 func EmailSenderFromEnv() EmailSender {
@@ -395,10 +484,19 @@ func EmailSenderFromEnv() EmailSender {
 	switch provider {
 	case "noop", "none", "disabled":
 		return NoopEmailSender{}
-	case "http", "api", "transactional":
+	case "smtp":
+		return &SMTPEmailSender{
+			Host: os.Getenv("REPORT_SMTP_HOST"), Port: os.Getenv("REPORT_SMTP_PORT"),
+			Username: os.Getenv("REPORT_SMTP_USER"), Password: os.Getenv("REPORT_SMTP_PASSWORD"),
+			FromEmail: os.Getenv("REPORT_EMAIL_FROM"), FromName: valueOr(os.Getenv("REPORT_EMAIL_FROM_NAME"), "Report Maker"),
+			MaxRetries: envInt("REPORT_EMAIL_MAX_RETRIES", defaultProviderRetries),
+		}
+	case "kavenegar", "http", "api", "transactional":
 		return newHTTPEmailSenderFromEnv()
-	case "local", "outbox", "":
-		if apiURL := strings.TrimSpace(os.Getenv("REPORT_EMAIL_API_URL")); apiURL != "" && strings.TrimSpace(os.Getenv("REPORT_EMAIL_API_KEY")) != "" {
+	case "outbox":
+		return nil
+	case "local", "":
+		if strings.TrimSpace(os.Getenv("REPORT_EMAIL_API_URL")) != "" && strings.TrimSpace(os.Getenv("REPORT_EMAIL_API_KEY")) != "" {
 			return newHTTPEmailSenderFromEnv()
 		}
 		return &LocalOutbox{}
@@ -426,10 +524,24 @@ func SMSSenderFromEnv() SMSSender {
 	switch provider {
 	case "noop", "none", "disabled":
 		return NoopSMSSender{}
-	case "http", "api", "kavenegar":
+	case "kavenegar":
+		return &KavenegarSMSSender{
+			APIKey: os.Getenv("REPORT_SMS_API_KEY"), Sender: os.Getenv("REPORT_SMS_SENDER"),
+			Template: os.Getenv("REPORT_SMS_TEMPLATE"),
+			Client:   &http.Client{Timeout: envDurationMS("REPORT_SMS_TIMEOUT_MS", defaultProviderTimeout)},
+			MaxRetries: envInt("REPORT_SMS_MAX_RETRIES", defaultProviderRetries),
+		}
+	case "http", "api":
 		return newHTTPSMSSenderFromEnv()
 	case "fake", "local", "":
 		if apiURL := strings.TrimSpace(os.Getenv("REPORT_SMS_API_URL")); apiURL != "" && strings.TrimSpace(os.Getenv("REPORT_SMS_API_KEY")) != "" {
+			if strings.Contains(strings.ToLower(apiURL), "kavenegar") {
+				return &KavenegarSMSSender{
+					APIKey: os.Getenv("REPORT_SMS_API_KEY"), Sender: os.Getenv("REPORT_SMS_SENDER"),
+					Template: os.Getenv("REPORT_SMS_TEMPLATE"),
+					Client:   &http.Client{Timeout: envDurationMS("REPORT_SMS_TIMEOUT_MS", defaultProviderTimeout)},
+				}
+			}
 			return newHTTPSMSSenderFromEnv()
 		}
 		return &FakeSMS{}

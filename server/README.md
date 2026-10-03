@@ -74,3 +74,12 @@ Hosted AI and telemetry endpoints remain contract-compatible with the desktop
 client. Set `ZARINPAL_MERCHANT_ID` to select the ZarinPal adapter; without it,
 the local DemoGateway is used. Set `ZARINPAL_BASE_URL` only for the documented
 provider endpoint or a test server.
+
+## Release artifacts
+
+```bash
+cd server && go run ./cmd/publish-release
+REPORT_ARTIFACT_ROOT=testdata/artifacts REPORT_ALLOW_DEV_SEED=1 go run ./cmd/controlplane
+```
+
+See [`docs/releases.md`](../docs/releases.md).

@@ -414,13 +414,12 @@ configuration still runs without external credentials.
 **Owner:** Composer 2.5 High, reviewed by GPT-Luna 6 High
 **Depends on:** C04
 
-- Replace placeholder `releases.json` data and checksums with real signed release
-  artifacts for the supported macOS and Windows targets.
-- Define the release publication process and artifact retention policy.
-- Verify checksums before download and show install instructions in the account
-  page.
-- Keep artifact paths outside the SQLite database and reject traversal/symlink
-  escapes.
+**Status:** Implemented on `feat/c07-release-artifacts` (see `CURSOR_REPORT_C07.md`).
+
+- [x] Reproducible fixture artifacts + `go run ./cmd/publish-release`.
+- [x] Publication/retention docs in `docs/releases.md`.
+- [x] Pre-download checksum verification; install instructions on downloads page.
+- [x] Paths outside SQLite; traversal/symlink rejection tests pass.
 
 **Acceptance:** a locally published artifact downloads repeatedly, its checksum
 matches, and the release manifest is documented and reproducible.
