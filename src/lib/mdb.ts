@@ -191,9 +191,43 @@ function assembleCells(
 }
 
 /** Tauri: list all measurement summaries of a converted CSV. */
-export async function listTauriRows(csvPath: string): Promise<CsvRowList> {
+export async function listTauriRows(csvPath: string, opts?: { limit?: number; offset?: number }): Promise<CsvRowList> {
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<CsvRowList>("list_csv_rows", { path: csvPath, limit: null });
+  return invoke<CsvRowList>("list_csv_rows", {
+    path: csvPath,
+    limit: opts?.limit ?? null,
+    offset: opts?.offset ?? null,
+  });
+}
+
+/**
+ * Paginated Tauri row list for large exports (e.g. 500 MB).
+ * Fetches in `batch` chunks with an event-loop yield between batches so the
+ * beachball never appears, preserving the non-blocking import UX.
+ */
+export async function listTauriRowsPaged(
+  csvPath: string,
+  batch = 2500,
+  onProgress?: (loaded: number) => void,
+): Promise<CsvRowList> {
+  const first = await listTauriRows(csvPath, { limit: batch, offset: 0 });
+  const header = first.header;
+  const rows: CsvRowSummary[] = [...first.rows];
+  onProgress?.(rows.length);
+  if (first.rows.length < batch) return { header, rows };
+  let offset = batch;
+  for (;;) {
+    // yield to the browser event loop so app switching stays smooth
+    await new Promise<void>((r) => setTimeout(r, 0));
+    const chunk = await listTauriRows(csvPath, { limit: batch, offset });
+    if (chunk.rows.length === 0) break;
+    rows.push(...chunk.rows);
+    onProgress?.(rows.length);
+    if (chunk.rows.length < batch) break;
+    offset += batch;
+    if (rows.length >= 50000) break;
+  }
+  return { header, rows };
 }
 
 /** Tauri: open a Data-table CSV that already sits on disk (native drop). */
