@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
@@ -57,7 +59,8 @@ type App struct {
 	email         EmailSender
 	sms           SMSSender
 	rateLimits    *rateLimiter
-	releases      *ReleaseCatalog
+	releases        *ReleaseCatalog
+	lastOutboxFlush atomic.Int64
 }
 
 func NewApp(cfg Config) (*App, error) {
@@ -65,6 +68,23 @@ func NewApp(cfg Config) (*App, error) {
 	if !cfg.DevMode && looksLikeTestConfig(cfg) {
 		cfg.DevMode = true
 		cfg.AllowDemoPayments = true
+	}
+	explicitProviders := cfg.EmailSender != nil || cfg.SMSSender != nil
+	if !explicitProviders {
+		if cfg.EmailSender == nil {
+			cfg.EmailSender = EmailSenderFromEnv(cfg.DevMode)
+		}
+		if cfg.SMSSender == nil {
+			cfg.SMSSender = SMSSenderFromEnv(cfg.DevMode)
+		}
+	}
+	if cfg.DevMode {
+		if cfg.EmailSender == nil {
+			cfg.EmailSender = &LocalOutbox{}
+		}
+		if cfg.SMSSender == nil {
+			cfg.SMSSender = &FakeSMS{}
+		}
 	}
 	if err := ValidateConfig(cfg); err != nil {
 		return nil, err
@@ -113,27 +133,17 @@ func NewApp(cfg Config) (*App, error) {
 		return nil, err
 	}
 	email := cfg.EmailSender
-	if email == nil {
-		if !cfg.DevMode {
-			store.Close()
-			return nil, fmt.Errorf("email sender not configured")
-		}
-		email = &LocalOutbox{}
-	}
 	sms := cfg.SMSSender
-	if sms == nil {
-		if !cfg.DevMode {
-			store.Close()
-			return nil, fmt.Errorf("sms sender not configured")
-		}
-		sms = &FakeSMS{}
+	if !explicitProviders {
+		email = wrapPersistentEmail(store, email)
+		sms = wrapPersistentSMS(store, sms)
 	}
 	if !cfg.DevMode {
-		if _, ok := email.(*LocalOutbox); ok {
+		if _, ok := cfg.EmailSender.(*LocalOutbox); ok {
 			store.Close()
 			return nil, fmt.Errorf("LocalOutbox cannot be used in production")
 		}
-		if _, ok := sms.(*FakeSMS); ok {
+		if _, ok := cfg.SMSSender.(*FakeSMS); ok {
 			store.Close()
 			return nil, fmt.Errorf("FakeSMS cannot be used in production")
 		}
@@ -157,6 +167,11 @@ func NewApp(cfg Config) (*App, error) {
 	app.phoneRoutes()
 	app.adminRoutes()
 	app.downloadRoutes()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		app.flushPendingDeliveries(ctx)
+	}()
 	return app, nil
 }
 

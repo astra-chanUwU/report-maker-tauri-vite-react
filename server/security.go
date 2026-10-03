@@ -25,6 +25,7 @@ func (a *App) withSecurity(next http.Handler) http.Handler {
 		if r.Body != nil {
 			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		}
+		a.maybeFlushOutbox(r.Context())
 		next.ServeHTTP(w, r)
 	})
 }

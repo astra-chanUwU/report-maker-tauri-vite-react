@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const currentSchemaVersion = 3
+const currentSchemaVersion = 4
 
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
@@ -20,6 +20,7 @@ func migrate(db *sql.DB) error {
 		migrationV1Baseline,
 		migrationV2CustomerIdentity,
 		migrationV3LicenseDelivery,
+		migrationV4DeliveryOutbox,
 	}
 	for version < currentSchemaVersion {
 		if err := steps[version](db); err != nil {
@@ -173,4 +174,15 @@ func migrationV3LicenseDelivery(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func migrationV4DeliveryOutbox(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS delivery_outbox (
+ id TEXT PRIMARY KEY, channel TEXT NOT NULL, to_address TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '',
+ body TEXT NOT NULL, kind TEXT NOT NULL, order_id TEXT NOT NULL DEFAULT '', license_id TEXT NOT NULL DEFAULT '',
+ idempotency_key TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0,
+ last_error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, sent_at TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS delivery_outbox_idem_idx ON delivery_outbox(channel, idempotency_key) WHERE idempotency_key <> '';
+CREATE INDEX IF NOT EXISTS delivery_outbox_pending_idx ON delivery_outbox(status, updated_at);`)
+	return err
 }

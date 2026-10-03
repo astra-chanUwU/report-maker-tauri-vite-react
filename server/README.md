@@ -70,6 +70,10 @@ Extended provider selection (set only on the host; never commit values):
 | `REPORT_EMAIL_PROVIDER` | `local` (dev default), `kavenegar` / `http`, `smtp`, `outbox`, or `noop` |
 | `REPORT_EMAIL_API_URL` | Transactional HTTP API endpoint (Iranian provider or compatible) |
 | `REPORT_EMAIL_API_KEY` | Provider API token (secret) |
+| `REPORT_EMAIL_FROM` | From address on an authenticated sending domain |
+| `REPORT_EMAIL_FROM_NAME` | Display name (default `Report Maker`) |
+| `REPORT_EMAIL_TIMEOUT_MS` | HTTP timeout (default `8000`) |
+| `REPORT_EMAIL_MAX_RETRIES` | Retries on transient failures (default `2`) |
 | `REPORT_SMTP_HOST` / `REPORT_SMTP_PORT` | Generic SMTP relay fallback |
 | `REPORT_SMTP_USER` / `REPORT_SMTP_PASSWORD` | SMTP credentials (secrets) |
 | `REPORT_SMS_PROVIDER` | `fake` (dev default), `kavenegar`, `http`, or `noop` |
@@ -77,7 +81,10 @@ Extended provider selection (set only on the host; never commit values):
 | `REPORT_SMS_SENDER` | Provider sender line / number |
 | `REPORT_SMS_TEMPLATE` | Optional OTP template name |
 | `REPORT_SMS_API_URL` | Custom SMS HTTP endpoint |
+| `REPORT_SMS_TIMEOUT_MS` | HTTP timeout (default `8000`) |
+| `REPORT_SMS_MAX_RETRIES` | Retries on transient failures (default `2`) |
 | `REPORT_OUTBOX_MAX_ATTEMPTS` | SQLite outbox retry cap (default `10`) |
+
 
 Domain authentication before production email:
 

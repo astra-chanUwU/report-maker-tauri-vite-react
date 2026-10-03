@@ -102,11 +102,15 @@ func TestDevelopmentConfigRunsWithoutExternalCredentials(t *testing.T) {
 	if _, ok := cfg.Gateway.(DemoGateway); !ok {
 		t.Fatalf("expected DemoGateway in development with flag, got %T", cfg.Gateway)
 	}
-	if _, ok := cfg.EmailSender.(*LocalOutbox); !ok {
-		t.Fatalf("expected LocalOutbox in development, got %T", cfg.EmailSender)
+	if sender := EmailSenderFromEnv(true); sender == nil {
+		t.Fatal("expected development email sender")
+	} else if _, ok := sender.(*LocalOutbox); !ok {
+		t.Fatalf("expected LocalOutbox in development, got %T", sender)
 	}
-	if _, ok := cfg.SMSSender.(*FakeSMS); !ok {
-		t.Fatalf("expected FakeSMS in development, got %T", cfg.SMSSender)
+	if sender := SMSSenderFromEnv(true); sender == nil {
+		t.Fatal("expected development sms sender")
+	} else if _, ok := sender.(*FakeSMS); !ok {
+		t.Fatalf("expected FakeSMS in development, got %T", sender)
 	}
 	app, err := NewApp(cfg)
 	if err != nil {

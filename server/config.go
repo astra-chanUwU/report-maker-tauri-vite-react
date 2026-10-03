@@ -109,8 +109,6 @@ func ConfigFromEnv() Config {
 		WebAuthnRPName:       rpName,
 		AdminPassword:        os.Getenv("REPORT_ADMIN_PASSWORD"),
 		Gateway:              gateway,
-		EmailSender:          EmailSenderFromEnv(devMode),
-		SMSSender:            SMSSenderFromEnv(devMode),
 		ArtifactRoot:         os.Getenv("REPORT_ARTIFACT_ROOT"),
 		ReleaseManifest:      os.Getenv("REPORT_RELEASE_MANIFEST"),
 		DownloadLinkTTLHours: downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_LINK_TTL_HOURS"), 24),

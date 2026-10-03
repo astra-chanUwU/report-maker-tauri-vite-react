@@ -27,7 +27,7 @@ func testAppWithGateway(t *testing.T, gateway PaymentGateway) (*App, *httptest.S
 	cfg := Config{
 		SigningKeyID: "test-key", LeaseDays: 30, AllowDevSeed: false,
 		PublicBaseURL: "http://example.test", LicenseDeliveryKey: testDeliveryKey(t),
-		Gateway: gateway,
+		Gateway: gateway, EmailSender: &LocalOutbox{}, SMSSender: &FakeSMS{},
 	}
 	app, err := NewApp(cfg)
 	if err != nil {
