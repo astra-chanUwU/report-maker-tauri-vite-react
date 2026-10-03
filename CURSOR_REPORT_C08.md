@@ -39,4 +39,4 @@ New tests in `delivery_outbox_test.go`: reopen survival, retry on failure, idemp
 
 ## Commit
 
-_(filled after push)_
+`8ab353261886eaee7f9af8e2326a348bff09ab02` — pushed to `origin/feat/c08-iran-providers`
