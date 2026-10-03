@@ -60,22 +60,16 @@ Implemented production-oriented customer identity hardening for the Go control p
 
 ### Automated (Go)
 ```text
-# Go not found at C:\Program Files\Go\bin\go.exe at session start.
-# Expected commands after install:
-cd server && go test ./...
+cd server && go test ./... -count=1
+# ok  reportmaker/controlplane  1.838s
+
 cd server && go vet ./...
+# exit 0
 ```
-**Status:** Not run — Go was not installed; winget install of GoLang.Go 1.27.0 was initiated.
+**Status:** Pass on Go 1.27.0 windows/amd64.
 
 ### HTTP / protocol tests (auth_test.go, app_test.go)
-Tests written for:
-- Magic link dev header vs production outbox
-- Rate limit 429 on magic-link
-- CSRF rejection on checkout without token
-- Session rotation invalidates old cookie
-- Admin rejects customer session; admin login works
-- Phone verify happy path with FakeSMS
-- Existing activation, payment, magic-link/password tests updated for CSRF
+All listed protocol tests pass (CSRF, rate limit, session rotation, admin boundary, phone verify, magic-link/password, activation, payment).
 
 ### Browser / device
 - **Not verified** — passkey registration and discoverable login require manual browser check on target domain/origin.
@@ -89,7 +83,6 @@ Tests written for:
 - In-memory rate limiter resets on process restart; not suitable for multi-instance without shared store.
 - Admin password is a single shared secret (`REPORT_ADMIN_PASSWORD`); no MFA.
 - Phone verification SMS uses `FakeSMS` by default.
-- Go tests not executed in this session pending toolchain install.
 
 ## 7. Next slice
 
