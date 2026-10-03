@@ -85,9 +85,11 @@ func ConfigFromEnv() Config {
 		SigningPrivateKey: os.Getenv("REPORT_SIGNING_PRIVATE_KEY"), SigningKeyID: valueOr(os.Getenv("REPORT_SIGNING_KEY_ID"), "lease-dev-1"),
 		LicenseDeliveryKey: deliveryKey, LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
 		WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, AdminPassword: os.Getenv("REPORT_ADMIN_PASSWORD"),
-		Gateway: gateway,
-		ArtifactRoot:       os.Getenv("REPORT_ARTIFACT_ROOT"),
-		ReleaseManifest:    os.Getenv("REPORT_RELEASE_MANIFEST"),
+		Gateway:              gateway,
+		EmailSender:          EmailSenderFromEnv(),
+		SMSSender:            SMSSenderFromEnv(),
+		ArtifactRoot:         os.Getenv("REPORT_ARTIFACT_ROOT"),
+		ReleaseManifest:      os.Getenv("REPORT_RELEASE_MANIFEST"),
 		DownloadLinkTTLHours: downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_LINK_TTL_HOURS"), 24),
 		DownloadRateLimit:    downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_RATE_LIMIT"), 30),
 	}
@@ -284,6 +286,7 @@ func (a *App) paymentCallback(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment status unavailable", Body: "Please contact support with your order ID."})
 		return
 	}
+	a.notifyAfterPaidOrder(r.Context(), fulfilled)
 	body := "Copy your license key now and store it safely. Sign in to your account to reveal it again later."
 	if !fulfilled.Created {
 		body = "Your payment was already processed. Sign in to your account to view your license key."
@@ -293,6 +296,7 @@ func (a *App) paymentCallback(w http.ResponseWriter, r *http.Request) {
 		Status: fulfilled.Order.ID, LicenseKey: fulfilled.LicenseKey, LicenseMasked: MaskLicenseKey(fulfilled.LicenseKey),
 	})
 }
+
 func (a *App) fulfillVerifiedPayment(order *Order, paymentRef string) (*FulfillResult, error) {
 	plan, ok := PlanFromCatalog(order.Plan)
 	if !ok {

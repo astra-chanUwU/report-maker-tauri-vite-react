@@ -165,12 +165,23 @@ callbacks cannot create a license.
 
 **Depends on:** S01 and S02.
 
-- Add an email interface with a local outbox implementation for tests.
-- Add production configuration for the selected Iranian transactional email
-  provider and domain authentication.
-- Send purchase receipt, license access, magic-link, and download messages.
-- Add an SMS interface for phone verification/recovery and a local fake.
-- Keep provider timeouts, retries, redacted logs, and idempotency explicit.
+**Status:** Implemented in control plane (see `CURSOR_REPORT_S04.md`). License
+access mail is exported as `NotifyLicenseIssued` for S02 merge; paymentCallback
+sends receipt-only until provisioning lands. Download access notify is stubbed
+for S03.
+
+- [x] Email interface with `LocalOutbox` for tests/dev; `NoopEmailSender` and
+  `HTTPEmailSender` production hooks via `REPORT_EMAIL_*`.
+- [x] Document domain auth (SPF/DKIM/DMARC) and required env vars in
+  `server/README.md` without committing secrets.
+- [x] Send via interface: purchase receipt (paymentCallback), license access
+  (`NotifyLicenseIssued` hook for S02), magic link (existing auth path),
+  download access (`NotifyDownloadAccess` stub for S03).
+- [x] SMS interface with `FakeSMS`; optional `HTTPSMSSender` (Kavenegar-style)
+  via `REPORT_SMS_*` with timeouts/retries/redacted logs.
+- [x] Explicit timeouts, retries, redacted logs, and send idempotency keys.
+- [x] Tests for message kind/recipient/ids, secret redaction, and paid-order
+  recoverability when email is down.
 
 **Acceptance:** tests assert message type, recipient, order/license identifiers,
   and that secrets/tokens are not logged. Provider outages leave the order state

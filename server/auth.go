@@ -100,7 +100,8 @@ func (a *App) requestMagicLink(w http.ResponseWriter, r *http.Request) {
 	linkURL := a.cfg.PublicBaseURL + "/auth/magic-link/consume?token=" + url.QueryEscape(token)
 	_ = a.email.Send(r.Context(), EmailMessage{
 		To: customer.Email, Subject: "Sign in to Report Maker",
-		Body: "Open this link to sign in: " + linkURL, Kind: "magic_link",
+		Body: "Open this link to sign in: " + linkURL, Kind: EmailKindMagicLink,
+		IdempotencyKey: "magic_link:" + hashToken(token),
 	})
 	if a.cfg.AllowDevSeed {
 		w.Header().Set("X-Dev-Magic-Link", linkURL)
