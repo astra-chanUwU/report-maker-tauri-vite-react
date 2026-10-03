@@ -279,6 +279,224 @@ git diff --check
 Also separate results for automated tests, HTTP tests, browser passkey/payment
 checks, desktop interoperability, and unavailable live-provider checks.
 
+## Cursor follow-up task pack
+
+These tasks come from the GitHub review of the S01–S04 branches. They are more
+specific than the broad slices above and should be completed in order. Start by
+fetching `origin/main` and the three existing branches; do not merge them blindly
+or rewrite their work.
+
+### C00 — Establish the integration branch
+
+**Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
+**Depends on:** none
+
+- Create a dedicated integration branch from current `main`.
+- Inspect `feat/s02-license-provisioning`, `feat/s03-release-downloads`, and
+  `feat/s04-provider-adapters` with `git diff` before merging.
+- Record the intended merge order and conflicts in `CURSOR_REPORT.md`.
+- Keep `main` untouched until the integrated branch passes all checks.
+
+**Acceptance:** the branch ancestry and scope are documented; no feature branch
+is described as merged until its code is present in the integrated checkout.
+
+### C01 — Repair SQLite upgrade migrations
+
+**Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
+**Depends on:** C00
+
+- Make schema upgrades safe for the database created before S02.
+- Add columns before indexes, constraints, or queries that reference them.
+- Prefer numbered SQLite migrations or an equivalent schema-version table over a
+  growing unversioned `migrate` function.
+- Test fresh install, old-schema upgrade, repeated startup, and restore from a
+  backup.
+- Do not silently drop customer, order, license, activation, or session data.
+
+**Acceptance:** an old fixture database opens successfully; `go test ./...`
+contains a regression test for the exact `no such column: order_id` failure;
+`go vet ./...` passes.
+
+### C02 — Make checkout account-safe
+
+**Owner:** Composer 2.5 High, reviewed by GPT-Sol 6.1 High
+**Depends on:** C01
+
+- Normalize email consistently and find-or-create the customer during checkout.
+- Preserve the verified phone state when checkout updates contact details.
+- Decide and document what happens when the same email is used with a different
+  phone or surname; do not overwrite verified identity silently.
+- Link every paid order to the durable customer account used by magic-link or
+  passkey sign-in.
+- Add tests for repeat purchases, case-insensitive email, and account purchase
+  visibility.
+
+**Acceptance:** two purchases using the same email appear under one customer
+account; unrelated emails remain separate; no customer data is lost.
+
+### C03 — Close license-key disclosure paths
+
+**Owner:** Grok 4.5 High, implementation by Composer 2.5 High
+**Depends on:** C02
+
+- Never show the plaintext license key on an unauthenticated callback replay.
+- Make the post-payment page show order status and a masked key only unless the
+  customer has an authenticated session.
+- Provide authenticated reveal through the account page and send license access
+  by email without putting secrets in logs or URLs.
+- Add a short-lived, single-purpose receipt access mechanism only if needed; it
+  must not become a reusable bearer license key.
+- Keep the encrypted delivery key separate from the Ed25519 lease signing key.
+
+**Acceptance:** an unauthenticated repeat callback cannot recover the full key;
+the owning customer can recover it after sign-in; another customer cannot.
+
+### C04 — Integrate payment, license, email, and downloads
+
+**Owner:** GPT-Sol 6.1 High orchestrator; Composer 2.5 High implementation
+**Depends on:** C01–C03
+
+- Merge S02, S04, and S03 in a deliberate order and resolve schema/template
+  conflicts by preserving the final contracts.
+- Test one complete flow: checkout → ZarinPal/demo verify → one license → receipt
+  email → account purchase → repeatable download.
+- Test callback retries, ZarinPal code 101, provider outage after payment, and
+  expired-link renewal.
+- Wire `NotifyLicenseIssued` and `NotifyDownloadAccess` to the actual state
+  transitions rather than leaving them as extension points.
+- Ensure one payment cannot create two licenses or two order entitlements.
+
+**Acceptance:** one integrated Go test package covers the full flow and passes
+with both the demo gateway and a mocked ZarinPal server.
+
+### C05 — Add Go checks to GitHub Actions
+
+**Owner:** Composer 2.5 High
+**Depends on:** C04
+
+- Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
+- Run the migration-upgrade test and any race-safe tests that are appropriate for
+  the SQLite single-writer design.
+- Keep frontend, Rust, and Go results visibly separate in the workflow.
+- Do not mark a branch complete based only on npm/Rust CI.
+
+**Acceptance:** a clean GitHub Actions run proves frontend, Rust, and Go checks
+on the same commit.
+
+### C06 — Make production configuration fail closed
+
+**Owner:** Grok 4.5 High review; Composer 2.5 High implementation
+**Depends on:** C04
+
+- Demo payments require an explicit development-only flag.
+- Production startup fails without persistent signing and license-delivery keys,
+  a database path, and required provider configuration.
+- Do not silently use `FakeSMS`, `LocalOutbox`, or the demo gateway in production.
+- Keep provider errors bounded, redacted, timed out, and observable to admin
+  support without exposing secrets.
+- Add request-size limits, secure cookie checks, CSP, and local HTMX assets.
+
+**Acceptance:** a production-config test rejects unsafe defaults; development
+configuration still runs without external credentials.
+
+### C07 — Publish real release artifacts
+
+**Owner:** Composer 2.5 High, reviewed by GPT-Luna 6 High
+**Depends on:** C04
+
+- Replace placeholder `releases.json` data and checksums with real signed release
+  artifacts for the supported macOS and Windows targets.
+- Define the release publication process and artifact retention policy.
+- Verify checksums before download and show install instructions in the account
+  page.
+- Keep artifact paths outside the SQLite database and reject traversal/symlink
+  escapes.
+
+**Acceptance:** a locally published artifact downloads repeatedly, its checksum
+matches, and the release manifest is documented and reproducible.
+
+### C08 — Wire Iranian email and SMS providers
+
+**Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
+**Depends on:** C04 and provider credentials supplied by the owner
+
+- Map the generic email adapter to the selected Iranian transactional provider.
+- Map SMS OTP requests to the selected Iranian SMS provider.
+- Keep provider-specific payloads behind interfaces and preserve local fakes for
+  tests.
+- Add persistent delivery status or an outbox retry record so a process restart
+  does not lose a receipt or license message.
+- Document SPF, DKIM, DMARC, sender identity, SMS templates, timeouts, and retry
+  limits without committing secrets.
+
+**Acceptance:** provider sandbox/manual checks are recorded separately from
+automated tests; failures remain retryable and paid orders stay recoverable.
+
+### C09 — Build the minimum admin support console
+
+**Owner:** Composer 2.5 High, security review by Grok 4.5 High
+**Depends on:** C04 and C06
+
+- Add customer/order/payment search by order ID, email, phone, and payment ref.
+- Show payment, license, email, SMS, download, and activation status.
+- Add narrowly scoped actions: resend delivery, revoke activation, and mark a
+  support note; audit every mutation.
+- Keep admin authentication separate from customer sessions and do not expose
+  password hashes, passkey credential material, raw tokens, or provider secrets.
+
+**Acceptance:** a customer cookie cannot access admin routes; a support operator
+can resolve a paid order without direct SQL; mutations have audit records.
+
+### C10 — Complete the marketing and customer UX
+
+**Owner:** Composer 2.5 High, product review by GPT-Sol 6.1 High
+**Depends on:** C04 and C07
+
+- Add product explanation, pricing, purchase, sign-in, account, purchases, and
+  downloads pages as one coherent journey.
+- Add Persian/RTL-ready layout and copy without changing the desktop React app.
+- Add privacy, refund, support, offline-use, and checksum/install guidance.
+- Make pending, cancelled, failed, and successful payment states clear.
+- Avoid adding Next.js, Convex, or a separate SPA runtime.
+
+**Acceptance:** anonymous purchase, customer sign-in, purchase history, and
+repeatable download journeys work in a real browser against the local service.
+
+### C11 — Deploy and verify the first VPS
+
+**Owner:** GPT-Sol 6.1 High architecture; Composer 2.5 High implementation
+**Depends on:** C05–C10
+
+- Document the Iran-hosted VPS profile, domain, HTTPS reverse proxy, firewall,
+  service user, environment file, and artifact storage.
+- Add health/readiness checks and graceful shutdown.
+- Automate SQLite backup plus restore verification and separately protect signing
+  and delivery keys.
+- Configure the final WebAuthn RP ID/origin before enrolling production passkeys.
+- Record live provider checks as unavailable until credentials and domain DNS are
+  actually verified.
+
+**Acceptance:** a clean VPS-style environment restores the database, starts the
+service, passes health checks, serves HTTPS, and supports the configured passkey
+origin.
+
+### C12 — Final review and cleanup
+
+**Owner:** Grok 4.5 High
+**Depends on:** C11
+
+- Remove stale TODO claims, duplicate reports, placeholder prices/checksums, and
+  dead FastAPI/Postgres references that no longer describe the implementation.
+- Confirm all docs match the actual routes, environment variables, and schema.
+- Run the full validation matrix and classify automated, HTTP, browser/device,
+  desktop interoperability, and live-provider evidence separately.
+- Produce `CURSOR_REPORT.md` with exact commits, known limitations, and a clean
+  Git status. Do not claim production readiness without browser, provider, and
+  restore evidence.
+
+**Acceptance:** the final report is reviewable, no secrets are committed, the
+working tree is clean, and `main` contains only reviewed integrated work.
+
 ## Required report for the repository owner
 
 After each completed slice, and again at the end, write a report for review. Save
