@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowRight, Database, FileText, Gauge, Keyboard, Palette } from "lucide-react";
+import { Activity, ArrowRight, Database, FileText, Gauge, Keyboard, KeyRound, Palette } from "lucide-react";
 import { AiDraftCard, AiSettingsCard, type AiDraftFields } from "./components/ai-draft";
 import { ChartsMetricsCard, IsoTableEditor, MachineLimitsCard } from "./components/alarms-page";
 import { BrandingCard, TemplateCard } from "./components/branding";
@@ -1054,21 +1054,61 @@ function App() {
             </Page>
 
             <Page active={page === "settings"}>
-              <div className="grid items-start gap-4 xl:grid-cols-2">
-                <AppearanceCard pref={themePref} onPref={setThemePref} />
-                <MdbToolSettings
-                  isTauri={ingest.isTauri}
-                  status={ingest.tool}
-                  onRefresh={ingest.refreshTool}
-                />
-                <CacheSettings />
-                <LicenseCard />
-                <AiSettingsCard />
-                <TelemetryCard />
-                {import.meta.env.DEV ? (
-                  <div className="xl:col-span-2">
-                    <DesignDemo />
+              <div className="grid gap-6">
+                <section className="grid gap-3">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <h2 className="text-sm font-semibold">Data &amp; Performance</h2>
+                    <span className="text-xs text-muted-foreground">— converter, cache, and import speed</span>
                   </div>
+                  <div className="grid items-start gap-4 xl:grid-cols-2">
+                    <MdbToolSettings
+                      isTauri={ingest.isTauri}
+                      status={ingest.tool}
+                      onRefresh={ingest.refreshTool}
+                    />
+                    <CacheSettings />
+                  </div>
+                </section>
+
+                <section className="grid gap-3">
+                  <div className="flex items-center gap-2">
+                    <Palette className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <h2 className="text-sm font-semibold">Appearance</h2>
+                  </div>
+                  <AppearanceCard pref={themePref} onPref={setThemePref} />
+                </section>
+
+                <section className="grid gap-3">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <h2 className="text-sm font-semibold">Integrations</h2>
+                    <span className="text-xs text-muted-foreground">— AI drafts and license</span>
+                  </div>
+                  <div className="grid items-start gap-4 xl:grid-cols-2">
+                    <AiSettingsCard />
+                    <LicenseCard />
+                  </div>
+                </section>
+
+                <section className="grid gap-3">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <h2 className="text-sm font-semibold">Privacy &amp; Diagnostics</h2>
+                    <span className="text-xs text-muted-foreground">— telemetry is off by default</span>
+                  </div>
+                  <TelemetryCard />
+                </section>
+
+                {import.meta.env.DEV ? (
+                  <section className="grid gap-3 border-t pt-6">
+                    <div className="flex items-center gap-2">
+                      <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <h2 className="text-sm font-semibold">Design system</h2>
+                      <span className="text-xs text-muted-foreground">— dev only</span>
+                    </div>
+                    <DesignDemo />
+                  </section>
                 ) : null}
               </div>
             </Page>
