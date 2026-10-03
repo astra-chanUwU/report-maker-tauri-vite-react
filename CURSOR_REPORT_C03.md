@@ -1,3 +1,4 @@
+> **Superseded for integration status** by [CURSOR_REPORT.md](./CURSOR_REPORT.md) (C12). This file is historical slice notes only.
 # CURSOR_REPORT_C03 — Close license-key disclosure paths
 
 ## Slice and outcome

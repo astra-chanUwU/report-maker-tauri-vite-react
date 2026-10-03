@@ -68,7 +68,9 @@ Spec CSV shape: 38 columns, `Specdata` = `\ooo` octal of `NoLines` float32-LE am
 
 ## Project slices
 
-See [TODO.md](./TODO.md) (S00–S11). One slice = one branch/PR, diffs < 400 lines where possible.
+See [TODO.md](./TODO.md) for remaining control-plane slices (C09–C11 open;
+integration branch `integrate/control-plane`). Desktop docx follow-ups live in
+[TODO.next.md](./TODO.next.md).
 
 ## CI & Releases
 

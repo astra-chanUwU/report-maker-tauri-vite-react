@@ -1,3 +1,4 @@
+> **Superseded for integration status** by [CURSOR_REPORT.md](./CURSOR_REPORT.md) (C12). This file is historical slice notes only.
 # C04 — End-to-end flow tests
 
 **Branch:** `feat/c04-e2e-flow-tests`  

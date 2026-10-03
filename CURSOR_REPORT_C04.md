@@ -1,3 +1,4 @@
+> **Superseded for integration status** by [CURSOR_REPORT.md](./CURSOR_REPORT.md) (C12). This file is historical slice notes only.
 # C04 — Integrate payment, license, email, and downloads
 
 **Model:** Composer 2.5 (GPT-Sol 6.1 High orchestrator unavailable — Composer 2.5 used for implementation).

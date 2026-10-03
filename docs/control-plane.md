@@ -121,26 +121,28 @@ paths, report text, spectra, notes, or raw exception messages.
 The PostHog project key and host are server-only configuration (`POSTHOG_API_KEY`
 and `POSTHOG_HOST`); the desktop app never accepts or stores them.
 
-## Minimal server data model
+## Server data model (SQLite)
 
-- `licenses`: id, key hash, plan, status, features, max device count,
-  created/updated timestamps
-- `activations`: id, license id, device public-key hash, platform, last seen,
-  revoked timestamp
-- `ai_usage`: activation id, request timestamp, model, token/cost estimate,
-  result status
-- `telemetry_events`: optional short-retention forwarding queue; no report
-  content
+Persisted in `REPORT_DB_PATH` with numbered migrations in
+`server/store_migrate.go` (schema version **4** on the current integrate tip):
 
-The Go service owns this contract and persists it in SQLite first. The store
-uses WAL, foreign keys, a busy timeout, a single writer connection, and
-`REPORT_DB_PATH`; back up the database and signing configuration off the VPS.
-Postgres remains an optional later adapter if multiple service instances or
-high-concurrency workloads justify it. Set `REPORT_ALLOW_DEV_SEED=1` only for
-local development; the production default rejects unknown license keys.
-Domestic payment gateways are redirect adapters: the callback is accepted only
-after a server-to-server amount and authority verification. ZarinPal is the
-first provider adapter and is selected with `ZARINPAL_MERCHANT_ID`.
+- `customers` (+ `phone_verified_at`), `webauthn_credentials`, `webauthn_challenges`
+- `magic_links`, `customer_sessions`, `phone_challenges`, `admin_sessions`
+- `licenses`: key hash, plan/status/features, max devices, optional
+  `customer_id` / `order_id`, `delivery_ciphertext`
+- `activations`: license id, device public key, platform, last seen, revoked
+- `orders`, `payment_attempts` (integer rials; authority/payment ref)
+- `download_records`, `idempotency`, `delivery_outbox`
+
+Hosted AI usage and telemetry forwarding may also be recorded by handlers; they
+must never include report contents, paths, or project identifiers.
+
+The store uses WAL, foreign keys, a busy timeout, a single writer connection,
+and offsite backups of the DB plus signing/delivery keys. Postgres is only a
+later scale option after measured need for multiple writers or instances. Set
+`REPORT_ALLOW_DEV_SEED=1` only for local development. Domestic payment gateways
+are redirect adapters: the callback is accepted only after server-to-server
+amount and authority verification (`ZARINPAL_MERCHANT_ID` selects ZarinPal).
 
 ## Desktop rollout
 

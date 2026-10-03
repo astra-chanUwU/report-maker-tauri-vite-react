@@ -2,6 +2,21 @@
 
 This directory contains the Go modular service described in [`docs/go-architecture.md`](../docs/go-architecture.md). It serves the marketing and checkout pages and the JSON control-plane API used by the Tauri desktop app.
 
+## HTTP surface (integrate tip)
+
+| Area | Paths |
+| --- | --- |
+| Health | `GET /healthz`, `GET /readyz` |
+| Marketing / checkout | `GET /`, `/pricing`, `/download`; `POST /checkout/start`; `GET /checkout/status` |
+| Payments | `GET /payments/{provider}/redirect`, `GET /payments/{provider}/callback` |
+| Customer auth | `/login`, `/auth/*`, `/account`, `/account/purchases`, `/account/purchases/reveal` |
+| Downloads | `/account/downloads`, `/account/downloads/renew`, `/downloads/{artifact_id}`, `/downloads/link/{token}` |
+| Admin (minimal) | `/admin/login`, `/admin`, `/admin/logout` — full support console is **C09** |
+| Desktop JSON | `/v1/activations`, `/v1/activations/{id}/refresh`, `/v1/activations/{id}`, `/v1/ai/draft`, `/v1/telemetry/batch` |
+
+Catalog price: perpetual plan defaults to **1_000_000 rials** (`REPORT_PERPETUAL_PRICE_RIALS`).
+Schema version: **4** (`delivery_outbox` included). Details: [`docs/go-architecture.md`](../docs/go-architecture.md).
+
 ## Run locally (development)
 
 ```bash

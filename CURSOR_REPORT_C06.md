@@ -1,3 +1,4 @@
+> **Superseded for integration status** by [CURSOR_REPORT.md](./CURSOR_REPORT.md) (C12). This file is historical slice notes only.
 # CURSOR_REPORT_C06 — Production configuration fail closed
 
 ## 1. Slice and outcome

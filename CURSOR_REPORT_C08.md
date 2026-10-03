@@ -1,3 +1,4 @@
+> **Superseded for integration status** by [CURSOR_REPORT.md](./CURSOR_REPORT.md) (C12). This file is historical slice notes only.
 # CURSOR_REPORT_C08 — Iranian email/SMS providers + persistent outbox
 
 **Branch:** `feat/c08-iran-providers`  

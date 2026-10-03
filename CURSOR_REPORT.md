@@ -1,61 +1,173 @@
-# Control-plane integration — C00 through C04
+# CURSOR_REPORT - C12 final review (integrate tip)
 
-**Model:** Composer 2.5 (GPT-Sol 6.1 High orchestrator unavailable; Grok 4.5 High unavailable for review).
+**Model:** Grok 4.5 High  
+**Branch:** `feat/c12-final-review`  
+**Base / integrate tip reviewed:** `origin/integrate/control-plane` @ **`a2f2f03`**  
+**Date:** 2026-10-04  
+**main:** **not merged** (owner action only)
 
-See also: `CURSOR_REPORT_C04.md` (C04 detail), `CURSOR_REPORT_C03.md` (C03 branch notes).
+Historical slice notes (`CURSOR_REPORT_C0*.md`, `CURSOR_REPORT_S0*.md`) are
+superseded for **integration status** by this file. Keep them only as
+per-slice archaeology.
 
-## Branch ancestry
+## 1. Slice and outcome
 
-| Step | Commit | Source |
-|------|--------|--------|
-| Base | `e1b304d` | `origin/main` |
-| S02 merge | `93f7842` | `origin/feat/s02-license-provisioning` |
-| S04 merge | `83fdc10` | `origin/feat/s04-provider-adapters` |
-| S03 merge | `895962e` | `origin/feat/s03-release-downloads` |
-| C01 migrations | `9ecd153` | numbered SQLite schema migrations |
-| C02 merge | `44a7223` | `origin/feat/c02-checkout-account-safe` (`546ea5f`) |
-| C03 merge + C04 | *(tip after push)* | `origin/feat/c03-license-disclosure` (`7ccb390`) + C04 wiring/tests |
+C12 audited the current integrate tip, aligned docs with the real Go routes /
+env / schema, cleared stale TODO and report claims, verified fixture artifact
+checksums, and recorded a classified validation matrix.
 
-**Branch:** `integrate/control-plane` — **not merged to `main`**.
+**Not claimed:** production readiness, live ZarinPal/email/SMS success, browser
+passkey enrollment, VPS backup/restore, or desktop interoperability against a
+production host.
 
-## C04 outcome
+**Still open before a responsible `main` merge:** C05 (Go CI), C09 (admin
+support console), C10 (marketing/UX polish + browser journey), C11 (VPS deploy
++ restore evidence). At C12 freeze, **C09–C11 were not on `origin`** as finished
+feature branches (local WIP may exist elsewhere).
 
-Integrated payment → license → email → download on one branch:
+## 2. Files changed (this C12 commit)
 
-- **C02:** `EnsureCheckoutCustomer`, `normalizeEmail`, phone_verified preservation, account purchase visibility tests
-- **C03:** `paymentCompleteDisclosure`, masked callback/status, authenticated reveal, license key log redaction
-- **Notifications:** `notifyAfterPaidOrder` fires receipt + masked license-access + download-access (idempotent outbox keys)
-- **Tests:** `server/c04_e2e_flow_test.go` + existing S02/S03/S04/C02/C03 test packages
+| Area | Files |
+| --- | --- |
+| Docs | `docs/go-architecture.md`, `docs/control-plane.md`, `docs/licensing.md`, `server/README.md`, `README.md`, `TODO.md` |
+| Report | `CURSOR_REPORT.md` (replaced), supersession banners on older `CURSOR_REPORT_*.md` |
+| Backend / desktop / tests | none (review-only) |
 
-## Validation evidence
+## 3. Integrate tip — exact commits
+
+Fetched `origin/integrate/control-plane` at review time. Tip:
+
+| Commit | Summary |
+| --- | --- |
+| `a2f2f03` | fix: refresh fixture artifact checksums after C06–C08 merge |
+| `ffc9b05` | merge: C08 Iran email/SMS providers |
+| `db6a8cd` | merge: C07 release artifacts |
+| `6f8d021` | feat: fail-closed production configuration (C06) |
+| `5772302` | test: C04 end-to-end flow suite |
+| `b43b071` | merge: C03 license disclosure + C04 e2e |
+| `44a7223` | merge: C02 checkout account-safe |
+| `9ecd153` | fix: numbered SQLite schema migrations (C01) |
+| `895962e` / `83fdc10` / `93f7842` | merge S03 / S04 / S02 |
+| `e1b304d` | base from `main` lineage for the task pack |
+
+Ancestry note: `origin/feat/c05-go-ci`, `c06`, `c07`, `c08` are ancestors of
+integrate tip for commits that exist, but **C05 never added a Go CI job** (its
+tip equals the C04 test commit). C06–C08 product work is present on integrate.
+
+## 4. Architecture / docs alignment (code-checked)
+
+- Layout is a flat `server/` Go module (`reportmaker/controlplane`), not the
+  aspirational `internal/*` tree formerly documented.
+- Web payment paths are `/payments/{provider}/redirect|callback`, not `/pay/*`.
+- Schema version **4** with `delivery_outbox`; perpetual catalog default
+  **1_000_000 rials** (`REPORT_PERPETUAL_PRICE_RIALS`).
+- Fixture SHA-256 in `server/releases.json` matches files under
+  `server/testdata/artifacts` (Windows + macOS fixtures).
+- Local `RM-XXXX` checksum helper is localhost/UI plumbing only — not production
+  license authority.
+- Postgres/FastAPI: documented only as non-goals / historical removal; SQLite is
+  first production DB.
+
+## 5. Security / privacy review (status, not a full re-audit)
+
+Present on tip: customer vs admin cookies, CSRF on mutating forms, rate limits,
+fail-closed production config, masked license disclosure, hashed license lookup,
+separate delivery AES key, path-traversal rejection on artifacts, redacted
+provider errors, consent-gated telemetry contract.
+
+Gaps / blockers (evidence missing): real browser passkey on final RP ID/origin,
+live payment + email/SMS sandbox, VPS restore + HTTPS + key backup drills, richer
+admin support console (C09), Go job in GitHub Actions (C05).
+
+## 6. Validation evidence
+
+### Automated — Go (pass)
 
 ```text
-cd server && go test ./... -count=1 -timeout 180s
-# ok  reportmaker/controlplane  3.523s
-
-cd server && go vet ./...
-# exit 0
+cd server
+# PATH includes C:\Program Files\Go\bin
+# GOPROXY=https://goproxy.io,https://goproxy.cn,direct  GOSUMDB=off
+go test ./... -count=1
+# ok  reportmaker/controlplane  ~6.8s
+go vet ./...
+# exit 0 (on clean integrate tip without foreign WIP files)
 ```
 
-Go 1.27.0 windows/amd64; `GOPROXY=https://goproxy.io,https://goproxy.cn,direct`; `GOSUMDB=off`.
+Go 1.27.0 windows/amd64.
 
-## Remaining gaps (C05+)
+### Automated - npm / cargo
 
-| Task | Status |
-|------|--------|
-| **C05** CI Go checks | Not started |
-| **C06** Production fail-closed config | Not started |
-| **C07** Real release artifacts | Placeholder checksums |
-| **C08** Live Iranian email/SMS | Interface only |
-| **C09** Admin support console | Not started |
-| **C10** Marketing/customer UX polish | Partial templates |
-| **C11** VPS deploy | Not started |
-| Browser passkey / live ZarinPal | Manual, not verified |
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | **pass** (exit 0 on integrate tip tree) |
+| `npm test -- --run` | **unavailable here** — isolated worktree lacked `node_modules` / local `vitest` on PATH |
+| `npm run build` | **unavailable here** — same (`tsc`/`vite` not on PATH without install) |
+| `cargo test --manifest-path src-tauri/Cargo.toml -q` | **unavailable here** — not re-run in C12 freeze window; owner/CI should confirm |
+| `git diff --check` | Clean on C12 commit tree |
 
-**Recommended next:** C05 — Add Go checks to GitHub Actions.
+Frontend + Rust CI still run via `.github/workflows/ci.yml` on PRs; that workflow does **not** yet include Go (C05 open).
 
-## Git state
+### HTTP (automated in Go tests — pass)
 
-- **Branch:** `integrate/control-plane`
+Demo gateway + mocked ZarinPal flows, disclosure, downloads, auth rate limits,
+migration upgrade regression — covered by `go test ./...` (including C04 package).
+
+### Browser / device
+
+**Unavailable / not verified** — real passkey registration/login on configured
+RP ID/origin; full anonymous→paid→download journey in a browser.
+
+### Desktop interoperability
+
+**Unavailable / not verified** against this integrate tip host (activation /
+lease / AI / telemetry from a release Tauri build).
+
+### Live providers / VPS restore
+
+**Unavailable** — no owner ZarinPal/email/SMS credentials; no VPS restore or
+HTTPS passkey-origin proof.
+
+## 7. Known limitations / production blockers
+
+1. **C05** — CI still lacks a Go job on integrate.
+2. **C09** — admin is login + static home only; no support search/actions/audit UI.
+3. **C10** — marketing/account UX incomplete (no Persian/RTL policy journey proof).
+4. **C11** — no documented/verified VPS backup→restore→HTTPS path.
+5. Browser passkey, live providers, desktop↔server E2E — blockers for “production ready”.
+6. Fixture installers are test artifacts, not signed production Tauri releases.
+7. `GET /readyz` currently shares the liveness handler (harden in C11).
+
+## 8. Pending merges
+
+At C12 freeze, `origin` had `feat/c05-go-ci` … `feat/c08-iran-providers`.
+`origin/feat/c11-vps-deploy` also existed but pointed at the same tip as integrate
+(`a2f2f03`) — no unique C11 commits to merge yet. Finished `feat/c09-*` /
+`feat/c10-*` heads were **not** on origin. If unique C09–C11 commits appear
+later, merge them into `integrate/control-plane` before `main`. Do not block
+C12 docs on unfinished parallel WIP.
+
+## 9. Recommended owner merge commands (do not run in C12)
+
+C12 pushes only `feat/c12-final-review`. Suggested sequence for the owner:
+
+```bash
+git fetch origin
+git checkout integrate/control-plane
+git pull --ff-only origin integrate/control-plane
+git merge --no-ff origin/feat/c12-final-review -m "merge: C12 final review and docs cleanup"
+# after C05 and C09–C11 land and evidence exists:
+# git checkout main
+# git merge --no-ff integrate/control-plane -m "merge: control-plane integration"
+# git push origin main
+```
+
+**Do not merge to `main` until** Go CI exists, C09–C11 acceptance evidence is
+recorded, and browser/provider/restore blockers above are cleared or explicitly
+accepted as launch exclusions.
+
+## 10. Git state (expected after C12 push)
+
+- **Branch:** `feat/c12-final-review` (pushed)
+- **Tracks work from:** `origin/integrate/control-plane` @ `a2f2f03` + C12 docs commit
 - **main:** untouched
-- **Pushed:** `origin/integrate/control-plane` after C04 commit
+- **Secrets:** none committed

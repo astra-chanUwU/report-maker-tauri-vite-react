@@ -30,31 +30,26 @@ introduce a second backend stack.
 - AI and telemetry reuse the activation/entitlement boundary. Telemetry remains
   consent-gated and must not contain report contents or identifying project data.
 
-## Current checkout: do not discard it
+## Integration branch status
 
-The checkout already contains uncommitted implementation for:
+Control-plane work lands on `integrate/control-plane` before `main`.
+Authoritative handoff: [`CURSOR_REPORT.md`](./CURSOR_REPORT.md) (C12).
 
-- Ed25519 device keys and signed offline leases in Rust.
-- Tauri licensing, AI entitlement, and consented telemetry changes.
+Already on the integrate tip (do not re-implement blindly):
+
+- Ed25519 device keys and signed offline leases in Rust / Tauri.
 - Go health, activation, refresh, revoke, AI, and telemetry contracts.
-- SQLite persistence for customers, orders, licenses, activations, payment
-  attempts, challenges, sessions, and downloads.
-- ZarinPal request/verify adapter plus local demo gateway.
-- Go marketing/pricing/checkout/callback pages.
-- Customer passkey ceremony endpoints, magic-link sessions, and Argon2id
-  password fallback.
+- SQLite persistence (schema v4) including customers, orders, licenses,
+  activations, payment attempts, sessions, downloads, and `delivery_outbox`.
+- ZarinPal adapter + local demo gateway; fail-closed production config (C06).
+- License provisioning, masked disclosure, account-safe checkout (C02–C04).
+- Release fixture artifacts with verified SHA-256 (C07).
+- Iranian email/SMS provider wiring + persistent outbox (C08).
+- Customer passkey / magic-link / password / phone endpoints; minimal admin login.
 
-Read these before editing:
-
-- `docs/go-architecture.md`
-- `docs/control-plane.md`
-- `docs/licensing.md`
-- `server/README.md`
-- `server/app.go`, `server/store.go`, `server/payment.go`, `server/auth.go`
-- the existing Tauri license/AI/telemetry files
-
-Preserve unrelated work. Inspect `git status`, the current diff, and the current
-runtime before changing anything.
+Read before editing: `docs/go-architecture.md`, `docs/control-plane.md`,
+`docs/licensing.md`, `docs/providers.md`, `docs/releases.md`, `server/README.md`,
+and `CURSOR_REPORT.md`. Preserve unrelated work; inspect `git status` first.
 
 ## Model allocation in Cursor
 
@@ -166,21 +161,17 @@ callbacks cannot create a license.
 
 **Depends on:** S01 and S02.
 
-**Status:** Implemented in control plane (see `CURSOR_REPORT_S04.md`). License
-access mail is exported as `NotifyLicenseIssued` for S02 merge; paymentCallback
-sends receipt-only until provisioning lands. Download access notify is stubbed
-for S03.
+**Status:** Implemented and merged on `integrate/control-plane` (see
+`CURSOR_REPORT.md`). `notifyAfterPaidOrder` sends receipt, masked license-access,
+and download-access; C08 adds persistent outbox + Iranian provider adapters.
+Live sandbox sends remain **unavailable** without owner credentials.
 
-- [x] Email interface with `LocalOutbox` for tests/dev; `NoopEmailSender` and
-  `HTTPEmailSender` production hooks via `REPORT_EMAIL_*`.
-- [x] Document domain auth (SPF/DKIM/DMARC) and required env vars in
-  `server/README.md` without committing secrets.
-- [x] Send via interface: purchase receipt (paymentCallback), license access
-  (`NotifyLicenseIssued` hook for S02), magic link (existing auth path),
-  download access (`NotifyDownloadAccess` stub for S03).
-- [x] SMS interface with `FakeSMS`; optional `HTTPSMSSender` (Kavenegar-style)
-  via `REPORT_SMS_*` with timeouts/retries/redacted logs.
-- [x] Explicit timeouts, retries, redacted logs, and send idempotency keys.
+- [x] Email interface with `LocalOutbox` for tests/dev; HTTP/SMTP/outbox providers
+  via `REPORT_EMAIL_*` (see `docs/providers.md`).
+- [x] Document domain auth (SPF/DKIM/DMARC) and required env vars without secrets.
+- [x] Send via interface: purchase receipt, license access, magic link, download access.
+- [x] SMS interface with `FakeSMS`; Kavenegar/HTTP via `REPORT_SMS_*`.
+- [x] Explicit timeouts, retries, redacted logs, send idempotency keys, outbox flush.
 - [x] Tests for message kind/recipient/ids, secret redaction, and paid-order
   recoverability when email is down.
 
@@ -383,12 +374,15 @@ with both the demo gateway and a mocked ZarinPal server.
 
 **Owner:** Composer 2.5 High
 **Depends on:** C04
+**Status:** **Not done on integrate tip.** `origin/feat/c05-go-ci` points at the
+C04 test commit (`5772302`) and does not add a Go job; `.github/workflows/ci.yml`
+on integrate still runs only npm + cargo.
 
-- Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
-- Run the migration-upgrade test and any race-safe tests that are appropriate for
+- [ ] Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
+- [ ] Run the migration-upgrade test and any race-safe tests appropriate for
   the SQLite single-writer design.
-- Keep frontend, Rust, and Go results visibly separate in the workflow.
-- Do not mark a branch complete based only on npm/Rust CI.
+- [ ] Keep frontend, Rust, and Go results visibly separate in the workflow.
+- [ ] Do not mark a branch complete based only on npm/Rust CI.
 
 **Acceptance:** a clean GitHub Actions run proves frontend, Rust, and Go checks
 on the same commit.
@@ -398,7 +392,7 @@ on the same commit.
 **Owner:** Grok 4.5 High review; Composer 2.5 High implementation
 **Depends on:** C04
 
-**Status:** Implemented on `feat/c06-prod-fail-closed` (see `CURSOR_REPORT_C06.md`).
+**Status:** Done — merged on `integrate/control-plane` (see `CURSOR_REPORT.md`).
 
 - [x] Demo payments require explicit `REPORT_ALLOW_DEMO_PAYMENTS=1` (DevMode only).
 - [x] Production startup fails without persistent signing and license-delivery keys,
@@ -417,7 +411,8 @@ configuration still runs without external credentials. `go test ./...` and
 **Owner:** Composer 2.5 High, reviewed by GPT-Luna 6 High
 **Depends on:** C04
 
-**Status:** Implemented on `feat/c07-release-artifacts` (see `CURSOR_REPORT_C07.md`).
+**Status:** Done — merged on `integrate/control-plane` (fixture SHA-256 verified
+against `server/testdata/artifacts`; see `CURSOR_REPORT.md`).
 
 - [x] Reproducible fixture artifacts + `go run ./cmd/publish-release`.
 - [x] Publication/retention docs in `docs/releases.md`.
@@ -431,6 +426,8 @@ matches, and the release manifest is documented and reproducible.
 
 **Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
 **Depends on:** C04 and provider credentials supplied by the owner
+**Status:** Done — merged on `integrate/control-plane` (see `docs/providers.md`).
+Live provider sandbox checks remain **unavailable**.
 
 - [x] Map email to `kavenegar`/`http`, generic `smtp`, or `outbox` via `REPORT_EMAIL_PROVIDER`.
 - [x] Map SMS OTP to Kavenegar-style adapter; `FakeSMS` preserved for tests.
@@ -446,6 +443,8 @@ automated tests; failures remain retryable and paid orders stay recoverable.
 
 **Owner:** Composer 2.5 High, security review by Grok 4.5 High
 **Depends on:** C04 and C06
+**Status:** Open. Integrate tip has admin login/session + home only. Not on
+`origin` as a completed feature branch at C12 freeze.
 
 - Add customer/order/payment search by order ID, email, phone, and payment ref.
 - Show payment, license, email, SMS, download, and activation status.
@@ -461,6 +460,8 @@ can resolve a paid order without direct SQL; mutations have audit records.
 
 **Owner:** Composer 2.5 High, product review by GPT-Sol 6.1 High
 **Depends on:** C04 and C07
+**Status:** Open. Basic `/`, `/pricing`, `/download`, account/download pages
+exist; Persian/RTL journey and policy pages incomplete. Not on `origin` at C12 freeze.
 
 - Add product explanation, pricing, purchase, sign-in, account, purchases, and
   downloads pages as one coherent journey.
@@ -476,6 +477,8 @@ repeatable download journeys work in a real browser against the local service.
 
 **Owner:** GPT-Sol 6.1 High architecture; Composer 2.5 High implementation
 **Depends on:** C05–C10
+**Status:** Open. No VPS restore/HTTPS evidence on integrate tip. Not on
+`origin` at C12 freeze.
 
 - Document the Iran-hosted VPS profile, domain, HTTPS reverse proxy, firewall,
   service user, environment file, and artifact storage.
@@ -493,19 +496,23 @@ origin.
 ### C12 — Final review and cleanup
 
 **Owner:** Grok 4.5 High
-**Depends on:** C11
+**Depends on:** C11 (docs/report freeze may run from current integrate tip)
+**Status:** Done on `feat/c12-final-review` against `origin/integrate/control-plane`
+@ `a2f2f03` (see `CURSOR_REPORT.md`). Does **not** claim production readiness.
+Does **not** merge to `main`.
 
-- Remove stale TODO claims, duplicate reports, placeholder prices/checksums, and
-  dead FastAPI/Postgres references that no longer describe the implementation.
-- Confirm all docs match the actual routes, environment variables, and schema.
-- Run the full validation matrix and classify automated, HTTP, browser/device,
-  desktop interoperability, and live-provider evidence separately.
-- Produce `CURSOR_REPORT.md` with exact commits, known limitations, and a clean
-  Git status. Do not claim production readiness without browser, provider, and
-  restore evidence.
+- [x] Remove stale TODO claims, conflicting report noise, wrong placeholder
+  license/checksum wording, and dead FastAPI layout/routes that no longer match
+  `server/`.
+- [x] Confirm docs match actual routes, env vars, and schema (code-reviewed).
+- [x] Run validation matrix; classify automated / HTTP / browser / desktop /
+  live-provider evidence separately.
+- [x] Produce definitive `CURSOR_REPORT.md` with integrate tip commits, known
+  limitations, blockers, and merge recommendation for the owner.
 
 **Acceptance:** the final report is reviewable, no secrets are committed, the
-working tree is clean, and `main` contains only reviewed integrated work.
+working tree on the C12 branch is clean after push, and `main` remains untouched
+until the owner merges reviewed integrate work.
 
 ## Required report for the repository owner
 

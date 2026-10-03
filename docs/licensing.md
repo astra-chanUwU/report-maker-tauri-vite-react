@@ -3,81 +3,60 @@
 ## Model
 
 - **Perpetual license key, offline-capable.** Buy once, use forever for the current major.
-- The server controls activation, device count, revocation, and hosted entitlements. The core report pipeline remains usable offline during the signed lease period.
+- The Go control plane owns activation, device count, revocation, and hosted entitlements. The core report pipeline remains usable offline during the signed lease period.
 - Optional subscription later only for hosted extras (AI credits, template packs, priority updates). The core report pipeline never requires a subscription.
 - Dev builds (`npm run dev`, `vite dev`, `localhost` + no Tauri) are never hard-locked.
 
-## Current development validator (v1, placeholder checksum)
+## Localhost-only format check (not production licensing)
 
-`RM-XXXX-XXXX-XXXX` where each `X` is `A–Z0–9` and the 12 payload chars satisfy
-`sum(charValue) mod 36 == 0` (`0–9` → 0–9, `A–Z` → 10–35).
+The desktop still contains a local `RM-XXXX-XXXX-XXXX` format/checksum helper used only for localhost plumbing and UI exercises. It is **not** how customer licenses are issued or validated in production.
 
-This is intentionally simple: it proves the plumbing (Rust validator +
-TS mirror + persisted status + grace period) without pretending to be
-production licensing. It must not be used to issue customer keys because
-anyone can generate another checksum-valid value.
+- Each `X` is `A–Z0–9`; the 12 payload chars satisfy `sum(charValue) mod 36 == 0`.
+- Anyone can generate another checksum-valid value (`node scripts/gen-license.mjs`).
+- Release builds must use the signed-lease path against the Go service; do not treat this helper as an authority.
 
-Example valid keys (checksum 0):
+Example locally valid keys (format check only):
 
-- `RM-0000-0000-0000` (all zeros)
-- `RM-AAAA-AAAA-AAAZ` — craft by brute force; `scripts/gen-license.mjs` does this.
+- `RM-0000-0000-0000`
+- values produced by `scripts/gen-license.mjs`
 
-```bash
-node scripts/gen-license.mjs          # prints a valid v1 key
-node scripts/gen-license.mjs RM-TEST-1234-XXXX  # brute-forces last 4 chars
-```
+Development seed on the Go service (when `REPORT_ALLOW_DEV_SEED=1`): `RM-TEST-1234-KEY0`.
 
-## Production validation design
+## Production validation (Go control plane)
 
-The production app will use a Go HTTPS service that also owns the marketing
-site, checkout, and domestic payment callbacks. The license key is
-an opaque server-issued identifier; the desktop app does not decide whether a
-key is genuine by itself.
+Customer licenses are opaque server-issued identifiers. After verified payment the service:
 
-- The Tauri backend generates a device keypair and stores the private key in
-  the OS keychain.
-- `POST /v1/activations` exchanges a license key and device public key for a
-  signed offline lease.
-- The lease is signed with Ed25519. The private signing key exists only on the
-  server; the app contains only the public verification key.
-- The Rust side verifies the lease before paid operations. The UI only displays
-  the result and never becomes the security boundary.
-- A perpetual license has no product expiry, but its lease is refreshed on a
-  schedule (for example, every 30 days) so revocations and device limits take
-  effect when the app reconnects.
-- The server stores a hash of the license key, the device public key needed for
-  proof verification, activation metadata, revocation state, and entitlements.
-  Report files stay on the user’s machine.
-- A purchase creates a pending order, redirects the customer to the selected
-  domestic payment gateway, and accepts the license only after the Go service
-  verifies the gateway authority and exact stored amount server-to-server.
-- The payment gateway is an adapter behind the Go service. It never owns
-  license state, activation state, or report data.
+1. Generates a unique license key once (idempotent across callback retries / ZarinPal `101`).
+2. Stores a lookup hash plus AES-encrypted delivery ciphertext (`REPORT_LICENSE_DELIVERY_KEY`).
+3. Shows a masked key on unauthenticated callback/status pages.
+4. Reveals the plaintext key only to the owning signed-in customer (`POST /account/purchases/reveal`).
+5. Issues Ed25519 offline leases via `POST /v1/activations` (signing private key never leaves the server).
 
-- The current Rust validator and TypeScript mirror are localhost-only
-  development compatibility code. Release builds use the signed lease path.
-- Dev bypass: `isDev()` (localhost without Tauri) remains available and is
-  never hard-locked.
+Desktop behavior:
+
+- Tauri generates a device keypair in the OS keychain.
+- Rust verifies the lease signature and device binding before paid/hosted operations.
+- Lease refresh (for example every 30 days) applies revocations and device limits when online.
+- Report files stay on the user’s machine.
+
+Payment boundary:
+
+- Checkout creates a pending order and redirects to the domestic gateway adapter.
+- The callback is accepted only after server-to-server authority and amount verification.
+- The gateway never owns license state, activation state, or report data.
 
 ## Updates
 
-No `tauri-plugin-updater` (avoids signing infrastructure for now). The app
-checks GitHub Releases manually:
+No `tauri-plugin-updater` yet. The app can check GitHub Releases manually:
 
 `GET https://api.github.com/repos/astra-chanUwU/report-maker-tauri-vite-react/releases/latest`
 
-Settings → License → “Check for updates” compares `tag_name` to the bundled
-version and links to the release page. Zero network calls unless the user
-clicks. CI (`release.yml`) publishes the Tauri bundles as a draft GitHub Release on `v*` tags and on manual dispatch.
+Settings → License → “Check for updates” compares `tag_name` to the bundled version. CI (`release.yml`) publishes Tauri bundles as a draft GitHub Release on `v*` tags and manual dispatch.
 
-## Implementation order
+## Implementation order (remaining ops)
 
-1. Keep the Go service on a persistent SQLite database with WAL and offsite
-   backups; add Postgres only if deployment later needs multiple instances or
-   high-concurrency workers.
-2. Add the selected domestic gateway adapter and license delivery workflow.
-3. Provision the Go service with a persistent `REPORT_SIGNING_PRIVATE_KEY`,
-   allowlisted AI model, and provider key.
-4. Build release binaries with `REPORT_MAKER_LICENSE_PUBLIC_KEY` set to the
-   matching base64url Ed25519 public key.
-5. Keep Tauri updater signing separate from the license signing key.
+1. Keep the Go service on persistent SQLite with WAL and offsite backups.
+2. Publish real signed installers into `REPORT_ARTIFACT_ROOT` (fixture artifacts are for tests; see `docs/releases.md`).
+3. Provision production `REPORT_SIGNING_PRIVATE_KEY` / `REPORT_LICENSE_DELIVERY_KEY` and matching desktop public key.
+4. Keep Tauri updater signing separate from the lease signing key.
+5. Do not introduce Postgres until multiple writers or multiple service instances are a measured need.
