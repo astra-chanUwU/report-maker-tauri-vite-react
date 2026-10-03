@@ -76,6 +76,8 @@ func validateReleaseArtifact(artifact ReleaseArtifact) error {
 		return errors.New("release artifact relative_path is required")
 	case strings.Contains(artifact.RelativePath, ".."):
 		return fmt.Errorf("release artifact %q has invalid relative_path", artifact.ID)
+	case len(strings.TrimSpace(artifact.SHA256)) != 64:
+		return fmt.Errorf("release artifact %q has invalid sha256", artifact.ID)
 	}
 	return nil
 }

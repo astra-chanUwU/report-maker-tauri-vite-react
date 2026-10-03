@@ -155,6 +155,34 @@ func TestNonEntitledDownloadDenied(t *testing.T) {
 	}
 }
 
+func TestChecksumMismatchBlocksDownload(t *testing.T) {
+	app, server, _ := testDownloadApp(t)
+	cookie := seedEntitledCustomer(t, app, "cus_badsum")
+	a, _ := app.releases.Find("desktop-windows-x64")
+	a.SHA256 = strings.Repeat("0", 64)
+	app.releases.byID["desktop-windows-x64"] = a
+	req, _ := http.NewRequest(http.MethodGet, server.URL+"/downloads/desktop-windows-x64", nil)
+	req.AddCookie(cookie)
+	resp, _ := server.Client().Do(req)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d want 503", resp.StatusCode)
+	}
+}
+
+func TestDownloadsPageShowsInstallInstructions(t *testing.T) {
+	app, server, _ := testDownloadApp(t)
+	cookie := seedEntitledCustomer(t, app, "cus_install")
+	req, _ := http.NewRequest(http.MethodGet, server.URL+"/account/downloads", nil)
+	req.AddCookie(cookie)
+	resp, _ := server.Client().Do(req)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(body), "Install:") {
+		t.Fatal("missing install instructions")
+	}
+}
+
 func TestPathTraversalDenied(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "secret.txt"), []byte("secret"), 0o644); err != nil {

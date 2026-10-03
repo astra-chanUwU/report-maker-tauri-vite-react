@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -27,15 +26,9 @@ type downloadTokenPayload struct {
 }
 
 type DownloadLinkView struct {
-	ArtifactID  string
-	Filename    string
-	Version     string
-	Platform    string
-	Description string
-	SHA256      string
-	URL         string
-	ExpiresAt   time.Time
-	Expired     bool
+	ArtifactID, Filename, Version, Platform, Description, SHA256, InstallInstructions, URL string
+	ExpiresAt time.Time
+	Expired   bool
 }
 
 func (a *App) downloadRoutes() {
@@ -61,14 +54,10 @@ func (a *App) customerDownloadsPage(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			links = append(links, DownloadLinkView{
-				ArtifactID:  artifact.ID,
-				Filename:    artifact.Filename,
-				Version:     artifact.Version,
-				Platform:    artifact.Platform,
-				Description: artifact.Description,
-				SHA256:      artifact.SHA256,
-				URL:         a.cfg.PublicBaseURL + "/downloads/link/" + token,
-				ExpiresAt:   expires,
+				ArtifactID: artifact.ID, Filename: artifact.Filename, Version: artifact.Version,
+				Platform: artifact.Platform, Description: artifact.Description, SHA256: artifact.SHA256,
+				InstallInstructions: installInstructionsForPlatform(artifact.Platform),
+				URL: a.cfg.PublicBaseURL + "/downloads/link/" + token, ExpiresAt: expires,
 			})
 		}
 	}
@@ -156,21 +145,16 @@ func (a *App) serveEntitledArtifact(w http.ResponseWriter, r *http.Request, cust
 		http.Error(w, "artifact unavailable", http.StatusNotFound)
 		return
 	}
-	file, err := os.Open(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			http.Error(w, "artifact unavailable", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "artifact unavailable", http.StatusInternalServerError)
+	if err := VerifyArtifactChecksum(path, artifact.SHA256); err != nil {
+		http.Error(w, "artifact failed integrity check", http.StatusServiceUnavailable)
 		return
 	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || info.IsDir() {
+	file, info, err := OpenArtifactFile(a.releases.Root, artifact.RelativePath)
+	if err != nil {
 		http.Error(w, "artifact unavailable", http.StatusNotFound)
 		return
 	}
+	defer file.Close()
 	if err := a.store.RecordDownload(&DownloadRecord{
 		ID: randomID("dl_"), OrderID: orderID, LicenseID: licenseID, Artifact: artifact.ID, CreatedAt: time.Now().UTC(),
 	}); err != nil {
@@ -270,6 +254,17 @@ func (a *App) download(w http.ResponseWriter, r *http.Request) {
 		Title: "Download", Heading: "Download Report Maker",
 		Body: body, CSRFToken: a.ensureCSRF(w, r),
 	})
+}
+
+func installInstructionsForPlatform(platform string) string {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "windows x64":
+		return "Download the .exe, verify SHA-256, then run the installer."
+	case "macos universal", "macos":
+		return "Download the .dmg, verify SHA-256, open it, and drag Report Maker into Applications."
+	default:
+		return "Download the installer, verify SHA-256, then follow platform prompts."
+	}
 }
 
 func downloadTokenExpiryFromEnv(raw string, fallback int) int {
