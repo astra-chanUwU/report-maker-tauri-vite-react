@@ -128,16 +128,18 @@ returned in production responses; `go test ./...` and `go vet ./...` pass.
 
 **Depends on:** S01 and the existing ZarinPal adapter.
 
-- Define the license product and plan data in one server-owned catalog.
-- Generate a unique license key only after a verified payment.
-- Store only a hash for lookup plus encrypted/recoverable customer delivery data
+**Status:** Implemented in control plane (see `CURSOR_REPORT.md`).
+
+- [x] Define the license product and plan data in one server-owned catalog.
+- [x] Generate a unique license key only after a verified payment.
+- [x] Store only a hash for lookup plus encrypted/recoverable customer delivery data
   according to the security review; never put the signing private key in the
   client or browser.
-- Make provisioning transactionally idempotent across callback retries and
+- [x] Make provisioning transactionally idempotent across callback retries and
   ZarinPal verification code `101`.
-- Associate the license with the customer and order. Do not provision on a
+- [x] Associate the license with the customer and order. Do not provision on a
   client-supplied callback amount or an unverified authority.
-- Add a customer purchase page showing order status and license entitlement.
+- [x] Add a customer purchase page showing order status and license entitlement.
 
 **Acceptance:** demo gateway and a mocked ZarinPal server both prove that one
 paid order yields one license; failed, mismatched, repeated, and cancelled

@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"html"
 	"io"
 	"net/http"
@@ -17,11 +18,12 @@ import (
 )
 
 type Config struct {
-	SigningPrivateKey string
-	SigningKeyID      string
-	LeaseDays         int
-	AllowDevSeed      bool
-	PublicBaseURL     string
+	SigningPrivateKey  string
+	SigningKeyID       string
+	LicenseDeliveryKey []byte
+	LeaseDays          int
+	AllowDevSeed       bool
+	PublicBaseURL      string
 	// DatabasePath selects the SQLite database file. An empty value keeps
 	// NewApp's isolated in-memory behavior, which is useful for tests.
 	DatabasePath    string
@@ -29,9 +31,13 @@ type Config struct {
 	WebAuthnOrigins []string
 	WebAuthnRPName  string
 	AdminPassword   string
-	Gateway         PaymentGateway
-	EmailSender     EmailSender
-	SMSSender       SMSSender
+	Gateway            PaymentGateway
+	EmailSender        EmailSender
+	SMSSender          SMSSender
+	ArtifactRoot       string
+	ReleaseManifest    string
+	DownloadLinkTTLHours int
+	DownloadRateLimit    int
 }
 
 func ConfigFromEnv() Config {
@@ -74,11 +80,16 @@ func ConfigFromEnv() Config {
 		}
 		gateway = ZarinPalGateway{MerchantID: merchant, BaseURL: apiBase}
 	}
+	deliveryKey, _ := LoadDeliveryKey(os.Getenv("REPORT_LICENSE_DELIVERY_KEY"))
 	return Config{
 		SigningPrivateKey: os.Getenv("REPORT_SIGNING_PRIVATE_KEY"), SigningKeyID: valueOr(os.Getenv("REPORT_SIGNING_KEY_ID"), "lease-dev-1"),
-		LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
+		LicenseDeliveryKey: deliveryKey, LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
 		WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, AdminPassword: os.Getenv("REPORT_ADMIN_PASSWORD"),
 		Gateway: gateway,
+		ArtifactRoot:       os.Getenv("REPORT_ARTIFACT_ROOT"),
+		ReleaseManifest:    os.Getenv("REPORT_RELEASE_MANIFEST"),
+		DownloadLinkTTLHours: downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_LINK_TTL_HOURS"), 24),
+		DownloadRateLimit:    downloadTokenExpiryFromEnv(os.Getenv("REPORT_DOWNLOAD_RATE_LIMIT"), 30),
 	}
 }
 func valueOr(value, fallback string) string {
@@ -98,12 +109,19 @@ type App struct {
 	email         EmailSender
 	sms           SMSSender
 	rateLimits    *rateLimiter
+	releases      *ReleaseCatalog
 }
 
 func NewApp(cfg Config) (*App, error) {
 	key, err := LoadSigningKey(cfg.SigningPrivateKey)
 	if err != nil {
 		return nil, err
+	}
+	if len(cfg.LicenseDeliveryKey) != 32 {
+		cfg.LicenseDeliveryKey, err = LoadDeliveryKey("")
+		if err != nil {
+			return nil, err
+		}
 	}
 	if cfg.Gateway == nil {
 		cfg.Gateway = DemoGateway{BaseURL: cfg.PublicBaseURL}
@@ -133,9 +151,15 @@ func NewApp(cfg Config) (*App, error) {
 	if sms == nil {
 		sms = &FakeSMS{}
 	}
+	releases, err := LoadReleaseCatalog(cfg.ArtifactRoot, cfg.ReleaseManifest)
+	if err != nil {
+		store.Close()
+		return nil, err
+	}
 	app := &App{
 		cfg: cfg, store: store, signingKey: key, signingPublic: key.Public().(ed25519.PublicKey),
 		mux: http.NewServeMux(), webAuthn: webAuthnService, email: email, sms: sms, rateLimits: newRateLimiter(),
+		releases: releases,
 	}
 	if cfg.AllowDevSeed {
 		app.store.SeedLicense("RM-TEST-1234-KEY0", "perpetual", map[string]bool{"core_export": true, "hosted_ai": true}, 3)
@@ -144,6 +168,7 @@ func NewApp(cfg Config) (*App, error) {
 	app.authRoutes()
 	app.phoneRoutes()
 	app.adminRoutes()
+	app.downloadRoutes()
 	return app, nil
 }
 func (a *App) Handler() http.Handler { return a.requestLog(a.mux) }
@@ -185,12 +210,8 @@ func (a *App) pricing(w http.ResponseWriter, r *http.Request) {
 	renderPage(w, "pricing", PageData{
 		Title: "Pricing", Heading: "Choose a license",
 		Body:  "Pay through a domestic payment gateway. The desktop app remains useful offline.",
-		Plans: []PlanView{{ID: "perpetual", Name: "Perpetual", Description: "Core report creation and export for one major version.", Price: "Contact for current price"}},
-		CSRFToken: a.ensureCSRF(w, r),
+		Plans: catalogPlansForView(), CSRFToken: a.ensureCSRF(w, r),
 	})
-}
-func (a *App) download(w http.ResponseWriter, _ *http.Request) {
-	renderPage(w, "home", PageData{Title: "Download", Heading: "Download Report Maker", Body: "Download links will be shown here after the release package is published."})
 }
 func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -204,7 +225,7 @@ func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.FormValue("email"))
 	firstName := strings.TrimSpace(r.FormValue("first_name"))
 	lastName := strings.TrimSpace(r.FormValue("last_name"))
-	amount, knownPlan := planAmount(plan)
+	catalogPlan, knownPlan := PlanFromCatalog(plan)
 	phone := normalizePhone(r.FormValue("phone"))
 	if !knownPlan || firstName == "" || lastName == "" || email == "" || !strings.Contains(email, "@") || phone == "" {
 		http.Error(w, "Enter your first name, surname, email, and a valid Iranian phone number.", 400)
@@ -217,7 +238,7 @@ func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not save customer details.", 500)
 		return
 	}
-	order := &Order{ID: orderID, CustomerID: customerID, Plan: plan, FirstName: firstName, LastName: lastName, Email: email, Phone: phone, AmountRials: amount, Status: "pending", CreatedAt: now}
+	order := &Order{ID: orderID, CustomerID: customerID, Plan: plan, FirstName: firstName, LastName: lastName, Email: email, Phone: phone, AmountRials: catalogPlan.PriceRials, Status: "pending", CreatedAt: now}
 	result, err := a.cfg.Gateway.Start(r.Context(), PaymentRequest{OrderID: orderID, AmountRials: order.AmountRials, Description: "Report Maker " + plan, CallbackURL: a.cfg.PublicBaseURL + "/payments/" + a.cfg.Gateway.Name() + "/callback", Email: email, Mobile: phone})
 	if err != nil {
 		http.Error(w, "payment gateway unavailable", 502)
@@ -258,12 +279,26 @@ func (a *App) paymentCallback(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment is pending", Body: "We could not verify the payment yet. Keep your receipt and contact support if needed."})
 		return
 	}
-	paid, err := a.store.MarkOrderPaid(order.ID, result.Reference)
+	fulfilled, err := a.fulfillVerifiedPayment(order, result.Reference)
 	if err != nil {
 		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment status unavailable", Body: "Please contact support with your order ID."})
 		return
 	}
-	renderPage(w, "checkout-status", PageData{Title: "Payment complete", Heading: "Payment received", Body: "Your license delivery flow is ready to issue a key. Keep this order ID for support.", Status: paid.ID})
+	body := "Copy your license key now and store it safely. Sign in to your account to reveal it again later."
+	if !fulfilled.Created {
+		body = "Your payment was already processed. Sign in to your account to view your license key."
+	}
+	renderPage(w, "checkout-status", PageData{
+		Title: "Payment complete", Heading: "Payment received", Body: body,
+		Status: fulfilled.Order.ID, LicenseKey: fulfilled.LicenseKey, LicenseMasked: MaskLicenseKey(fulfilled.LicenseKey),
+	})
+}
+func (a *App) fulfillVerifiedPayment(order *Order, paymentRef string) (*FulfillResult, error) {
+	plan, ok := PlanFromCatalog(order.Plan)
+	if !ok {
+		return nil, fmt.Errorf("unknown plan")
+	}
+	return a.store.FulfillOrderPayment(order.ID, paymentRef, a.cfg.LicenseDeliveryKey, plan)
 }
 func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
 	orderID := r.URL.Query().Get("order")
@@ -272,7 +307,19 @@ func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	renderPage(w, "checkout-status", PageData{Title: "Checkout status", Heading: "Order status", Body: "Order " + html.EscapeString(order.ID), Status: order.Status})
+	data := PageData{Title: "Checkout status", Heading: "Order status", Body: "Order " + html.EscapeString(order.ID), Status: order.Status}
+	if order.LicenseID != "" {
+		if license, ok := a.store.FindLicenseByID(order.LicenseID); ok && license.DeliveryCiphertext != "" {
+			if plain, err := DecryptLicenseKey(a.cfg.LicenseDeliveryKey, license.DeliveryCiphertext); err == nil {
+				data.LicenseMasked = MaskLicenseKey(plain)
+				if customer, ok := a.customerFromRequest(r); ok && customer.ID == order.CustomerID {
+					data.LicenseKey = plain
+					data.CSRFToken = a.ensureCSRF(w, r)
+				}
+			}
+		}
+	}
+	renderPage(w, "checkout-status", data)
 }
 
 type activationRequest struct {
@@ -536,19 +583,6 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 func errorJSON(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
-func planAmount(plan string) (int64, bool) {
-	if plan != "perpetual" {
-		return 0, false
-	}
-	value := int64(1000000)
-	if raw := os.Getenv("REPORT_PERPETUAL_PRICE_RIALS"); raw != "" {
-		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
-			value = parsed
-		}
-	}
-	return value, true
-}
-
 func randomID(prefix string) string {
 	bytes := make([]byte, 10)
 	if _, err := rand.Read(bytes); err != nil {

@@ -13,13 +13,16 @@ import (
 )
 
 type License struct {
-	ID         string
-	KeyHash    string
-	Plan       string
-	Status     string
-	Features   map[string]bool
-	MaxDevices int
-	CreatedAt  time.Time
+	ID                 string
+	KeyHash            string
+	Plan               string
+	Status             string
+	Features           map[string]bool
+	MaxDevices         int
+	CustomerID         string
+	OrderID            string
+	DeliveryCiphertext string
+	CreatedAt          time.Time
 }
 
 type Activation struct {
@@ -101,6 +104,7 @@ type CustomerSession struct {
 type Order struct {
 	ID          string
 	CustomerID  string
+	LicenseID   string
 	Plan        string
 	FirstName   string
 	LastName    string
@@ -112,6 +116,13 @@ type Order struct {
 	Status      string
 	CreatedAt   time.Time
 	PaidAt      *time.Time
+}
+
+type FulfillResult struct {
+	Order      *Order
+	License    *License
+	LicenseKey string
+	Created    bool
 }
 
 type PaymentAttempt struct {
@@ -132,6 +143,12 @@ type DownloadRecord struct {
 	LicenseID string
 	Artifact  string
 	CreatedAt time.Time
+}
+
+// DownloadEntitlement is the paid-order + license boundary S02 sets after verify.
+type DownloadEntitlement struct {
+	OrderID   string
+	LicenseID string
 }
 
 type Store struct{ db *sql.DB }
@@ -198,8 +215,10 @@ CREATE TABLE IF NOT EXISTS customer_sessions (
 CREATE INDEX IF NOT EXISTS customer_sessions_expiry_idx ON customer_sessions(expires_at);
 CREATE TABLE IF NOT EXISTS licenses (
  id TEXT PRIMARY KEY, key_hash TEXT NOT NULL UNIQUE, plan TEXT NOT NULL, status TEXT NOT NULL,
- features_json TEXT NOT NULL, max_devices INTEGER NOT NULL, created_at TEXT NOT NULL
+ features_json TEXT NOT NULL, max_devices INTEGER NOT NULL, customer_id TEXT REFERENCES customers(id),
+ order_id TEXT REFERENCES orders(id), delivery_ciphertext TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS licenses_order_idx ON licenses(order_id);
 CREATE TABLE IF NOT EXISTS activations (
  id TEXT PRIMARY KEY, license_id TEXT NOT NULL REFERENCES licenses(id), device_public_key TEXT NOT NULL,
  platform TEXT NOT NULL, app_version TEXT NOT NULL, created_at TEXT NOT NULL, last_seen TEXT NOT NULL, revoked_at TEXT
@@ -207,12 +226,13 @@ CREATE TABLE IF NOT EXISTS activations (
 CREATE INDEX IF NOT EXISTS activations_license_idx ON activations(license_id);
 CREATE UNIQUE INDEX IF NOT EXISTS activations_live_device_idx ON activations(license_id, device_public_key) WHERE revoked_at IS NULL;
 CREATE TABLE IF NOT EXISTS orders (
- id TEXT PRIMARY KEY, customer_id TEXT REFERENCES customers(id), plan TEXT NOT NULL,
- first_name TEXT NOT NULL DEFAULT '', last_name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL,
+ id TEXT PRIMARY KEY, customer_id TEXT REFERENCES customers(id), license_id TEXT REFERENCES licenses(id),
+ plan TEXT NOT NULL, first_name TEXT NOT NULL DEFAULT '', last_name TEXT NOT NULL DEFAULT '', email TEXT NOT NULL,
  phone TEXT NOT NULL DEFAULT '', amount_rials INTEGER NOT NULL, authority TEXT UNIQUE,
  payment_ref TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, created_at TEXT NOT NULL, paid_at TEXT
 );
 CREATE INDEX IF NOT EXISTS orders_authority_idx ON orders(authority);
+CREATE INDEX IF NOT EXISTS orders_customer_idx ON orders(customer_id);
 CREATE TABLE IF NOT EXISTS payment_attempts (
  id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), provider TEXT NOT NULL,
  authority TEXT NOT NULL, reference TEXT NOT NULL DEFAULT '', amount_rials INTEGER NOT NULL,
@@ -247,6 +267,10 @@ CREATE INDEX IF NOT EXISTS admin_sessions_expiry_idx ON admin_sessions(expires_a
 		`ALTER TABLE customers ADD COLUMN webauthn_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE customers ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE customers ADD COLUMN phone_verified_at TEXT`,
+		`ALTER TABLE orders ADD COLUMN license_id TEXT REFERENCES licenses(id)`,
+		`ALTER TABLE licenses ADD COLUMN customer_id TEXT REFERENCES customers(id)`,
+		`ALTER TABLE licenses ADD COLUMN order_id TEXT REFERENCES orders(id)`,
+		`ALTER TABLE licenses ADD COLUMN delivery_ciphertext TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, alterErr := db.Exec(statement); alterErr != nil && !strings.Contains(strings.ToLower(alterErr.Error()), "duplicate column") {
 			return alterErr
@@ -272,17 +296,17 @@ func (s *Store) FindLicense(key string) (*License, bool) {
 	return s.FindLicenseByHash(LicenseKeyHash(key))
 }
 func (s *Store) FindLicenseByHash(hash string) (*License, bool) {
-	row := s.db.QueryRow(`SELECT id,key_hash,plan,status,features_json,max_devices,created_at FROM licenses WHERE key_hash=?`, hash)
+	row := s.db.QueryRow(`SELECT id,key_hash,plan,status,features_json,max_devices,COALESCE(customer_id,''),COALESCE(order_id,''),COALESCE(delivery_ciphertext,''),created_at FROM licenses WHERE key_hash=?`, hash)
 	return scanLicense(row)
 }
 func (s *Store) FindLicenseByID(id string) (*License, bool) {
-	row := s.db.QueryRow(`SELECT id,key_hash,plan,status,features_json,max_devices,created_at FROM licenses WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id,key_hash,plan,status,features_json,max_devices,COALESCE(customer_id,''),COALESCE(order_id,''),COALESCE(delivery_ciphertext,''),created_at FROM licenses WHERE id=?`, id)
 	return scanLicense(row)
 }
 func scanLicense(row interface{ Scan(...any) error }) (*License, bool) {
 	var value License
 	var encoded, created string
-	if err := row.Scan(&value.ID, &value.KeyHash, &value.Plan, &value.Status, &encoded, &value.MaxDevices, &created); err != nil {
+	if err := row.Scan(&value.ID, &value.KeyHash, &value.Plan, &value.Status, &encoded, &value.MaxDevices, &value.CustomerID, &value.OrderID, &value.DeliveryCiphertext, &created); err != nil {
 		return nil, false
 	}
 	if json.Unmarshal([]byte(encoded), &value.Features) != nil {
@@ -572,21 +596,37 @@ func (s *Store) DeleteAdminSession(tokenHash string) error {
 	return err
 }
 func (s *Store) PutOrder(value *Order) error {
-	_, err := s.db.Exec(`INSERT INTO orders(id,customer_id,plan,first_name,last_name,email,phone,amount_rials,authority,payment_ref,status,created_at,paid_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, value.ID, nullableString(value.CustomerID), value.Plan, value.FirstName, value.LastName, value.Email, value.Phone, value.AmountRials, nullableString(value.Authority), value.PaymentRef, value.Status, formatTime(value.CreatedAt), nullableTime(value.PaidAt))
+	_, err := s.db.Exec(`INSERT INTO orders(id,customer_id,license_id,plan,first_name,last_name,email,phone,amount_rials,authority,payment_ref,status,created_at,paid_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, value.ID, nullableString(value.CustomerID), nullableString(value.LicenseID), value.Plan, value.FirstName, value.LastName, value.Email, value.Phone, value.AmountRials, nullableString(value.Authority), value.PaymentRef, value.Status, formatTime(value.CreatedAt), nullableTime(value.PaidAt))
 	return err
 }
 func (s *Store) GetOrder(id string) (*Order, bool) {
-	row := s.db.QueryRow(`SELECT id,COALESCE(customer_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, id)
+	row := s.db.QueryRow(`SELECT id,COALESCE(customer_id,''),COALESCE(license_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, id)
 	return scanOrder(row)
 }
 func (s *Store) FindOrderByAuthority(authority string) (*Order, bool) {
-	row := s.db.QueryRow(`SELECT id,COALESCE(customer_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE authority=?`, authority)
+	row := s.db.QueryRow(`SELECT id,COALESCE(customer_id,''),COALESCE(license_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE authority=?`, authority)
 	return scanOrder(row)
+}
+func (s *Store) ListCustomerOrders(customerID string) ([]Order, error) {
+	rows, err := s.db.Query(`SELECT id,COALESCE(customer_id,''),COALESCE(license_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE customer_id=? ORDER BY created_at DESC`, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var values []Order
+	for rows.Next() {
+		order, ok := scanOrder(rows)
+		if !ok {
+			continue
+		}
+		values = append(values, *order)
+	}
+	return values, rows.Err()
 }
 func scanOrder(row interface{ Scan(...any) error }) (*Order, bool) {
 	var value Order
 	var created, paid sql.NullString
-	if err := row.Scan(&value.ID, &value.CustomerID, &value.Plan, &value.FirstName, &value.LastName, &value.Email, &value.Phone, &value.AmountRials, &value.Authority, &value.PaymentRef, &value.Status, &created, &paid); err != nil {
+	if err := row.Scan(&value.ID, &value.CustomerID, &value.LicenseID, &value.Plan, &value.FirstName, &value.LastName, &value.Email, &value.Phone, &value.AmountRials, &value.Authority, &value.PaymentRef, &value.Status, &created, &paid); err != nil {
 		return nil, false
 	}
 	value.CreatedAt, _ = parseTime(created.String)
@@ -602,12 +642,15 @@ func (s *Store) MarkOrderPaid(id, paymentRef string) (*Order, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
-	row := tx.QueryRow(`SELECT id,COALESCE(customer_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, id)
+	row := tx.QueryRow(`SELECT id,COALESCE(customer_id,''),COALESCE(license_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, id)
 	order, ok := scanOrder(row)
 	if !ok {
 		return nil, errors.New("order not found")
 	}
 	if order.Status == "paid" {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
 		return order, nil
 	}
 	if order.Status != "pending" {
@@ -623,6 +666,111 @@ func (s *Store) MarkOrderPaid(id, paymentRef string) (*Order, error) {
 	}
 	return order, nil
 }
+
+func (s *Store) FulfillOrderPayment(orderID, paymentRef string, deliveryKey []byte, plan ProductPlan) (*FulfillResult, error) {
+	if len(deliveryKey) != 32 {
+		return nil, errors.New("delivery key required")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	row := tx.QueryRow(`SELECT id,COALESCE(customer_id,''),COALESCE(license_id,''),plan,first_name,last_name,email,phone,amount_rials,COALESCE(authority,''),payment_ref,status,created_at,paid_at FROM orders WHERE id=?`, orderID)
+	order, ok := scanOrder(row)
+	if !ok {
+		return nil, errors.New("order not found")
+	}
+	if order.Status == "paid" {
+		if order.LicenseID != "" {
+			return s.fulfillExistingPaidOrder(tx, order, deliveryKey)
+		}
+	} else if order.Status != "pending" {
+		return nil, errors.New("order is not payable")
+	} else {
+		now := time.Now().UTC()
+		if _, err := tx.Exec(`UPDATE orders SET status='paid',payment_ref=?,paid_at=? WHERE id=? AND status='pending'`, paymentRef, formatTime(now), orderID); err != nil {
+			return nil, err
+		}
+		order.Status, order.PaymentRef, order.PaidAt = "paid", paymentRef, &now
+	}
+	catalogPlan, ok := PlanFromCatalog(order.Plan)
+	if !ok {
+		return nil, errors.New("unknown plan")
+	}
+	plan = catalogPlan
+	plainKey, err := GenerateLicenseKey()
+	if err != nil {
+		return nil, err
+	}
+	for attempts := 0; attempts < 5; attempts++ {
+		var exists int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM licenses WHERE key_hash=?`, LicenseKeyHash(plainKey)).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if exists == 0 {
+			break
+		}
+		plainKey, err = GenerateLicenseKey()
+		if err != nil {
+			return nil, err
+		}
+	}
+	encrypted, err := EncryptLicenseKey(deliveryKey, plainKey)
+	if err != nil {
+		return nil, err
+	}
+	featuresJSON, err := json.Marshal(plan.Features)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	licenseID := randomID("lic_")
+	if _, err := tx.Exec(`INSERT INTO licenses(id,key_hash,plan,status,features_json,max_devices,customer_id,order_id,delivery_ciphertext,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, licenseID, LicenseKeyHash(plainKey), plan.ID, "active", string(featuresJSON), plan.MaxDevices, nullableString(order.CustomerID), orderID, encrypted, formatTime(now)); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE orders SET license_id=? WHERE id=?`, licenseID, orderID); err != nil {
+		return nil, err
+	}
+	order.LicenseID = licenseID
+	license := &License{ID: licenseID, KeyHash: LicenseKeyHash(plainKey), Plan: plan.ID, Status: "active", Features: cloneFeatures(plan.Features), MaxDevices: plan.MaxDevices, CustomerID: order.CustomerID, OrderID: orderID, DeliveryCiphertext: encrypted, CreatedAt: now}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &FulfillResult{Order: order, License: license, LicenseKey: plainKey, Created: true}, nil
+}
+
+func (s *Store) fulfillExistingPaidOrder(tx *sql.Tx, order *Order, deliveryKey []byte) (*FulfillResult, error) {
+	licenseRow := tx.QueryRow(`SELECT id,key_hash,plan,status,features_json,max_devices,COALESCE(customer_id,''),COALESCE(order_id,''),COALESCE(delivery_ciphertext,''),created_at FROM licenses WHERE id=?`, order.LicenseID)
+	license, ok := scanLicense(licenseRow)
+	if !ok {
+		return nil, errors.New("license not found")
+	}
+	result := &FulfillResult{Order: order, License: license, Created: false}
+	if deliveryKey != nil && license.DeliveryCiphertext != "" {
+		plain, err := DecryptLicenseKey(deliveryKey, license.DeliveryCiphertext)
+		if err != nil {
+			return nil, err
+		}
+		result.LicenseKey = plain
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *Store) CountProvisionedLicenses() int {
+	var count int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM licenses WHERE order_id IS NOT NULL AND order_id <> ''`).Scan(&count)
+	return count
+}
+
+func (s *Store) CountLicensesForOrder(orderID string) int {
+	var count int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM licenses WHERE order_id=?`, orderID).Scan(&count)
+	return count
+}
 func (s *Store) PutPaymentAttempt(value *PaymentAttempt) error {
 	_, err := s.db.Exec(`INSERT INTO payment_attempts(id,order_id,provider,authority,reference,amount_rials,status,created_at,verified_at) VALUES(?,?,?,?,?,?,?,?,?)`, value.ID, value.OrderID, value.Provider, value.Authority, value.Reference, value.AmountRials, value.Status, formatTime(value.CreatedAt), nullableTime(value.VerifiedAt))
 	return err
@@ -630,6 +778,89 @@ func (s *Store) PutPaymentAttempt(value *PaymentAttempt) error {
 func (s *Store) RecordDownload(value *DownloadRecord) error {
 	_, err := s.db.Exec(`INSERT INTO download_records(id,order_id,license_id,artifact,created_at) VALUES(?,?,?,?,?)`, value.ID, nullableString(value.OrderID), nullableString(value.LicenseID), value.Artifact, formatTime(value.CreatedAt))
 	return err
+}
+
+// CustomerDownloadEntitlement returns the newest paid order with a license for the customer.
+// S02 will set license_id during payment provisioning; until then tests may insert rows directly.
+func (s *Store) CustomerDownloadEntitlement(customerID string) (DownloadEntitlement, bool) {
+	row := s.db.QueryRow(`
+SELECT id, COALESCE(license_id,'') FROM orders
+WHERE customer_id=? AND status='paid' AND license_id IS NOT NULL AND license_id <> ''
+ORDER BY COALESCE(paid_at, created_at) DESC LIMIT 1`, customerID)
+	var ent DownloadEntitlement
+	if err := row.Scan(&ent.OrderID, &ent.LicenseID); err != nil || ent.LicenseID == "" {
+		return DownloadEntitlement{}, false
+	}
+	return ent, true
+}
+
+func (s *Store) CustomerEntitledForLicense(customerID, licenseID string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(`
+SELECT COUNT(*) FROM orders
+WHERE customer_id=? AND status='paid' AND license_id=?`, customerID, licenseID).Scan(&count)
+	return count > 0, err
+}
+
+// FindLicensesByCustomer lists licenses linked to paid orders for a customer.
+func (s *Store) FindLicensesByCustomer(customerID string) ([]License, error) {
+	rows, err := s.db.Query(`
+SELECT l.id,l.key_hash,l.plan,l.status,l.features_json,l.max_devices,COALESCE(l.customer_id,''),COALESCE(l.order_id,''),COALESCE(l.delivery_ciphertext,''),l.created_at
+FROM licenses l
+INNER JOIN orders o ON o.license_id=l.id
+WHERE o.customer_id=? AND o.status='paid'
+GROUP BY l.id
+ORDER BY l.created_at DESC`, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var licenses []License
+	for rows.Next() {
+		license, ok := scanLicense(rows)
+		if !ok {
+			continue
+		}
+		licenses = append(licenses, *license)
+	}
+	return licenses, rows.Err()
+}
+
+// InsertPaidOrderWithLicense is a test helper until S02 owns real provisioning.
+func (s *Store) InsertPaidOrderWithLicense(customerID string, license *License, orderID string) (*Order, error) {
+	if license == nil {
+		return nil, errors.New("license required")
+	}
+	encoded, err := json.Marshal(license.Features)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	order := &Order{
+		ID: orderID, CustomerID: customerID, LicenseID: license.ID, Plan: license.Plan,
+		Status: "paid", CreatedAt: now, PaidAt: &now,
+	}
+	if orderID == "" {
+		order.ID = "ord_test_" + license.ID
+	}
+	if _, err := tx.Exec(`INSERT INTO orders(id,customer_id,license_id,plan,first_name,last_name,email,phone,amount_rials,authority,payment_ref,status,created_at,paid_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, order.ID, order.CustomerID, nil, order.Plan, "Test", "Customer", "test@example.com", "09120000000", 1000000, nil, "test-ref", order.Status, formatTime(order.CreatedAt), formatTime(now)); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`INSERT INTO licenses(id,key_hash,plan,status,features_json,max_devices,customer_id,order_id,delivery_ciphertext,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, license.ID, license.KeyHash, license.Plan, license.Status, string(encoded), license.MaxDevices, customerID, order.ID, license.DeliveryCiphertext, formatTime(now)); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE orders SET license_id=? WHERE id=?`, license.ID, order.ID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return order, nil
 }
 func (s *Store) Idempotent(scope, key string) ([]byte, bool) {
 	var response []byte
