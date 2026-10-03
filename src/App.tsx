@@ -79,9 +79,10 @@ import { DiagnosticsPanel } from "./components/diagnostics-panel";
 import { ImportPill, ImportProgress } from "./components/import-progress";
 import { ExportPill, ExportProgressPanel } from "./components/export-progress";
 import {
+  catalogPercent,
   formatBytes,
   makeJob,
-  softExportPercent,
+  stagedExportPercent,
   type ImportJob,
 } from "./lib/import-jobs";
 import { IDLE_EXPORT, type ExportProgress } from "./lib/export-progress";
@@ -213,41 +214,81 @@ function App() {
   const runPathWithJob = useCallback(
     async (path: string) => {
       const id = enqueueJob(path);
+      const startAt = Date.now();
       pendingSp3PathRef.current = path;
       const ext = path.split(".").pop()?.toLowerCase() ?? "";
       patchJob(id, {
         stage: "exporting",
         percent: 5,
-        progress: ext === "csv" ? "Loading CSV…" : "Exporting Data table…",
+        progress: ext === "csv" ? "Loading CSV…" : "Step 1/3 — Dumping Data table…",
+        elapsedSec: 0,
       });
       try {
         if (ext === "sp3" || ext === "mdb") {
           const result = await convertSp3Path(path, undefined, (p) => {
+            const elapsedSec = Math.max(0, Math.round((Date.now() - startAt) / 1000));
+            const speedMbs = elapsedSec > 0 ? p.bytes / elapsedSec / (1024 * 1024) : undefined;
             patchJob(id, {
               stage: "exporting",
               bytes: p.bytes,
               rows: p.rows,
-              percent: softExportPercent(p.bytes),
-              progress: `${formatBytes(p.bytes)}${p.rows ? ` · ${p.rows.toLocaleString()} rows` : ""}`,
+              percent: stagedExportPercent(p.bytes),
+              speedMbs,
+              elapsedSec,
+              progress: `Step 1/3 — Dumping Data table · ${formatBytes(p.bytes)}${p.rows ? ` · ${p.rows.toLocaleString()} rows` : ""}${speedMbs != null ? ` · ${speedMbs.toFixed(1)} MB/s` : ""} · ${elapsedSec}s`,
             });
           });
+          const elapsedAfterExport = Math.max(0, Math.round((Date.now() - startAt) / 1000));
+          patchJob(id, {
+            stage: "catalog",
+            percent: catalogPercent(0, 1),
+            progress: `Step 2/3 — Building catalog (Plant/Machine/Point/Direction)… · ${elapsedAfterExport}s`,
+            elapsedSec: elapsedAfterExport,
+          });
+          // Yield so the bar actually paints before the catalog IPCs
+          await new Promise<void>((r) => setTimeout(r, 0));
+          // Pre-warm catalog so the next UI (machine picker) is instant;
+          // progress stays at 60→85 while fetchSpectraCatalog runs in rayon.
+          try {
+            const { fetchSpectraCatalog: fetchCat } = await import("./lib/mdb");
+            await fetchCat(path);
+            patchJob(id, {
+              stage: "catalog",
+              percent: 85,
+              progress: `Step 2/3 — Catalog ready · ${elapsedAfterExport}s`,
+              elapsedSec: elapsedAfterExport,
+            });
+          } catch {
+            // catalog is non-fatal for the preview; continue to indexing
+          }
           patchJob(id, {
             stage: "indexing",
-            percent: 95,
-            progress: "Parsing preview…",
+            percent: 92,
+            progress: `Step 3/3 — Parsing preview & indexing rows…`,
+            elapsedSec: Math.max(0, Math.round((Date.now() - startAt) / 1000)),
           });
           handleParsed(result, null);
-          patchJob(id, { stage: "ready", percent: 100, progress: "Ready" });
-          window.setTimeout(() => dismissJob(id), 4000);
+          patchJob(id, {
+            stage: "ready",
+            percent: 100,
+            progress: `Done — ${result.meta.filename} · ${(result.meta.extraRows ?? 0) + 1} rows`,
+            elapsedSec: Math.max(0, Math.round((Date.now() - startAt) / 1000)),
+          });
+          window.setTimeout(() => dismissJob(id), 5000);
           return;
         }
         await ingest.handlePath(path);
-        patchJob(id, { stage: "ready", percent: 100, progress: "Ready" });
+        patchJob(id, {
+          stage: "ready",
+          percent: 100,
+          progress: "Ready",
+          elapsedSec: Math.max(0, Math.round((Date.now() - startAt) / 1000)),
+        });
         window.setTimeout(() => dismissJob(id), 4000);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg === "cancelled") dismissJob(id);
-        else patchJob(id, { stage: "failed", error: msg.slice(0, 80) });
+        else patchJob(id, { stage: "failed", error: msg.slice(0, 120) });
       }
     },
     [enqueueJob, patchJob, dismissJob, ingest, handleParsed]
