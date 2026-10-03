@@ -224,23 +224,23 @@ func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plan := strings.TrimSpace(r.FormValue("plan"))
-	email := strings.TrimSpace(r.FormValue("email"))
+	email := normalizeEmail(r.FormValue("email"))
 	firstName := strings.TrimSpace(r.FormValue("first_name"))
 	lastName := strings.TrimSpace(r.FormValue("last_name"))
 	catalogPlan, knownPlan := PlanFromCatalog(plan)
 	phone := normalizePhone(r.FormValue("phone"))
-	if !knownPlan || firstName == "" || lastName == "" || email == "" || !strings.Contains(email, "@") || phone == "" {
+	if !knownPlan || firstName == "" || lastName == "" || !validEmail(email) || phone == "" {
 		http.Error(w, "Enter your first name, surname, email, and a valid Iranian phone number.", 400)
+		return
+	}
+	customer, _, err := a.store.EnsureCheckoutCustomer(firstName, lastName, email, phone)
+	if err != nil {
+		http.Error(w, "Could not save customer details.", 500)
 		return
 	}
 	orderID := randomID("ord_")
 	now := time.Now().UTC()
-	customerID := randomID("cus_")
-	if err := a.store.PutCustomer(&Customer{ID: customerID, FirstName: firstName, LastName: lastName, Email: email, Phone: phone, CreatedAt: now, UpdatedAt: now}); err != nil {
-		http.Error(w, "Could not save customer details.", 500)
-		return
-	}
-	order := &Order{ID: orderID, CustomerID: customerID, Plan: plan, FirstName: firstName, LastName: lastName, Email: email, Phone: phone, AmountRials: catalogPlan.PriceRials, Status: "pending", CreatedAt: now}
+	order := &Order{ID: orderID, CustomerID: customer.ID, Plan: plan, FirstName: firstName, LastName: lastName, Email: email, Phone: phone, AmountRials: catalogPlan.PriceRials, Status: "pending", CreatedAt: now}
 	result, err := a.cfg.Gateway.Start(r.Context(), PaymentRequest{OrderID: orderID, AmountRials: order.AmountRials, Description: "Report Maker " + plan, CallbackURL: a.cfg.PublicBaseURL + "/payments/" + a.cfg.Gateway.Name() + "/callback", Email: email, Mobile: phone})
 	if err != nil {
 		http.Error(w, "payment gateway unavailable", 502)

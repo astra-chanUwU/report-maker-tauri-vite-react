@@ -261,9 +261,69 @@ func (s *Store) RevokeActivation(id string) bool {
 	_, err := s.db.Exec(`UPDATE activations SET revoked_at=?,last_seen=? WHERE id=? AND revoked_at IS NULL`, now, now, id)
 	return err == nil
 }
+func normalizeEmail(email string) string {
+	return strings.TrimSpace(strings.ToLower(email))
+}
+
+// CheckoutIdentityConflict records checkout contact that differed from a verified account.
+type CheckoutIdentityConflict struct {
+	Field string
+}
+
 func (s *Store) PutCustomer(value *Customer) error {
+	value.Email = normalizeEmail(value.Email)
 	_, err := s.db.Exec(`INSERT INTO customers(id,first_name,last_name,email,phone,phone_verified_at,webauthn_id,password_hash,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,last_name=excluded.last_name,email=excluded.email,phone=excluded.phone,phone_verified_at=COALESCE(excluded.phone_verified_at,customers.phone_verified_at),webauthn_id=CASE WHEN excluded.webauthn_id <> '' THEN excluded.webauthn_id ELSE customers.webauthn_id END,password_hash=CASE WHEN excluded.password_hash <> '' THEN excluded.password_hash ELSE customers.password_hash END,updated_at=excluded.updated_at`, value.ID, value.FirstName, value.LastName, value.Email, value.Phone, nullableTime(value.PhoneVerifiedAt), value.WebAuthnID, value.PasswordHash, formatTime(value.CreatedAt), formatTime(value.UpdatedAt))
 	return err
+}
+
+// EnsureCheckoutCustomer finds or creates the durable account for checkout email.
+func (s *Store) EnsureCheckoutCustomer(firstName, lastName, email, phone string) (*Customer, []CheckoutIdentityConflict, error) {
+	email = normalizeEmail(email)
+	now := time.Now().UTC()
+	if existing, ok := s.FindCustomerByEmail(email); ok {
+		updated, conflicts := mergeCheckoutIntoCustomer(existing, firstName, lastName, phone, now)
+		return updated, conflicts, s.PutCustomer(updated)
+	}
+	customer := &Customer{
+		ID: randomID("cus_"), FirstName: firstName, LastName: lastName, Email: email, Phone: phone,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	return customer, nil, s.PutCustomer(customer)
+}
+
+func mergeCheckoutIntoCustomer(existing *Customer, firstName, lastName, phone string, now time.Time) (*Customer, []CheckoutIdentityConflict) {
+	updated := *existing
+	updated.UpdatedAt = now
+	updated.Email = normalizeEmail(existing.Email)
+	var conflicts []CheckoutIdentityConflict
+	if existing.PhoneVerifiedAt != nil {
+		if phone != "" && phone != existing.Phone {
+			conflicts = append(conflicts, CheckoutIdentityConflict{Field: "phone"})
+		}
+		if lastName != "" && lastName != existing.LastName {
+			conflicts = append(conflicts, CheckoutIdentityConflict{Field: "last_name"})
+		}
+		if strings.TrimSpace(updated.FirstName) == "" && firstName != "" {
+			updated.FirstName = firstName
+		}
+		return &updated, conflicts
+	}
+	if firstName != "" {
+		updated.FirstName = firstName
+	}
+	if lastName != "" {
+		updated.LastName = lastName
+	}
+	if phone != "" {
+		updated.Phone = phone
+	}
+	return &updated, conflicts
+}
+
+func (s *Store) CountCustomers() int {
+	var count int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM customers`).Scan(&count)
+	return count
 }
 
 func (s *Store) GetCustomer(id string) (*Customer, bool) {
@@ -272,7 +332,11 @@ func (s *Store) GetCustomer(id string) (*Customer, bool) {
 }
 
 func (s *Store) FindCustomerByEmail(email string) (*Customer, bool) {
-	row := s.db.QueryRow(`SELECT id,first_name,last_name,email,phone,phone_verified_at,webauthn_id,password_hash,created_at,updated_at FROM customers WHERE lower(email)=lower(?) ORDER BY created_at LIMIT 1`, strings.TrimSpace(email))
+	email = normalizeEmail(email)
+	if email == "" {
+		return nil, false
+	}
+	row := s.db.QueryRow(`SELECT id,first_name,last_name,email,phone,phone_verified_at,webauthn_id,password_hash,created_at,updated_at FROM customers WHERE lower(email)=lower(?) ORDER BY created_at LIMIT 1`, email)
 	return scanCustomer(row)
 }
 

@@ -337,15 +337,13 @@ contains a regression test for the exact `no such column: order_id` failure;
 
 **Owner:** Composer 2.5 High, reviewed by GPT-Sol 6.1 High
 **Depends on:** C01
+**Status:** Done — merged on `integrate/control-plane` (`EnsureCheckoutCustomer`, `normalizeEmail`, phone_verified preservation).
 
-- Normalize email consistently and find-or-create the customer during checkout.
-- Preserve the verified phone state when checkout updates contact details.
-- Decide and document what happens when the same email is used with a different
-  phone or surname; do not overwrite verified identity silently.
-- Link every paid order to the durable customer account used by magic-link or
-  passkey sign-in.
-- Add tests for repeat purchases, case-insensitive email, and account purchase
-  visibility.
+- [x] Normalize email consistently and find-or-create the customer during checkout.
+- [x] Preserve the verified phone state when checkout updates contact details.
+- [x] Document verified-identity conflict policy (no silent overwrite).
+- [x] Link every paid order to the durable customer account used by sign-in.
+- [x] Tests: repeat purchases, case-insensitive email, account purchase visibility.
 
 **Acceptance:** two purchases using the same email appear under one customer
 account; unrelated emails remain separate; no customer data is lost.
