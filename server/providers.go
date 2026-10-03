@@ -104,14 +104,14 @@ func (s *HTTPEmailSender) Send(ctx context.Context, msg EmailMessage) error {
 			"email": valueOr(s.FromEmail, "noreply@localhost"),
 			"name":  valueOr(s.FromName, "Report Maker"),
 		},
-		"to":               []map[string]string{{"email": msg.To}},
-		"subject":          msg.Subject,
-		"text":             msg.Body,
-		"tags":             []string{msg.Kind},
-		"idempotency_key":  msg.IdempotencyKey,
-		"order_id":         msg.OrderID,
-		"license_id":       msg.LicenseID,
-		"message_kind":     msg.Kind,
+		"to":              []map[string]string{{"email": msg.To}},
+		"subject":         msg.Subject,
+		"text":            msg.Body,
+		"tags":            []string{msg.Kind},
+		"idempotency_key": msg.IdempotencyKey,
+		"order_id":        msg.OrderID,
+		"license_id":      msg.LicenseID,
+		"message_kind":    msg.Kind,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -355,9 +355,10 @@ var (
 	apiKeyRE     = regexp.MustCompile(`(?i)(api[_-]?key|token|secret|password)(=|:|"\s*:\s*")\s*["']?[^\s"',}]+`)
 	queryTokenRE = regexp.MustCompile(`(?i)([?&](?:token|code|key)=)[^&\s]+`)
 	longTokenRE  = regexp.MustCompile(`[A-Za-z0-9_-]{24,}`)
+	licenseKeyRE = regexp.MustCompile(`\bRM-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}\b`)
 )
 
-// redactSecrets strips credentials and long opaque tokens from log/error text.
+// redactSecrets strips credentials, license keys, and long opaque tokens from log/error text.
 func redactSecrets(value string) string {
 	if value == "" {
 		return value
@@ -365,6 +366,7 @@ func redactSecrets(value string) string {
 	out := bearerRE.ReplaceAllString(value, "${1}[REDACTED]")
 	out = apiKeyRE.ReplaceAllString(out, "${1}[REDACTED]")
 	out = queryTokenRE.ReplaceAllString(out, "${1}[REDACTED]")
+	out = licenseKeyRE.ReplaceAllString(out, "[REDACTED_LICENSE]")
 	out = longTokenRE.ReplaceAllString(out, "[REDACTED]")
 	return out
 }

@@ -86,9 +86,6 @@ func completeDemoCheckout(t *testing.T, server *httptest.Server) (orderID string
 	if !strings.Contains(string(body), "Payment received") {
 		t.Fatalf("callback body missing success: %s", body)
 	}
-	if !strings.Contains(string(body), "RM-") {
-		t.Fatalf("callback body missing license key: %s", body)
-	}
 	parsed, _ := url.Parse(server.URL + callbackLocation)
 	orderID = parsed.Query().Get("order")
 	if orderID == "" {

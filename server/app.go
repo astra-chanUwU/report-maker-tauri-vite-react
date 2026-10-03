@@ -287,14 +287,7 @@ func (a *App) paymentCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.notifyAfterPaidOrder(r.Context(), fulfilled)
-	body := "Copy your license key now and store it safely. Sign in to your account to reveal it again later."
-	if !fulfilled.Created {
-		body = "Your payment was already processed. Sign in to your account to view your license key."
-	}
-	renderPage(w, "checkout-status", PageData{
-		Title: "Payment complete", Heading: "Payment received", Body: body,
-		Status: fulfilled.Order.ID, LicenseKey: fulfilled.LicenseKey, LicenseMasked: MaskLicenseKey(fulfilled.LicenseKey),
-	})
+	renderPage(w, "checkout-status", a.paymentCompleteDisclosure(w, r, fulfilled.Order, fulfilled.LicenseKey, fulfilled.Created))
 }
 
 func (a *App) fulfillVerifiedPayment(order *Order, paymentRef string) (*FulfillResult, error) {
@@ -304,6 +297,31 @@ func (a *App) fulfillVerifiedPayment(order *Order, paymentRef string) (*FulfillR
 	}
 	return a.store.FulfillOrderPayment(order.ID, paymentRef, a.cfg.LicenseDeliveryKey, plan)
 }
+
+// paymentCompleteDisclosure builds the post-payment page.
+// Unauthenticated visitors get order status and a masked key only.
+// Full plaintext is shown only to an authenticated session that owns the order.
+func (a *App) paymentCompleteDisclosure(w http.ResponseWriter, r *http.Request, order *Order, plainKey string, firstIssue bool) PageData {
+	masked := ""
+	if plainKey != "" {
+		masked = MaskLicenseKey(plainKey)
+	}
+	body := "Your license is ready. Sign in to your account to reveal the full key. A masked reference is shown below."
+	if !firstIssue {
+		body = "Your payment was already processed. Sign in to your account to view your license key."
+	}
+	data := PageData{
+		Title: "Payment complete", Heading: "Payment received", Body: body,
+		Status: order.ID, LicenseMasked: masked,
+	}
+	if customer, ok := a.customerFromRequest(r); ok && customer.ID == order.CustomerID && plainKey != "" {
+		data.LicenseKey = plainKey
+		data.Body = "Copy your license key now and store it safely. You can also reveal it later from your account purchases."
+		data.CSRFToken = a.ensureCSRF(w, r)
+	}
+	return data
+}
+
 func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
 	orderID := r.URL.Query().Get("order")
 	order, ok := a.store.GetOrder(orderID)
@@ -319,6 +337,9 @@ func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
 				if customer, ok := a.customerFromRequest(r); ok && customer.ID == order.CustomerID {
 					data.LicenseKey = plain
 					data.CSRFToken = a.ensureCSRF(w, r)
+					data.Body = "Order " + html.EscapeString(order.ID) + ". Signed-in owners can copy the full license key below or from Purchases."
+				} else {
+					data.Body = "Order " + html.EscapeString(order.ID) + ". Sign in with the purchase email to reveal the full license key."
 				}
 			}
 		}

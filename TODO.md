@@ -352,33 +352,29 @@ account; unrelated emails remain separate; no customer data is lost.
 
 **Owner:** Grok 4.5 High, implementation by Composer 2.5 High
 **Depends on:** C02
+**Status:** Done — merged on `integrate/control-plane` (`paymentCompleteDisclosure`, masked callback/status, authenticated reveal, license key redaction in logs).
 
-- Never show the plaintext license key on an unauthenticated callback replay.
-- Make the post-payment page show order status and a masked key only unless the
-  customer has an authenticated session.
-- Provide authenticated reveal through the account page and send license access
-  by email without putting secrets in logs or URLs.
-- Add a short-lived, single-purpose receipt access mechanism only if needed; it
-  must not become a reusable bearer license key.
-- Keep the encrypted delivery key separate from the Ed25519 lease signing key.
+- [x] Never show the plaintext license key on an unauthenticated callback replay.
+- [x] Post-payment / checkout status pages show order status and masked key unless authenticated owner.
+- [x] Authenticated reveal via `/account/purchases/reveal`; license-access email uses masked hint.
+- [x] No reusable receipt bearer token; sign-in remains the recovery path.
+- [x] Delivery AES key separate from Ed25519 lease signing key.
 
 **Acceptance:** an unauthenticated repeat callback cannot recover the full key;
 the owning customer can recover it after sign-in; another customer cannot.
 
 ### C04 — Integrate payment, license, email, and downloads
 
-**Owner:** GPT-Sol 6.1 High orchestrator; Composer 2.5 High implementation
+**Owner:** GPT-Sol 6.1 High orchestrator; Composer 2.5 High implementation (GPT-Sol unavailable — Composer 2.5 used)
 **Depends on:** C01–C03
+**Status:** Done — merged C02/C03 on `integrate/control-plane`; `notifyAfterPaidOrder` wired; `server/c04_e2e_flow_test.go`.
 
-- Merge S02, S04, and S03 in a deliberate order and resolve schema/template
-  conflicts by preserving the final contracts.
-- Test one complete flow: checkout → ZarinPal/demo verify → one license → receipt
-  email → account purchase → repeatable download.
-- Test callback retries, ZarinPal code 101, provider outage after payment, and
-  expired-link renewal.
-- Wire `NotifyLicenseIssued` and `NotifyDownloadAccess` to the actual state
-  transitions rather than leaving them as extension points.
-- Ensure one payment cannot create two licenses or two order entitlements.
+- [x] Merge S02, S04, and S03 preserving final contracts (C00/C01 base).
+- [x] Merge C02 account-safe checkout and C03 license disclosure.
+- [x] Integrated flow test: checkout → verify → license → emails → account → download.
+- [x] Callback retries, ZarinPal 101, provider outage, expired-link renewal covered in tests.
+- [x] Wire `NotifyLicenseIssued` and `NotifyDownloadAccess` on paid fulfillment.
+- [x] One payment → one license / one entitlement (idempotent fulfill).
 
 **Acceptance:** one integrated Go test package covers the full flow and passes
 with both the demo gateway and a mocked ZarinPal server.

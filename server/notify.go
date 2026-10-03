@@ -8,12 +8,12 @@ import (
 )
 
 // LicenseNotifyMeta carries license fields safe to include in customer email.
-// Raw signing keys and password hashes must never be placed here.
+// Raw signing keys, delivery AES keys, and plaintext license keys must never
+// be placed here — use DeliveryHint for a masked reference only.
 type LicenseNotifyMeta struct {
 	LicenseID string
 	Plan      string
-	// DeliveryHint is a customer-visible license reference (e.g. masked key prefix).
-	// Prefer a non-secret identifier until S02 defines recoverable delivery data.
+	// DeliveryHint is a customer-visible masked license reference.
 	DeliveryHint string
 }
 
@@ -52,8 +52,7 @@ func (a *App) NotifyPurchaseReceipt(ctx context.Context, customer *Customer, ord
 }
 
 // NotifyLicenseIssued sends license-access email after a license is provisioned.
-// S02 should call this from the license-issue path. paymentCallback may call it
-// when a license is already associated; otherwise receipt-only is sent.
+// Body and logs must not contain the plaintext license key or secrets in URLs.
 func (a *App) NotifyLicenseIssued(ctx context.Context, customer *Customer, order *Order, licenseMeta LicenseNotifyMeta) error {
 	if a == nil || a.email == nil {
 		return nil
@@ -80,9 +79,10 @@ func (a *App) NotifyLicenseIssued(ctx context.Context, customer *Customer, order
 	if hint == "" {
 		hint = "Sign in to your account to view license access details."
 	}
+	accountURL := strings.TrimRight(a.cfg.PublicBaseURL, "/") + "/account/purchases"
 	body := fmt.Sprintf(
-		"Your Report Maker license is ready.\n\nOrder ID: %s\nLicense ID: %s\nPlan: %s\n\n%s\n",
-		orderID, licenseMeta.LicenseID, plan, hint,
+		"Your Report Maker license is ready.\n\nOrder ID: %s\nLicense ID: %s\nPlan: %s\nLicense reference: %s\n\nSign in at %s to reveal your full license key. Do not share this email publicly.\n",
+		orderID, licenseMeta.LicenseID, plan, hint, accountURL,
 	)
 	key := licenseMeta.LicenseID
 	if key == "" {
@@ -100,7 +100,7 @@ func (a *App) NotifyLicenseIssued(ctx context.Context, customer *Customer, order
 	return err
 }
 
-// NotifyDownloadAccess sends a download-access message (stub until S03 wires artifacts).
+// NotifyDownloadAccess sends a download-access message after paid entitlement.
 func (a *App) NotifyDownloadAccess(ctx context.Context, customer *Customer, order *Order, downloadURL string) error {
 	if a == nil || a.email == nil {
 		return nil
@@ -121,7 +121,7 @@ func (a *App) NotifyDownloadAccess(ctx context.Context, customer *Customer, orde
 	}
 	link := strings.TrimSpace(downloadURL)
 	if link == "" {
-		link = a.cfg.PublicBaseURL + "/download"
+		link = a.cfg.PublicBaseURL + "/account/downloads"
 	}
 	body := fmt.Sprintf(
 		"Your Report Maker download is available.\n\nOrder ID: %s\nDownload: %s\n\nLinks may be renewed after sign-in.\n",
@@ -138,8 +138,9 @@ func (a *App) NotifyDownloadAccess(ctx context.Context, customer *Customer, orde
 	return err
 }
 
-// notifyAfterPaidOrder sends receipt and license/download mail after payment fulfillment.
-// Order payment and license provisioning must already be committed. Email failures are logged only.
+// notifyAfterPaidOrder sends receipt, license, and download mail after payment fulfillment.
+// Order payment and license provisioning must already be committed. Email failures are
+// logged only; idempotency keys prevent duplicate delivery on callback retries.
 func (a *App) notifyAfterPaidOrder(ctx context.Context, fulfilled *FulfillResult) {
 	if a == nil || fulfilled == nil || fulfilled.Order == nil {
 		return
@@ -157,11 +158,16 @@ func (a *App) notifyAfterPaidOrder(ctx context.Context, fulfilled *FulfillResult
 		if hint == "" {
 			hint = "Sign in to your account to view license access details."
 		}
+		licenseID := order.LicenseID
+		plan := fulfilled.License.Plan
+		if licenseID == "" && fulfilled.License.ID != "" {
+			licenseID = fulfilled.License.ID
+		}
 		_ = a.NotifyLicenseIssued(ctx, customer, order, LicenseNotifyMeta{
-			LicenseID: order.LicenseID, Plan: fulfilled.License.Plan, DeliveryHint: hint,
+			LicenseID: licenseID, Plan: plan, DeliveryHint: hint,
 		})
 		if entitled, ok := a.store.CustomerDownloadEntitlement(order.CustomerID); ok && entitled.LicenseID != "" {
-			_ = a.NotifyDownloadAccess(ctx, customer, order, a.cfg.PublicBaseURL+"/account/downloads")
+			_ = a.NotifyDownloadAccess(ctx, customer, order, strings.TrimRight(a.cfg.PublicBaseURL, "/")+"/account/downloads")
 		}
 	}
 }
