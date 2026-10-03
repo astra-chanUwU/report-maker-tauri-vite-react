@@ -16,6 +16,7 @@ import { LicenseCard } from "./components/license";
 import { MachinePicker } from "./components/machine-picker";
 import { CacheSettings } from "./components/cache-settings";
 import { MdbToolSettings } from "./components/mdb-import";
+import { isCached } from "./lib/cache";
 import { MeasurementPicker } from "./components/measurement-picker";
 import { DatabaseSummary, MeasuringTable, useMeasureRows } from "./components/measuring-table";
 import { Onboarding } from "./components/onboarding";
@@ -108,6 +109,7 @@ function App() {
   const [sp3Path, setSp3Path] = useState<string | null>(null);
   const [sp3Paths, setSp3Paths] = useState<string[]>([]);
   const [selectedDbPaths, setSelectedDbPaths] = useState<string[]>([]);
+  const [cachedMap, setCachedMap] = useState<Record<string, boolean>>({});
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress>(IDLE_EXPORT);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
@@ -117,6 +119,22 @@ function App() {
     const timer = window.setTimeout(() => setExportProgress(IDLE_EXPORT), 6000);
     return () => window.clearTimeout(timer);
   }, [exportProgress.stage]);
+
+  useEffect(() => {
+    if (sp3Paths.length === 0) {
+      setCachedMap({});
+      return;
+    }
+    let alive = true;
+    void (async () => {
+      const entries = await Promise.all(sp3Paths.map(async (p) => [p, await isCached(p)] as const));
+      if (!alive) return;
+      setCachedMap(Object.fromEntries(entries));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [sp3Paths, recentTick]);
   const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
   const pendingSp3PathRef = useRef<string | null>(null);
   const jobsRef = useRef<ImportJob[]>([]);
@@ -725,6 +743,21 @@ function App() {
                                   {filename}
                                 </span>
                                 {isActive ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">Active</span> : null}
+                                {cachedMap[p] ? (
+                                  <span
+                                    className="rounded bg-success/10 px-1.5 py-0.5 text-[11px] font-medium text-success"
+                                    title="Cached — second open will be instant (skips Data export)"
+                                  >
+                                    Cached
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                                    title="Not cached — next open will re-export"
+                                  >
+                                    Not cached
+                                  </span>
+                                )}
                               </span>
                               <span className="block truncate text-xs text-muted-foreground" title={p}>
                                 {p}

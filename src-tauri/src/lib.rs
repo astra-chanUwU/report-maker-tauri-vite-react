@@ -39,7 +39,8 @@ pub fn run() {
             mdb::extract_machine_picture,
             mdb::list_envelope_samples,
             cache::clear_export_cache,
-            cache::cache_status
+            cache::cache_status,
+            cache::is_cached
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

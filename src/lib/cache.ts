@@ -13,6 +13,15 @@ export async function clearExportCache(): Promise<void> {
   return invoke("clear_export_cache");
 }
 
+export async function isCached(path: string): Promise<boolean> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<boolean>("is_cached", { path });
+  } catch {
+    return false;
+  }
+}
+
 export function formatCacheBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;

@@ -175,6 +175,11 @@ pub async fn cache_status() -> Result<CacheStatus, String> {
     })
 }
 
+#[tauri::command]
+pub async fn is_cached(path: String) -> bool {
+    get_cached(&path).await.is_some()
+}
+
 pub async fn evict_on_startup() {
     let mut map = try_load_via_lazy_store().await.unwrap_or_default();
     if map.is_empty() {

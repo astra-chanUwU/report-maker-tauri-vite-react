@@ -28,10 +28,25 @@ function formatSize(n?: number): string | null {
 export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void; tick: number }) {
   const { t } = useUi();
   const [recents, setRecents] = useState<RecentDb[] | null>(null);
+  const [cachedSet, setCachedSet] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     void loadRecentDbs().then(setRecents);
   }, [tick]);
+
+  useEffect(() => {
+    if (!recents || recents.length === 0) return;
+    let alive = true;
+    void (async () => {
+      const { isCached } = await import("../lib/cache");
+      const checks = await Promise.all(recents.map(async (r) => [r.path, await isCached(r.path)] as const));
+      if (!alive) return;
+      setCachedSet(new Set(checks.filter(([, v]) => v).map(([k]) => k)));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [recents]);
 
   if (recents === null) {
     return (
@@ -71,8 +86,19 @@ export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void
                 <DatabaseZap className="h-4 w-4" aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium" title={r.path}>
-                  {r.filename}
+                <span className="flex items-center gap-1.5">
+                  <span className="block truncate text-sm font-medium" title={r.path}>
+                    {r.filename}
+                  </span>
+                  {cachedSet.has(r.path) ? (
+                    <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success" title="Cached — opens instantly">
+                      Cached
+                    </span>
+                  ) : (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" title="Not cached — will re-export">
+                      Not cached
+                    </span>
+                  )}
                 </span>
                 <span className="block truncate text-xs text-muted-foreground" title={r.path}>
                   {r.path} {size ? `· ${size}` : ""} {r.rows ? `· ${r.rows} meas.` : ""} · {ago}
