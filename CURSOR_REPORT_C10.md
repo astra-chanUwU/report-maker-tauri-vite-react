@@ -4,6 +4,10 @@
 
 `feat/c10-marketing-ux` from `origin/integrate/control-plane`
 
+## Commit
+
+`b73189c1205be8a98aae5ec208a446924949b8f5`
+
 ## Pages added
 
 | Route | Purpose |
