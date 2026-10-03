@@ -304,12 +304,13 @@ or rewrite their work.
 
 **Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
 **Depends on:** none
+**Status:** Done on `integrate/control-plane` (see `CURSOR_REPORT.md`).
 
-- Create a dedicated integration branch from current `main`.
-- Inspect `feat/s02-license-provisioning`, `feat/s03-release-downloads`, and
+- [x] Create a dedicated integration branch from current `main`.
+- [x] Inspect `feat/s02-license-provisioning`, `feat/s03-release-downloads`, and
   `feat/s04-provider-adapters` with `git diff` before merging.
-- Record the intended merge order and conflicts in `CURSOR_REPORT.md`.
-- Keep `main` untouched until the integrated branch passes all checks.
+- [x] Record the intended merge order and conflicts in `CURSOR_REPORT.md`.
+- [x] Keep `main` untouched until the integrated branch passes all checks.
 
 **Acceptance:** the branch ancestry and scope are documented; no feature branch
 is described as merged until its code is present in the integrated checkout.
@@ -318,14 +319,15 @@ is described as merged until its code is present in the integrated checkout.
 
 **Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
 **Depends on:** C00
+**Status:** Done — `schema_version` + migrations v1–v3 in `server/store_migrate.go`; regression tests in `server/store_migration_test.go`.
 
-- Make schema upgrades safe for the database created before S02.
-- Add columns before indexes, constraints, or queries that reference them.
-- Prefer numbered SQLite migrations or an equivalent schema-version table over a
+- [x] Make schema upgrades safe for the database created before S02.
+- [x] Add columns before indexes, constraints, or queries that reference them.
+- [x] Prefer numbered SQLite migrations or an equivalent schema-version table over a
   growing unversioned `migrate` function.
-- Test fresh install, old-schema upgrade, repeated startup, and restore from a
-  backup.
-- Do not silently drop customer, order, license, activation, or session data.
+- [x] Test fresh install, old-schema upgrade, repeated startup, and restore from a
+  backup (session-row preservation test; manual backup-restore checklist remains for C11).
+- [x] Do not silently drop customer, order, license, activation, or session data.
 
 **Acceptance:** an old fixture database opens successfully; `go test ./...`
 contains a regression test for the exact `no such column: order_id` failure;

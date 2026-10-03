@@ -1,90 +1,108 @@
-# S02 — Provision a license after verified payment
+# Control-plane integration — C00 / C01
 
-## 1. Slice and outcome
+**Model:** Composer 2.5 (closest available to Composer 2.5 High; Grok 4.5 High unavailable for review in this session).
 
-Implemented transactional license provisioning after server-verified payment:
+## C00 — Integration branch
 
-- Server-owned product catalog (`catalog.go`) — perpetual plan with price, features, max devices from env/catalog only
-- Unique `RM-XXXX-XXXX-XXXX` keys generated only after verified payment (DemoGateway + ZarinPal codes 100/101)
-- Key hash stored for activation lookup; AES-GCM encrypted delivery copy via `REPORT_LICENSE_DELIVERY_KEY`
-- `FulfillOrderPayment` marks order paid and provisions exactly one license, linking `customer_id`, `order_id`, and `license_id`
-- Idempotent on callback retries and ZarinPal already-verified (101)
-- Customer `/account/purchases` with masked keys and CSRF-protected reveal; checkout success shows plaintext key once
-- No provisioning on cancelled, unmatched, or failed verify paths
+### Branch ancestry
 
-**Remaining:** Purchase receipt email (S04); production `REPORT_LICENSE_DELIVERY_KEY` rotation policy; browser manual checkout walkthrough.
+| Step | Commit | Source |
+|------|--------|--------|
+| Base | `e1b304d` | `origin/main` |
+| S02 merge | `93f7842` | `origin/feat/s02-license-provisioning` (`41bc3c9`) |
+| S04 merge | `83fdc10` | `origin/feat/s04-provider-adapters` (`3eeb06d`) |
+| S03 merge | `895962e` | `origin/feat/s03-release-downloads` (`6c9bb28`) |
+| C01 migrations | `9ecd153` | this session |
 
-## 2. Files changed
+**Branch:** `integrate/control-plane` (not merged to `main`).
 
-### Backend (`server/`)
-- `catalog.go` — new server-owned plan catalog
-- `license_delivery.go` — key generation, AES-GCM encrypt/decrypt, masking
-- `store.go` — schema columns (`orders.license_id`, license customer/order/delivery), `FulfillOrderPayment`, customer orders list
-- `app.go` — fulfillment wired into payment callback; catalog-driven checkout/pricing
-- `auth.go` — `/account/purchases`, `/account/purchases/reveal`
-- `templates.go` — purchase list, license display on checkout status
-- `README.md` — `REPORT_LICENSE_DELIVERY_KEY` documented
+### Merge order and rationale
 
-### Tests
-- `license_provision_test.go` — new (demo, ZarinPal 100/101, failure paths, activation)
-- `app_test.go` — payment callback expects license key
-- `store.go` / `downloads_test.go` / `releases.go` — FK-safe test helper, path traversal fix (coexists with partial S03)
+1. **S02** — license provisioning, encrypted delivery, downloads scaffold, purchase templates.
+2. **S04** — email/SMS adapters, receipt/license/download notify helpers.
+3. **S03** — release-download slice; overlapped S02 download files.
 
-### Docs
-- `TODO.md` — S02 checkboxes marked complete
+S02 already contained partial `downloads.go` / `releases.go`; S03 was merged last with `-X ours` on overlapping server files so **paid+`license_id` entitlement** and S02 provisioning contracts win.
 
-## 3. Architecture decisions
+### Conflicts resolved
 
-- Catalog is in-process map (not client-supplied); `REPORT_PERPETUAL_PRICE_RIALS` overrides price only
-- Provisioning runs in one SQLite transaction: mark paid → insert license → set `orders.license_id`
-- Idempotent path returns decrypted key for already-paid orders without inserting again
-- Delivery encryption uses separate key from Ed25519 lease signing key
-- Flat `controlplane` package preserved
+| File | Resolution |
+|------|------------|
+| `server/app.go` (S04) | Combined download config (S02) with `EmailSender`/`SMSSender` (S04); kept `fulfillVerifiedPayment` + wired `notifyAfterPaidOrder(fulfilled)`. |
+| `server/notify.go` | Extended to call `NotifyLicenseIssued` and `NotifyDownloadAccess` when fulfillment includes a license. |
+| `server/downloads.go`, `releases.go`, `downloads_test.go` (S03) | Kept S02 versions (license-bound entitlement). |
+| `server/store.go` (S03) | **Restored S02 store** after S03 `-X ours` accidentally dropped `FulfillOrderPayment` / `Order.LicenseID`. |
+| `server/templates.go` (S03) | Kept S02 purchases + masked license + download UX. |
 
-## 4. Security/privacy review
+### Present vs missing after C00
 
-| Area | Implementation |
-|------|----------------|
-| Payment authority | Verify uses stored `order.AmountRials`, not callback query params |
-| Key storage | SHA-256 hash for lookup; plaintext only in encrypted `delivery_ciphertext` |
-| Signing key | Never in client; lease signing unchanged |
-| Customer reveal | Session must own order; CSRF on reveal POST |
-| Checkout success | Full key shown once post-verify (anonymous buyer copy window) |
+| Area | Status |
+|------|--------|
+| S02 license provisioning + idempotent fulfill | Present |
+| S04 LocalOutbox, notify helpers, provider tests | Present |
+| S03 repeatable downloads (HMAC tokens, renew, audit) | Present (via S02 merge; S03 docs only delta) |
+| Checkout account linking (C02) | **Missing** — checkout still creates a new customer per order |
+| License key disclosure hardening (C03) | **Partial** — masked key on callback; full C03 not done |
+| End-to-end integrated flow test (C04) | **Missing** |
+| Real release artifacts (C07) | Placeholder `releases.json` checksums |
+| Production fail-closed config (C06) | Not started |
+| CI Go checks (C05) | Not started |
 
-## 5. Validation evidence
+---
 
-### Automated (Go)
+## C01 — SQLite upgrade migrations
+
+### Problem
+
+Pre-S02 databases had `licenses` without `order_id`. The old monolithic `migrate()` ran `CREATE INDEX … ON licenses(order_id)` **before** `ALTER TABLE` added the column → startup error `no such column: order_id`.
+
+### Fix
+
+- Added `schema_version` table and **numbered migrations** in `server/store_migrate.go`:
+  - **v1:** baseline S01 tables (no S02 license columns/indexes in initial DDL)
+  - **v2:** customer identity `ALTER` columns
+  - **v3:** license delivery columns, then indexes (`licenses_order_idx`, `orders_customer_idx`)
+- Removed inline `migrate()` from `store.go`.
+- No data-dropping statements; upgrades are additive.
+
+### Tests added (`server/store_migration_test.go`)
+
+- Fresh install → version 3, delivery columns queryable
+- Pre-S02 fixture upgrade preserves customer/order/license/session rows
+- Repeated startup (3×) idempotent
+- **`TestSchemaMigrationNoSuchColumnOrderIDRegression`** — reproduces v1+v2 legacy DB without `order_id`, asserts `OpenStore` succeeds
+
+### Validation evidence
+
 ```text
-cd server && go test ./... -count=1 -timeout 120s
-# ok  reportmaker/controlplane  1.691s
+cd server && go test ./... -count=1 -timeout 180s
+# ok  reportmaker/controlplane  3.074s
 
 cd server && go vet ./...
 # exit 0
 ```
 
-### Protocol tests (license_provision_test.go)
-- Demo gateway: one paid order → one license; retry → still one
-- ZarinPal mock verify (100) → one license
-- ZarinPal code 101 double callback → one license
-- Cancelled / unmatched / failed verify → zero licenses
-- Provisioned key activates via `POST /v1/activations`
+Environment: Go 1.27.0 windows/amd64; `GOPROXY=https://goproxy.io,https://goproxy.cn,direct`; `GOSUMDB=off`.
 
-### Browser / live provider
-- **Not verified** — manual browser checkout and live ZarinPal sandbox
+Updated `providers_test.go` so paid callback expects receipt + license + download emails when provisioning succeeds.
 
-## 6. Known limitations
+---
 
-- No purchase receipt or license email yet (S04)
-- `REPORT_LICENSE_DELIVERY_KEY` must be set persistently in production or encrypted keys become undecryptable after restart
-- Checkout success page shows key to anyone with callback URL (short window); repeat access requires account session
-- S03 download tests/helpers adjusted for FK order but full download slice not in this branch scope
+## Git state
 
-## 7. Next slice
+- **Branch:** `integrate/control-plane`
+- **Tip:** `9ecd153` fix(control-plane): numbered SQLite schema migrations (C01)
+- **Pushed:** `origin/integrate/control-plane` (after push step)
+- **main:** untouched
 
-**S03 — Repeatable release downloads** (partial code present): wire entitlement to S02-provisioned licenses end-to-end, renew expiring links, path traversal tests on all platforms.
+---
 
-## 8. Git state
+## Remaining gaps (C02–C04)
 
-- Branch: `feat/s02-license-provisioning`
-- Commit: pending in agent run
-- Not merged to `main`
+| Task | Gap |
+|------|-----|
+| **C02** | `EnsureCheckoutCustomer` / email normalization at checkout; repeat-purchase account tests |
+| **C03** | Callback replay must not reveal plaintext key; authenticated reveal only |
+| **C04** | Single integrated test: checkout → pay → license → emails → account purchase → repeat download; ZarinPal 101 / retry cases |
+
+**Recommended next:** C02 on this branch (depends on C01 ✓).
