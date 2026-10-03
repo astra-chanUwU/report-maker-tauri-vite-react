@@ -78,7 +78,7 @@ func ConfigFromEnv() Config {
 		SigningPrivateKey: os.Getenv("REPORT_SIGNING_PRIVATE_KEY"), SigningKeyID: valueOr(os.Getenv("REPORT_SIGNING_KEY_ID"), "lease-dev-1"),
 		LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
 		WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, AdminPassword: os.Getenv("REPORT_ADMIN_PASSWORD"),
-		Gateway: gateway,
+		Gateway: gateway, EmailSender: EmailSenderFromEnv(), SMSSender: SMSSenderFromEnv(),
 	}
 }
 func valueOr(value, fallback string) string {
@@ -263,6 +263,8 @@ func (a *App) paymentCallback(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment status unavailable", Body: "Please contact support with your order ID."})
 		return
 	}
+	// Receipt/license emails must not affect paid order recoverability on provider outage.
+	a.notifyAfterPaidOrder(r.Context(), paid)
 	renderPage(w, "checkout-status", PageData{Title: "Payment complete", Heading: "Payment received", Body: "Your license delivery flow is ready to issue a key. Keep this order ID for support.", Status: paid.ID})
 }
 func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
