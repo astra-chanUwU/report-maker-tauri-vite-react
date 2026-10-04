@@ -374,15 +374,12 @@ with both the demo gateway and a mocked ZarinPal server.
 
 **Owner:** Composer 2.5 High
 **Depends on:** C04
-**Status:** **Not done on integrate tip.** `origin/feat/c05-go-ci` points at the
-C04 test commit (`5772302`) and does not add a Go job; `.github/workflows/ci.yml`
-on integrate still runs only npm + cargo.
+**Status:** Done — separate `frontend-rust` and `go` jobs in `.github/workflows/ci.yml`.
 
-- [ ] Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
-- [ ] Run the migration-upgrade test and any race-safe tests appropriate for
-  the SQLite single-writer design.
-- [ ] Keep frontend, Rust, and Go results visibly separate in the workflow.
-- [ ] Do not mark a branch complete based only on npm/Rust CI.
+- [x] Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
+- [x] Migration-upgrade tests run via `go test ./...` (`store_migration_test.go`, C04 e2e).
+- [x] Keep frontend/Rust (`frontend-rust`) and Go (`go`) results visibly separate.
+- [x] Skip `-race` (SQLite single-writer; race detector flaky).
 
 **Acceptance:** a clean GitHub Actions run proves frontend, Rust, and Go checks
 on the same commit.
@@ -475,13 +472,8 @@ repeatable download journeys work in a real browser against the local service.
 
 **Owner:** GPT-Sol 6.1 High architecture; Composer 2.5 High implementation
 **Depends on:** C05–C10
-<<<<<<< HEAD
 **Status:** Open. No VPS restore/HTTPS evidence on integrate tip. Not on
 `origin` at C12 freeze.
-=======
-**Status:** Implemented on `feat/c11-vps-deploy` (see `CURSOR_REPORT_C11.md`).
-Live VPS/provider checks **unavailable** (no owner credentials).
->>>>>>> origin/feat/c11-vps-deploy
 
 - [x] VPS docs (`docs/deployment.md`); health/readiness + graceful shutdown.
 - [x] Backup/restore scripts; separate key protection documented.
