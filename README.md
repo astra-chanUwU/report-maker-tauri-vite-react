@@ -39,6 +39,8 @@ npm run typecheck
 npm test
 npm run build
 cargo test --manifest-path src-tauri/Cargo.toml
+npm run lint          # Biome lint
+npm run format        # Biome formatter
 ```
 
 `index.html` is the Vite entry shell for this React application. It is not the
@@ -84,6 +86,15 @@ explicit persistent configuration. See [server/README.md](server/README.md).
   checks that are still unavailable.
 - [TODO.md](TODO.md) — current work and verification backlog.
 - [TODO.next.md](TODO.next.md) — desktop report/DOCX backlog.
+
+## Editor tooling
+
+- `.vscode/extensions.json` only recommends the Biome, Tauri, and Rust Analyzer
+  extensions; it does not affect builds or runtime behavior.
+- `.editorconfig` gives editors a shared baseline for UTF-8, LF line endings,
+  indentation, final newlines, and trailing whitespace.
+- `biome.json` configures the Rust-based Biome formatter and linter for the
+  JavaScript/TypeScript/CSS toolchain. Prettier and ESLint are not dependencies.
 
 ## Real data import
 

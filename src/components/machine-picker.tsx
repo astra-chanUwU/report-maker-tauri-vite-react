@@ -139,7 +139,6 @@ export function MachinePicker({
     const existing = new Set(catalogs.map((c) => c.path));
     const missing = effectivePaths.filter((p) => !existing.has(p));
     if (missing.length > 0) void loadMany(effectivePaths);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectivePaths.join("|"), isTauri]);
 
   const openOther = async () => {

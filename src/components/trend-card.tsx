@@ -94,7 +94,6 @@ export function TrendCard({
       velocityPng,
       accelPng,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history?.label, samples.length, velocityPng, accelPng, window]);
 
   if (histories.length === 0) return null;

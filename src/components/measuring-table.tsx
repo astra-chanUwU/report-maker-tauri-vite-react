@@ -193,7 +193,6 @@ export function useMeasureRows(
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tauriPath, file]);
   return { rows, loading };
 }
@@ -241,7 +240,6 @@ export function MeasuringTable({
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondary, isTauri, sp3Path, rows]);
 
   const source = secondary === "envelope" && envelope ? envelope.rows : (rows ?? []);
@@ -320,7 +318,6 @@ export function MeasuringTable({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups, secondary, q, alarmsOnly]);
 
   const displayBuilt = built ?? (groups.reduce((n, g) => n + g.rows.length, 0) < 2000 ? buildGroups() : []);
