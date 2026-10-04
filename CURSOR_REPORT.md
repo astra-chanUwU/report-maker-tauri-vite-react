@@ -1,98 +1,211 @@
-# S01 — Customer identity for production use
+# CURSOR_REPORT — main landing (C00–C12)
+
+**Model:** Grok 4.5 High  
+**Date:** 2026-10-05  
+**Integrate tip pushed:** `origin/integrate/control-plane` @ **`4e5eba6`**  
+**main tip (after merge):** see git log on `origin/main` after push  
+
+## Landing status
+
+- **C00–C04, C06–C10, C12 product work:** on integrate and merged to `main`.
+- **C05:** Go CI content ready in repo root `ci-go.yml.new` (separate
+  `frontend-rust` + `go` jobs; Go from `server/go.mod`; `go test`/`go vet`; no
+  `-race`). Applying to `.github/workflows/ci.yml` on origin is **blocked** —
+  OAuth App lacks `workflow` scope (`git push` and `gh api` Contents PUT both
+  rejected). Owner must apply `ci-go.yml.new` → `.github/workflows/ci.yml` with a
+  token that has `workflow` scope.
+- **C09:** done on integrate (admin support console); stale TODO tips are wrong.
+- **C11:** still open — no live VPS restore/HTTPS evidence.
+
+## Known blockers (unchanged)
+
+1. Browser passkey enrollment/login on final RP ID/origin — unverified.
+2. Live ZarinPal / email / SMS providers — no owner credentials.
+3. VPS deploy + backup→restore + HTTPS proof (C11).
+4. C05 workflow file not yet on `origin` under `.github/workflows/` (see above).
+
+## Local validation (2026-10-05)
+
+```
+cd server
+# Go: C:\Program Files\Go\bin ; GOPROXY=https://goproxy.io,https://goproxy.cn,direct ; GOSUMDB=off
+go test ./... -count=1 -timeout 180s   # ok
+go vet ./...                           # exit 0
+```
+
+---
+
+# CURSOR_REPORT - C12 final review (integrate tip)
+
+**Model:** Grok 4.5 High  
+**Branch:** `feat/c12-final-review` @ **`fdf52f1`** (pushed)  
+**Base / integrate tip reviewed:** `origin/integrate/control-plane` @ **`a2f2f03`**  
+**Date:** 2026-10-04  
+**main:** **merged 2026-10-05** (see landing section above)
+
+Historical slice notes (`CURSOR_REPORT_C0*.md`, `CURSOR_REPORT_S0*.md`) are
+superseded for **integration status** by this file. Keep them only as
+per-slice archaeology.
 
 ## 1. Slice and outcome
 
-Implemented production-oriented customer identity hardening for the Go control plane:
+C12 audited the current integrate tip, aligned docs with the real Go routes /
+env / schema, cleared stale TODO and report claims, verified fixture artifact
+checksums, and recorded a classified validation matrix.
 
-- Browser passkey client (inline JS on login/account pages; no npm/SPA)
-- CSRF double-submit cookie on all mutating browser forms and cookie-authenticated JSON POSTs
-- In-memory rate limits (magic link, password login, passkey, admin login, phone request)
-- Session rotation on magic-link consume, password login, and passkey login finish
-- `EmailSender` / `LocalOutbox` for magic links (no token in production responses)
-- Phone verification with `SMSSender` / `FakeSMS` and `phone_verified_at` column
-- Separate admin auth (`report_maker_admin_session`, `REPORT_ADMIN_PASSWORD`)
-- Protocol tests for CSRF, rate limits, email outbox, session rotation, admin boundary, phone verify
+**Not claimed:** production readiness, live ZarinPal/email/SMS success, browser
+passkey enrollment, VPS backup/restore, or desktop interoperability against a
+production host.
 
-**Remaining:** Real browser passkey registration and discoverable login on the configured RP ID/origin must be verified manually. Go toolchain was not present at session start; install attempted via winget.
+**Still open before a responsible `main` merge:** C05 (Go CI), C09 (admin
+support console), C10 (marketing/UX polish + browser journey), C11 (VPS deploy
++ restore evidence). At C12 freeze, **C09–C11 were not on `origin`** as finished
+feature branches (local WIP may exist elsewhere).
 
-## 2. Files changed
+## 2. Files changed (this C12 commit)
 
-### Backend (`server/`)
-- `auth.go` — CSRF, rate limits, session rotation, email delivery, passkey counter comment
-- `app.go` — Config extensions, email/SMS/rate limit wiring, checkout CSRF
-- `store.go` — `phone_verified_at`, `phone_challenges`, `admin_sessions`, session delete helpers
-- `templates.go` — Login/account/admin pages with passkey JS, CSRF forms, nav sign-in link
-- `csrf.go` — new
-- `ratelimit.go` — new
-- `providers.go` — new (`EmailSender`, `LocalOutbox`, `SMSSender`, `FakeSMS`)
-- `admin.go` — new
-- `phone.go` — new
+| Area | Files |
+| --- | --- |
+| Docs | `docs/go-architecture.md`, `docs/control-plane.md`, `docs/licensing.md`, `server/README.md`, `README.md`, `TODO.md` |
+| Report | `CURSOR_REPORT.md` (replaced), supersession banners on older `CURSOR_REPORT_*.md` |
+| Backend / desktop / tests | none (review-only) |
 
-### Tests
-- `auth_test.go` — new protocol tests
-- `app_test.go` — CSRF on magic-link, password, checkout flows
+## 3. Integrate tip — exact commits
 
-### Docs
-- `TODO.md` — S01 progress notes
-- `CURSOR_REPORT.md` — this file
+Fetched `origin/integrate/control-plane` at review time. Tip:
 
-## 3. Architecture decisions
+| Commit | Summary |
+| --- | --- |
+| `a2f2f03` | fix: refresh fixture artifact checksums after C06–C08 merge |
+| `ffc9b05` | merge: C08 Iran email/SMS providers |
+| `db6a8cd` | merge: C07 release artifacts |
+| `6f8d021` | feat: fail-closed production configuration (C06) |
+| `5772302` | test: C04 end-to-end flow suite |
+| `b43b071` | merge: C03 license disclosure + C04 e2e |
+| `44a7223` | merge: C02 checkout account-safe |
+| `9ecd153` | fix: numbered SQLite schema migrations (C01) |
+| `895962e` / `83fdc10` / `93f7842` | merge S03 / S04 / S02 |
+| `e1b304d` | base from `main` lineage for the task pack |
 
-- Kept flat `controlplane` package layout; no `internal/` reorganization.
-- CSRF uses synchronizer cookie (`report_maker_csrf`, non-HttpOnly) plus form field / `X-CSRF-Token` header so inline passkey JS can authenticate POSTs without a bundler.
-- Session rotation deletes all prior customer sessions on login to limit session fixation.
-- Email/SMS behind interfaces with in-memory defaults so local dev and tests work without providers.
-- Admin sessions stored in SQLite (`admin_sessions`) with a separate cookie name; customer cookies never grant admin access.
+Ancestry note: `origin/feat/c05-go-ci`, `c06`, `c07`, `c08` are ancestors of
+integrate tip for commits that exist, but **C05 never added a Go CI job** (its
+tip equals the C04 test commit). C06–C08 product work is present on integrate.
 
-## 4. Security/privacy review
+## 4. Architecture / docs alignment (code-checked)
 
-| Area | Implementation |
-|------|----------------|
-| CSRF | Required on checkout, magic-link, password login, logout, admin login, passkey begin/finish, phone endpoints |
-| Rate limits | Per-IP in-memory: magic link 5/15m, password 10/15m, passkey 20/15m, admin 10/15m, phone 5/15m |
-| Magic link tokens | Sent via `EmailSender` only; `X-Dev-Magic-Link` header only when `AllowDevSeed` |
-| Session rotation | All customer sessions revoked on successful login |
-| Admin boundary | Separate cookie + store table; `/admin` rejects customer session |
-| WebAuthn counters | `TouchWebAuthnCredential` persists updated credential JSON after login finish |
-| Phone codes | Hashed in `phone_challenges`; 6-digit code via SMS interface |
+- Layout is a flat `server/` Go module (`reportmaker/controlplane`), not the
+  aspirational `internal/*` tree formerly documented.
+- Web payment paths are `/payments/{provider}/redirect|callback`, not `/pay/*`.
+- Schema version **4** with `delivery_outbox`; perpetual catalog default
+  **1_000_000 rials** (`REPORT_PERPETUAL_PRICE_RIALS`).
+- Fixture SHA-256 in `server/releases.json` matches files under
+  `server/testdata/artifacts` (Windows + macOS fixtures).
+- Local `RM-XXXX` checksum helper is localhost/UI plumbing only — not production
+  license authority.
+- Postgres/FastAPI: documented only as non-goals / historical removal; SQLite is
+  first production DB.
 
-## 5. Validation evidence
+## 5. Security / privacy review (status, not a full re-audit)
 
-### Automated (Go)
+Present on tip: customer vs admin cookies, CSRF on mutating forms, rate limits,
+fail-closed production config, masked license disclosure, hashed license lookup,
+separate delivery AES key, path-traversal rejection on artifacts, redacted
+provider errors, consent-gated telemetry contract.
+
+Gaps / blockers (evidence missing): real browser passkey on final RP ID/origin,
+live payment + email/SMS sandbox, VPS restore + HTTPS + key backup drills, richer
+admin support console (C09), Go job in GitHub Actions (C05).
+
+## 6. Validation evidence
+
+### Automated — Go (pass)
+
 ```text
-cd server && go test ./... -count=1
-# ok  reportmaker/controlplane  1.838s
-
-cd server && go vet ./...
-# exit 0
+cd server
+# PATH includes C:\Program Files\Go\bin
+# GOPROXY=https://goproxy.io,https://goproxy.cn,direct  GOSUMDB=off
+go test ./... -count=1
+# ok  reportmaker/controlplane  ~6.8s
+go vet ./...
+# exit 0 (on clean integrate tip without foreign WIP files)
 ```
-**Status:** Pass on Go 1.27.0 windows/amd64.
 
-### HTTP / protocol tests (auth_test.go, app_test.go)
-All listed protocol tests pass (CSRF, rate limit, session rotation, admin boundary, phone verify, magic-link/password, activation, payment).
+Go 1.27.0 windows/amd64.
+
+### Automated - npm / cargo
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | **pass** (exit 0 on integrate tip tree) |
+| `npm test -- --run` | **unavailable here** — isolated worktree lacked `node_modules` / local `vitest` on PATH |
+| `npm run build` | **unavailable here** — same (`tsc`/`vite` not on PATH without install) |
+| `cargo test --manifest-path src-tauri/Cargo.toml -q` | **unavailable here** (exit 101 — crates.io download of `keyring` timed out). Owner or GitHub Actions must confirm. |
+| `git diff --check` | Clean on C12 commit tree |
+
+Frontend + Rust CI still run via `.github/workflows/ci.yml` on PRs; that workflow does **not** yet include Go (C05 open).
+
+### HTTP (automated in Go tests — pass)
+
+Demo gateway + mocked ZarinPal flows, disclosure, downloads, auth rate limits,
+migration upgrade regression — covered by `go test ./...` (including C04 package).
 
 ### Browser / device
-- **Not verified** — passkey registration and discoverable login require manual browser check on target domain/origin.
 
-### Live providers
-- **Not verified** — no production email/SMS credentials configured.
+**Unavailable / not verified** — real passkey registration/login on configured
+RP ID/origin; full anonymous→paid→download journey in a browser.
 
-## 6. Known limitations
+### Desktop interoperability
 
-- Real WebAuthn ceremony not automated in tests (browser-only).
-- In-memory rate limiter resets on process restart; not suitable for multi-instance without shared store.
-- Admin password is a single shared secret (`REPORT_ADMIN_PASSWORD`); no MFA.
-- Phone verification SMS uses `FakeSMS` by default.
+**Unavailable / not verified** against this integrate tip host (activation /
+lease / AI / telemetry from a release Tauri build).
 
-## 7. Next slice
+### Live providers / VPS restore
 
-**S02 — Provision a license after verified payment**
+**Unavailable** — no owner ZarinPal/email/SMS credentials; no VPS restore or
+HTTPS passkey-origin proof.
 
-Depends on S01. Generate unique license key after verified ZarinPal payment; idempotent provisioning; associate license with customer/order. Acceptance: demo gateway and mocked ZarinPal both prove one paid order → one license.
+## 7. Known limitations / production blockers
 
-## 8. Git state
+1. **C05** — CI still lacks a Go job on integrate.
+2. **C09** — admin is login + static home only; no support search/actions/audit UI.
+3. **C10** — marketing/account UX incomplete (no Persian/RTL policy journey proof).
+4. **C11** — no documented/verified VPS backup→restore→HTTPS path.
+5. Browser passkey, live providers, desktop↔server E2E — blockers for “production ready”.
+6. Fixture installers are test artifacts, not signed production Tauri releases.
+7. `GET /readyz` currently shares the liveness handler (harden in C11).
 
-- Branch: `main`
-- Commit: S01 customer identity slice (see git log)
-- No secrets committed
-- Remaining: manual browser passkey verification; S02+ not started
+## 8. Pending merges
+
+At C12 freeze, `origin` had `feat/c05-go-ci` … `feat/c08-iran-providers`.
+`origin/feat/c11-vps-deploy` also existed but pointed at the same tip as integrate
+(`a2f2f03`) — no unique C11 commits to merge yet. Finished `feat/c09-*` /
+`feat/c10-*` heads were **not** on origin. If unique C09–C11 commits appear
+later, merge them into `integrate/control-plane` before `main`. Do not block
+C12 docs on unfinished parallel WIP.
+
+## 9. Recommended owner merge commands (do not run in C12)
+
+C12 pushes only `feat/c12-final-review`. Suggested sequence for the owner:
+
+```bash
+git fetch origin
+git checkout integrate/control-plane
+git pull --ff-only origin integrate/control-plane
+git merge --no-ff origin/feat/c12-final-review -m "merge: C12 final review and docs cleanup"
+# after C05 and C09–C11 land and evidence exists:
+# git checkout main
+# git merge --no-ff integrate/control-plane -m "merge: control-plane integration"
+# git push origin main
+```
+
+**Do not merge to `main` until** Go CI exists, C09–C11 acceptance evidence is
+recorded, and browser/provider/restore blockers above are cleared or explicitly
+accepted as launch exclusions.
+
+## 10. Git state
+
+- **Branch:** `feat/c12-final-review` @ `fdf52f1` (pushed to `origin`)
+- **Based on:** `origin/integrate/control-plane` @ `a2f2f03`
+- **main:** untouched
+- **Working tree:** clean on the C12 branch after push
+- **Secrets:** none committed

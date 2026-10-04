@@ -1,86 +1,49 @@
 package controlplane
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"html"
 	"io"
 	"net/http"
-	"net/url"
-	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	webauthn "github.com/go-webauthn/webauthn/webauthn"
 )
 
 type Config struct {
-	SigningPrivateKey string
-	SigningKeyID      string
-	LeaseDays         int
-	AllowDevSeed      bool
-	PublicBaseURL     string
+	SigningPrivateKey    string
+	SigningKeyID         string
+	LicenseDeliveryKey   []byte
+	LeaseDays            int
+	AllowDevSeed         bool
+	AllowDemoPayments    bool
+	DevMode              bool
+	PublicBaseURL        string
 	// DatabasePath selects the SQLite database file. An empty value keeps
 	// NewApp's isolated in-memory behavior, which is useful for tests.
-	DatabasePath    string
-	WebAuthnRPID    string
-	WebAuthnOrigins []string
-	WebAuthnRPName  string
-	AdminPassword   string
-	Gateway         PaymentGateway
-	EmailSender     EmailSender
-	SMSSender       SMSSender
+	DatabasePath         string
+	WebAuthnRPID         string
+	WebAuthnOrigins      []string
+	WebAuthnRPName       string
+	AdminPassword        string
+	Gateway              PaymentGateway
+	EmailSender          EmailSender
+	SMSSender            SMSSender
+	ArtifactRoot         string
+	ReleaseManifest      string
+	DownloadLinkTTLHours int
+	DownloadRateLimit    int
+	SiteLang             string
+	SiteDir              string
 }
 
-func ConfigFromEnv() Config {
-	days := 30
-	if raw := os.Getenv("REPORT_LEASE_DAYS"); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil && value > 0 && value <= 365 {
-			days = value
-		}
-	}
-	allow := os.Getenv("REPORT_ALLOW_DEV_SEED") == "1"
-	base := os.Getenv("PUBLIC_BASE_URL")
-	if base == "" {
-		base = "http://localhost:8080"
-	}
-	databasePath := os.Getenv("REPORT_DB_PATH")
-	if databasePath == "" {
-		databasePath = "report-maker.db"
-	}
-	rpID := strings.TrimSpace(os.Getenv("REPORT_WEB_AUTHN_RP_ID"))
-	if rpID == "" {
-		if parsed, err := url.Parse(base); err == nil && parsed.Hostname() != "" {
-			rpID = parsed.Hostname()
-		} else {
-			rpID = "localhost"
-		}
-	}
-	origins := strings.Fields(strings.ReplaceAll(os.Getenv("REPORT_WEB_AUTHN_ORIGINS"), ",", " "))
-	if len(origins) == 0 {
-		origins = []string{strings.TrimRight(base, "/")}
-	}
-	rpName := valueOr(os.Getenv("REPORT_WEB_AUTHN_RP_NAME"), "Report Maker")
-	var gateway PaymentGateway = DemoGateway{BaseURL: base}
-	if merchant := strings.TrimSpace(os.Getenv("ZARINPAL_MERCHANT_ID")); merchant != "" {
-		apiBase := strings.TrimSpace(os.Getenv("ZARINPAL_BASE_URL"))
-		if apiBase == "" {
-			apiBase = strings.TrimSpace(os.Getenv("ZARINPAL_API_URL"))
-		}
-		if apiBase == "" {
-			apiBase = "https://api.zarinpal.com"
-		}
-		gateway = ZarinPalGateway{MerchantID: merchant, BaseURL: apiBase}
-	}
-	return Config{
-		SigningPrivateKey: os.Getenv("REPORT_SIGNING_PRIVATE_KEY"), SigningKeyID: valueOr(os.Getenv("REPORT_SIGNING_KEY_ID"), "lease-dev-1"),
-		LeaseDays: days, AllowDevSeed: allow, PublicBaseURL: strings.TrimRight(base, "/"), DatabasePath: databasePath,
-		WebAuthnRPID: rpID, WebAuthnOrigins: origins, WebAuthnRPName: rpName, AdminPassword: os.Getenv("REPORT_ADMIN_PASSWORD"),
-		Gateway: gateway,
-	}
-}
 func valueOr(value, fallback string) string {
 	if value == "" {
 		return fallback
@@ -98,15 +61,61 @@ type App struct {
 	email         EmailSender
 	sms           SMSSender
 	rateLimits    *rateLimiter
+	releases        *ReleaseCatalog
+	lastOutboxFlush atomic.Int64
 }
 
 func NewApp(cfg Config) (*App, error) {
+	// Unit tests often omit DevMode while injecting local fakes.
+	if !cfg.DevMode && looksLikeTestConfig(cfg) {
+		cfg.DevMode = true
+		cfg.AllowDemoPayments = true
+	}
+	explicitProviders := cfg.EmailSender != nil || cfg.SMSSender != nil
+	if !explicitProviders {
+		if cfg.EmailSender == nil {
+			cfg.EmailSender = EmailSenderFromEnv(cfg.DevMode)
+		}
+		if cfg.SMSSender == nil {
+			cfg.SMSSender = SMSSenderFromEnv(cfg.DevMode)
+		}
+	}
+	if cfg.DevMode {
+		if cfg.EmailSender == nil {
+			cfg.EmailSender = &LocalOutbox{}
+		}
+		if cfg.SMSSender == nil {
+			cfg.SMSSender = &FakeSMS{}
+		}
+	}
+	if err := ValidateConfig(cfg); err != nil {
+		return nil, err
+	}
+	if !cfg.DevMode && strings.TrimSpace(cfg.SigningPrivateKey) == "" {
+		return nil, fmt.Errorf("REPORT_SIGNING_PRIVATE_KEY is required in production")
+	}
 	key, err := LoadSigningKey(cfg.SigningPrivateKey)
 	if err != nil {
 		return nil, err
 	}
+	if len(cfg.LicenseDeliveryKey) != 32 {
+		if !cfg.DevMode {
+			return nil, fmt.Errorf("REPORT_LICENSE_DELIVERY_KEY is required in production")
+		}
+		cfg.LicenseDeliveryKey, err = LoadDeliveryKey("")
+		if err != nil {
+			return nil, err
+		}
+	}
 	if cfg.Gateway == nil {
-		cfg.Gateway = DemoGateway{BaseURL: cfg.PublicBaseURL}
+		if cfg.DevMode && cfg.AllowDemoPayments {
+			cfg.Gateway = DemoGateway{BaseURL: cfg.PublicBaseURL}
+		} else {
+			return nil, fmt.Errorf("payment gateway not configured (set ZARINPAL_MERCHANT_ID or REPORT_ALLOW_DEMO_PAYMENTS=1 in development)")
+		}
+	}
+	if _, ok := cfg.Gateway.(DemoGateway); ok && (!cfg.DevMode || !cfg.AllowDemoPayments) {
+		return nil, fmt.Errorf("DemoGateway is not allowed without development demo-payments flag")
 	}
 	store, err := OpenStore(cfg.DatabasePath)
 	if err != nil {
@@ -126,27 +135,69 @@ func NewApp(cfg Config) (*App, error) {
 		return nil, err
 	}
 	email := cfg.EmailSender
-	if email == nil {
-		email = &LocalOutbox{}
-	}
 	sms := cfg.SMSSender
-	if sms == nil {
-		sms = &FakeSMS{}
+	if !explicitProviders {
+		email = wrapPersistentEmail(store, email)
+		sms = wrapPersistentSMS(store, sms)
+	}
+	if !cfg.DevMode {
+		if _, ok := cfg.EmailSender.(*LocalOutbox); ok {
+			store.Close()
+			return nil, fmt.Errorf("LocalOutbox cannot be used in production")
+		}
+		if _, ok := cfg.SMSSender.(*FakeSMS); ok {
+			store.Close()
+			return nil, fmt.Errorf("FakeSMS cannot be used in production")
+		}
+	}
+	releases, err := LoadReleaseCatalog(cfg.ArtifactRoot, cfg.ReleaseManifest)
+	if err != nil {
+		store.Close()
+		return nil, err
 	}
 	app := &App{
 		cfg: cfg, store: store, signingKey: key, signingPublic: key.Public().(ed25519.PublicKey),
 		mux: http.NewServeMux(), webAuthn: webAuthnService, email: email, sms: sms, rateLimits: newRateLimiter(),
+		releases: releases,
 	}
 	if cfg.AllowDevSeed {
 		app.store.SeedLicense("RM-TEST-1234-KEY0", "perpetual", map[string]bool{"core_export": true, "hosted_ai": true}, 3)
 	}
 	app.routes()
+	app.staticRoutes()
 	app.authRoutes()
 	app.phoneRoutes()
 	app.adminRoutes()
+	app.downloadRoutes()
+	app.marketingRoutes()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		app.flushPendingDeliveries(ctx)
+	}()
 	return app, nil
 }
-func (a *App) Handler() http.Handler { return a.requestLog(a.mux) }
+
+func looksLikeTestConfig(cfg Config) bool {
+	if cfg.AllowDevSeed {
+		return true
+	}
+	if cfg.EmailSender != nil || cfg.SMSSender != nil {
+		return true
+	}
+	if cfg.Gateway != nil {
+		if _, ok := cfg.Gateway.(DemoGateway); ok {
+			return true
+		}
+	}
+	// Explicit in-memory helpers with a key id and non-HTTPS local base URL.
+	if cfg.SigningKeyID != "" && (cfg.DatabasePath == "" || cfg.DatabasePath == ":memory:") && cfg.PublicBaseURL != "" && !strings.HasPrefix(strings.ToLower(cfg.PublicBaseURL), "https://") {
+		return true
+	}
+	return false
+}
+
+func (a *App) Handler() http.Handler { return a.withSecurity(a.mux) }
 func (a *App) Close() error {
 	if a == nil || a.store == nil {
 		return nil
@@ -169,28 +220,25 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /v1/ai/draft", a.aiDraft)
 	a.mux.HandleFunc("POST /v1/telemetry/batch", a.telemetry)
 }
-func (a *App) requestLog(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		next.ServeHTTP(w, r)
-	})
-}
 func (a *App) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "report-maker-control-plane"})
 }
-func (a *App) home(w http.ResponseWriter, _ *http.Request) {
-	renderPage(w, "home", PageData{Title: "Offline engineering reports", Heading: "Report Maker", Body: "Build polished engineering reports from your local data. Your report workflow stays on your machine."})
-}
-func (a *App) pricing(w http.ResponseWriter, r *http.Request) {
-	renderPage(w, "pricing", PageData{
-		Title: "Pricing", Heading: "Choose a license",
-		Body:  "Pay through a domestic payment gateway. The desktop app remains useful offline.",
-		Plans: []PlanView{{ID: "perpetual", Name: "Perpetual", Description: "Core report creation and export for one major version.", Price: "Contact for current price"}},
-		CSRFToken: a.ensureCSRF(w, r),
+func (a *App) home(w http.ResponseWriter, r *http.Request) {
+	a.renderSite(w, r, "home", PageData{
+		Title: "Offline engineering reports", Heading: "Report Maker",
+		Body:  "Build polished engineering reports from your local data. Your report workflow stays on your machine.",
+		ShowJourney: true, JourneyStep: 1,
+		PrimaryCTA: "View pricing", PrimaryCTAURL: "/pricing",
+		SecondaryCTA: "Download", SecondaryCTAURL: "/download",
 	})
 }
-func (a *App) download(w http.ResponseWriter, _ *http.Request) {
-	renderPage(w, "home", PageData{Title: "Download", Heading: "Download Report Maker", Body: "Download links will be shown here after the release package is published."})
+func (a *App) pricing(w http.ResponseWriter, r *http.Request) {
+	a.renderSite(w, r, "pricing", PageData{
+		Title: "Pricing", Heading: "Choose a license",
+		Body:  "Pay through a domestic payment gateway. The desktop app remains useful offline.",
+		Plans: catalogPlansForView(), CSRFToken: a.ensureCSRF(w, r),
+		ShowJourney: true, JourneyStep: 2,
+	})
 }
 func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -201,23 +249,23 @@ func (a *App) startCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plan := strings.TrimSpace(r.FormValue("plan"))
-	email := strings.TrimSpace(r.FormValue("email"))
+	email := normalizeEmail(r.FormValue("email"))
 	firstName := strings.TrimSpace(r.FormValue("first_name"))
 	lastName := strings.TrimSpace(r.FormValue("last_name"))
-	amount, knownPlan := planAmount(plan)
+	catalogPlan, knownPlan := PlanFromCatalog(plan)
 	phone := normalizePhone(r.FormValue("phone"))
-	if !knownPlan || firstName == "" || lastName == "" || email == "" || !strings.Contains(email, "@") || phone == "" {
+	if !knownPlan || firstName == "" || lastName == "" || !validEmail(email) || phone == "" {
 		http.Error(w, "Enter your first name, surname, email, and a valid Iranian phone number.", 400)
+		return
+	}
+	customer, _, err := a.store.EnsureCheckoutCustomer(firstName, lastName, email, phone)
+	if err != nil {
+		http.Error(w, "Could not save customer details.", 500)
 		return
 	}
 	orderID := randomID("ord_")
 	now := time.Now().UTC()
-	customerID := randomID("cus_")
-	if err := a.store.PutCustomer(&Customer{ID: customerID, FirstName: firstName, LastName: lastName, Email: email, Phone: phone, CreatedAt: now, UpdatedAt: now}); err != nil {
-		http.Error(w, "Could not save customer details.", 500)
-		return
-	}
-	order := &Order{ID: orderID, CustomerID: customerID, Plan: plan, FirstName: firstName, LastName: lastName, Email: email, Phone: phone, AmountRials: amount, Status: "pending", CreatedAt: now}
+	order := &Order{ID: orderID, CustomerID: customer.ID, Plan: plan, FirstName: firstName, LastName: lastName, Email: email, Phone: phone, AmountRials: catalogPlan.PriceRials, Status: "pending", CreatedAt: now}
 	result, err := a.cfg.Gateway.Start(r.Context(), PaymentRequest{OrderID: orderID, AmountRials: order.AmountRials, Description: "Report Maker " + plan, CallbackURL: a.cfg.PublicBaseURL + "/payments/" + a.cfg.Gateway.Name() + "/callback", Email: email, Mobile: phone})
 	if err != nil {
 		http.Error(w, "payment gateway unavailable", 502)
@@ -246,25 +294,78 @@ func (a *App) paymentCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	order, ok := a.store.GetOrder(orderID)
 	if !ok || order.Authority != authority {
-		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment could not be matched", Body: "The payment reference was not recognized. Contact support with your receipt.", Status: "Unmatched payment"})
+		data := paymentStatusView("failed", orderID)
+		data.Title = "Payment"
+		data.Heading = "Payment could not be matched"
+		data.Body = "The payment reference was not recognized. Contact support with your receipt."
+		a.renderSite(w, r, "checkout-status", data)
 		return
 	}
 	if strings.ToUpper(callbackParam(r, "status", "Status")) != "OK" {
-		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment cancelled", Body: "No charge was recorded."})
+		data := paymentStatusView("cancelled", order.ID)
+		data.Title = "Payment"
+		data.Heading = "Payment cancelled"
+		data.Body = "No charge was recorded."
+		a.renderSite(w, r, "checkout-status", data)
 		return
 	}
 	result, err := a.cfg.Gateway.Verify(r.Context(), authority, order.AmountRials)
 	if err != nil || !result.Paid {
-		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment is pending", Body: "We could not verify the payment yet. Keep your receipt and contact support if needed."})
+		data := paymentStatusView("pending", order.ID)
+		data.Title = "Payment"
+		data.Heading = "Payment is pending"
+		data.Body = "We could not verify the payment yet. Keep your receipt and contact support if needed."
+		a.renderSite(w, r, "checkout-status", data)
 		return
 	}
-	paid, err := a.store.MarkOrderPaid(order.ID, result.Reference)
+	fulfilled, err := a.fulfillVerifiedPayment(order, result.Reference)
 	if err != nil {
-		renderPage(w, "checkout-status", PageData{Title: "Payment", Heading: "Payment status unavailable", Body: "Please contact support with your order ID."})
+		data := paymentStatusView("failed", order.ID)
+		data.Title = "Payment"
+		data.Heading = "Payment status unavailable"
+		data.Body = "Please contact support with your order ID."
+		a.renderSite(w, r, "checkout-status", data)
 		return
 	}
-	renderPage(w, "checkout-status", PageData{Title: "Payment complete", Heading: "Payment received", Body: "Your license delivery flow is ready to issue a key. Keep this order ID for support.", Status: paid.ID})
+	a.notifyAfterPaidOrder(r.Context(), fulfilled)
+	data := a.paymentCompleteDisclosure(w, r, fulfilled.Order, fulfilled.LicenseKey, fulfilled.Created)
+	data.StatusKind = "success"
+	data.StatusLabel = "Payment successful"
+	a.renderSite(w, r, "checkout-status", data)
 }
+
+func (a *App) fulfillVerifiedPayment(order *Order, paymentRef string) (*FulfillResult, error) {
+	plan, ok := PlanFromCatalog(order.Plan)
+	if !ok {
+		return nil, fmt.Errorf("unknown plan")
+	}
+	return a.store.FulfillOrderPayment(order.ID, paymentRef, a.cfg.LicenseDeliveryKey, plan)
+}
+
+// paymentCompleteDisclosure builds the post-payment page.
+// Unauthenticated visitors get order status and a masked key only.
+// Full plaintext is shown only to an authenticated session that owns the order.
+func (a *App) paymentCompleteDisclosure(w http.ResponseWriter, r *http.Request, order *Order, plainKey string, firstIssue bool) PageData {
+	masked := ""
+	if plainKey != "" {
+		masked = MaskLicenseKey(plainKey)
+	}
+	body := "Your license is ready. Sign in to your account to reveal the full key. A masked reference is shown below."
+	if !firstIssue {
+		body = "Your payment was already processed. Sign in to your account to view your license key."
+	}
+	data := PageData{
+		Title: "Payment complete", Heading: "Payment received", Body: body,
+		Status: order.ID, LicenseMasked: masked,
+	}
+	if customer, ok := a.customerFromRequest(r); ok && customer.ID == order.CustomerID && plainKey != "" {
+		data.LicenseKey = plainKey
+		data.Body = "Copy your license key now and store it safely. You can also reveal it later from your account purchases."
+		data.CSRFToken = a.ensureCSRF(w, r)
+	}
+	return data
+}
+
 func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
 	orderID := r.URL.Query().Get("order")
 	order, ok := a.store.GetOrder(orderID)
@@ -272,7 +373,27 @@ func (a *App) checkoutStatus(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	renderPage(w, "checkout-status", PageData{Title: "Checkout status", Heading: "Order status", Body: "Order " + html.EscapeString(order.ID), Status: order.Status})
+	kind, label := orderStatusBadge(order.Status)
+	data := PageData{
+		Title: "Checkout status", Heading: "Order status",
+		Body: "Order " + html.EscapeString(order.ID), Status: order.ID,
+		StatusKind: kind, StatusLabel: label,
+	}
+	if order.LicenseID != "" {
+		if license, ok := a.store.FindLicenseByID(order.LicenseID); ok && license.DeliveryCiphertext != "" {
+			if plain, err := DecryptLicenseKey(a.cfg.LicenseDeliveryKey, license.DeliveryCiphertext); err == nil {
+				data.LicenseMasked = MaskLicenseKey(plain)
+				if customer, ok := a.customerFromRequest(r); ok && customer.ID == order.CustomerID {
+					data.LicenseKey = plain
+					data.CSRFToken = a.ensureCSRF(w, r)
+					data.Body = "Order " + html.EscapeString(order.ID) + ". Signed-in owners can copy the full license key below or from Purchases."
+				} else {
+					data.Body = "Order " + html.EscapeString(order.ID) + ". Sign in with the purchase email to reveal the full license key."
+				}
+			}
+		}
+	}
+	a.renderSite(w, r, "checkout-status", data)
 }
 
 type activationRequest struct {
@@ -536,19 +657,6 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 func errorJSON(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
-func planAmount(plan string) (int64, bool) {
-	if plan != "perpetual" {
-		return 0, false
-	}
-	value := int64(1000000)
-	if raw := os.Getenv("REPORT_PERPETUAL_PRICE_RIALS"); raw != "" {
-		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
-			value = parsed
-		}
-	}
-	return value, true
-}
-
 func randomID(prefix string) string {
 	bytes := make([]byte, 10)
 	if _, err := rand.Read(bytes); err != nil {

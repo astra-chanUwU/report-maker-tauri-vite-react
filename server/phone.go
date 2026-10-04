@@ -50,6 +50,7 @@ func (a *App) requestPhoneCode(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := a.sms.Send(r.Context(), SMSMessage{
 		To: customer.Phone, Body: fmt.Sprintf("Your Report Maker verification code is %s", code),
+		Kind: SMSKindPhoneVerify, IdempotencyKey: "phone_verify:" + challenge.ID,
 	}); err != nil {
 		http.Error(w, "could not send SMS", http.StatusBadGateway)
 		return

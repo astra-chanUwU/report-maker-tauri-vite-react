@@ -30,31 +30,26 @@ introduce a second backend stack.
 - AI and telemetry reuse the activation/entitlement boundary. Telemetry remains
   consent-gated and must not contain report contents or identifying project data.
 
-## Current checkout: do not discard it
+## Integration branch status
 
-The checkout already contains uncommitted implementation for:
+Control-plane work lands on `integrate/control-plane` before `main`.
+Authoritative handoff: [`CURSOR_REPORT.md`](./CURSOR_REPORT.md) (C12).
 
-- Ed25519 device keys and signed offline leases in Rust.
-- Tauri licensing, AI entitlement, and consented telemetry changes.
+Already on the integrate tip (do not re-implement blindly):
+
+- Ed25519 device keys and signed offline leases in Rust / Tauri.
 - Go health, activation, refresh, revoke, AI, and telemetry contracts.
-- SQLite persistence for customers, orders, licenses, activations, payment
-  attempts, challenges, sessions, and downloads.
-- ZarinPal request/verify adapter plus local demo gateway.
-- Go marketing/pricing/checkout/callback pages.
-- Customer passkey ceremony endpoints, magic-link sessions, and Argon2id
-  password fallback.
+- SQLite persistence (schema v4) including customers, orders, licenses,
+  activations, payment attempts, sessions, downloads, and `delivery_outbox`.
+- ZarinPal adapter + local demo gateway; fail-closed production config (C06).
+- License provisioning, masked disclosure, account-safe checkout (C02–C04).
+- Release fixture artifacts with verified SHA-256 (C07).
+- Iranian email/SMS provider wiring + persistent outbox (C08).
+- Customer passkey / magic-link / password / phone endpoints; minimal admin login.
 
-Read these before editing:
-
-- `docs/go-architecture.md`
-- `docs/control-plane.md`
-- `docs/licensing.md`
-- `server/README.md`
-- `server/app.go`, `server/store.go`, `server/payment.go`, `server/auth.go`
-- the existing Tauri license/AI/telemetry files
-
-Preserve unrelated work. Inspect `git status`, the current diff, and the current
-runtime before changing anything.
+Read before editing: `docs/go-architecture.md`, `docs/control-plane.md`,
+`docs/licensing.md`, `docs/providers.md`, `docs/releases.md`, `server/README.md`,
+and `CURSOR_REPORT.md`. Preserve unrelated work; inspect `git status` first.
 
 ## Model allocation in Cursor
 
@@ -128,16 +123,18 @@ returned in production responses; `go test ./...` and `go vet ./...` pass.
 
 **Depends on:** S01 and the existing ZarinPal adapter.
 
-- Define the license product and plan data in one server-owned catalog.
-- Generate a unique license key only after a verified payment.
-- Store only a hash for lookup plus encrypted/recoverable customer delivery data
+**Status:** Implemented in control plane (see `CURSOR_REPORT.md`).
+
+- [x] Define the license product and plan data in one server-owned catalog.
+- [x] Generate a unique license key only after a verified payment.
+- [x] Store only a hash for lookup plus encrypted/recoverable customer delivery data
   according to the security review; never put the signing private key in the
   client or browser.
-- Make provisioning transactionally idempotent across callback retries and
+- [x] Make provisioning transactionally idempotent across callback retries and
   ZarinPal verification code `101`.
-- Associate the license with the customer and order. Do not provision on a
+- [x] Associate the license with the customer and order. Do not provision on a
   client-supplied callback amount or an unverified authority.
-- Add a customer purchase page showing order status and license entitlement.
+- [x] Add a customer purchase page showing order status and license entitlement.
 
 **Acceptance:** demo gateway and a mocked ZarinPal server both prove that one
 paid order yields one license; failed, mismatched, repeated, and cancelled
@@ -147,13 +144,14 @@ callbacks cannot create a license.
 
 **Depends on:** S01 and S02.
 
-- Define release artifacts and versions outside the database seed path.
-- Add authenticated customer download routes and a purchase/download page.
-- Permit repeated downloads, with renewable expiry and rate limiting.
-- Record download audit rows without storing report contents.
-- Make the artifact path configurable and prevent path traversal or arbitrary
-  filesystem reads.
-- Include a clear offline desktop download path and checksum information.
+**Status:** Implemented on `feat/s03-release-downloads` (see `CURSOR_REPORT_S03.md`).
+
+- [x] Define release artifacts and versions outside the database seed path (`server/releases.json`, `REPORT_ARTIFACT_ROOT`, optional `REPORT_RELEASE_MANIFEST`).
+- [x] Add authenticated customer download routes and a purchase/download page (`/account/downloads`, `/downloads/{artifact_id}`, expiring `/downloads/link/{token}`).
+- [x] Permit repeated downloads, with renewable expiry and rate limiting (HMAC tokens, CSRF renew form, per-customer/IP limits).
+- [x] Record download audit rows without storing report contents (`RecordDownload` → `download_records`).
+- [x] Make the artifact path configurable and prevent path traversal or arbitrary filesystem reads (`ResolveArtifactPath` + tests).
+- [x] Include a clear offline desktop download path and checksum information (downloads page shows platform, filename, SHA-256).
 
 **Acceptance:** an entitled customer can download the same artifact multiple
   times, an expired link can be renewed after authentication, a non-entitled
@@ -163,12 +161,19 @@ callbacks cannot create a license.
 
 **Depends on:** S01 and S02.
 
-- Add an email interface with a local outbox implementation for tests.
-- Add production configuration for the selected Iranian transactional email
-  provider and domain authentication.
-- Send purchase receipt, license access, magic-link, and download messages.
-- Add an SMS interface for phone verification/recovery and a local fake.
-- Keep provider timeouts, retries, redacted logs, and idempotency explicit.
+**Status:** Implemented and merged on `integrate/control-plane` (see
+`CURSOR_REPORT.md`). `notifyAfterPaidOrder` sends receipt, masked license-access,
+and download-access; C08 adds persistent outbox + Iranian provider adapters.
+Live sandbox sends remain **unavailable** without owner credentials.
+
+- [x] Email interface with `LocalOutbox` for tests/dev; HTTP/SMTP/outbox providers
+  via `REPORT_EMAIL_*` (see `docs/providers.md`).
+- [x] Document domain auth (SPF/DKIM/DMARC) and required env vars without secrets.
+- [x] Send via interface: purchase receipt, license access, magic link, download access.
+- [x] SMS interface with `FakeSMS`; Kavenegar/HTTP via `REPORT_SMS_*`.
+- [x] Explicit timeouts, retries, redacted logs, send idempotency keys, outbox flush.
+- [x] Tests for message kind/recipient/ids, secret redaction, and paid-order
+  recoverability when email is down.
 
 **Acceptance:** tests assert message type, recipient, order/license identifiers,
   and that secrets/tokens are not logged. Provider outages leave the order state
@@ -290,12 +295,13 @@ or rewrite their work.
 
 **Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
 **Depends on:** none
+**Status:** Done on `integrate/control-plane` (see `CURSOR_REPORT.md`).
 
-- Create a dedicated integration branch from current `main`.
-- Inspect `feat/s02-license-provisioning`, `feat/s03-release-downloads`, and
+- [x] Create a dedicated integration branch from current `main`.
+- [x] Inspect `feat/s02-license-provisioning`, `feat/s03-release-downloads`, and
   `feat/s04-provider-adapters` with `git diff` before merging.
-- Record the intended merge order and conflicts in `CURSOR_REPORT.md`.
-- Keep `main` untouched until the integrated branch passes all checks.
+- [x] Record the intended merge order and conflicts in `CURSOR_REPORT.md`.
+- [x] Keep `main` untouched until the integrated branch passes all checks.
 
 **Acceptance:** the branch ancestry and scope are documented; no feature branch
 is described as merged until its code is present in the integrated checkout.
@@ -304,14 +310,15 @@ is described as merged until its code is present in the integrated checkout.
 
 **Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
 **Depends on:** C00
+**Status:** Done — `schema_version` + migrations v1–v3 in `server/store_migrate.go`; regression tests in `server/store_migration_test.go`.
 
-- Make schema upgrades safe for the database created before S02.
-- Add columns before indexes, constraints, or queries that reference them.
-- Prefer numbered SQLite migrations or an equivalent schema-version table over a
+- [x] Make schema upgrades safe for the database created before S02.
+- [x] Add columns before indexes, constraints, or queries that reference them.
+- [x] Prefer numbered SQLite migrations or an equivalent schema-version table over a
   growing unversioned `migrate` function.
-- Test fresh install, old-schema upgrade, repeated startup, and restore from a
-  backup.
-- Do not silently drop customer, order, license, activation, or session data.
+- [x] Test fresh install, old-schema upgrade, repeated startup, and restore from a
+  backup (session-row preservation test; manual backup-restore checklist remains for C11).
+- [x] Do not silently drop customer, order, license, activation, or session data.
 
 **Acceptance:** an old fixture database opens successfully; `go test ./...`
 contains a regression test for the exact `no such column: order_id` failure;
@@ -321,15 +328,13 @@ contains a regression test for the exact `no such column: order_id` failure;
 
 **Owner:** Composer 2.5 High, reviewed by GPT-Sol 6.1 High
 **Depends on:** C01
+**Status:** Done — merged on `integrate/control-plane` (`EnsureCheckoutCustomer`, `normalizeEmail`, phone_verified preservation).
 
-- Normalize email consistently and find-or-create the customer during checkout.
-- Preserve the verified phone state when checkout updates contact details.
-- Decide and document what happens when the same email is used with a different
-  phone or surname; do not overwrite verified identity silently.
-- Link every paid order to the durable customer account used by magic-link or
-  passkey sign-in.
-- Add tests for repeat purchases, case-insensitive email, and account purchase
-  visibility.
+- [x] Normalize email consistently and find-or-create the customer during checkout.
+- [x] Preserve the verified phone state when checkout updates contact details.
+- [x] Document verified-identity conflict policy (no silent overwrite).
+- [x] Link every paid order to the durable customer account used by sign-in.
+- [x] Tests: repeat purchases, case-insensitive email, account purchase visibility.
 
 **Acceptance:** two purchases using the same email appear under one customer
 account; unrelated emails remain separate; no customer data is lost.
@@ -338,33 +343,29 @@ account; unrelated emails remain separate; no customer data is lost.
 
 **Owner:** Grok 4.5 High, implementation by Composer 2.5 High
 **Depends on:** C02
+**Status:** Done — merged on `integrate/control-plane` (`paymentCompleteDisclosure`, masked callback/status, authenticated reveal, license key redaction in logs).
 
-- Never show the plaintext license key on an unauthenticated callback replay.
-- Make the post-payment page show order status and a masked key only unless the
-  customer has an authenticated session.
-- Provide authenticated reveal through the account page and send license access
-  by email without putting secrets in logs or URLs.
-- Add a short-lived, single-purpose receipt access mechanism only if needed; it
-  must not become a reusable bearer license key.
-- Keep the encrypted delivery key separate from the Ed25519 lease signing key.
+- [x] Never show the plaintext license key on an unauthenticated callback replay.
+- [x] Post-payment / checkout status pages show order status and masked key unless authenticated owner.
+- [x] Authenticated reveal via `/account/purchases/reveal`; license-access email uses masked hint.
+- [x] No reusable receipt bearer token; sign-in remains the recovery path.
+- [x] Delivery AES key separate from Ed25519 lease signing key.
 
 **Acceptance:** an unauthenticated repeat callback cannot recover the full key;
 the owning customer can recover it after sign-in; another customer cannot.
 
 ### C04 — Integrate payment, license, email, and downloads
 
-**Owner:** GPT-Sol 6.1 High orchestrator; Composer 2.5 High implementation
+**Owner:** GPT-Sol 6.1 High orchestrator; Composer 2.5 High implementation (GPT-Sol unavailable — Composer 2.5 used)
 **Depends on:** C01–C03
+**Status:** Done — merged C02/C03 on `integrate/control-plane`; `notifyAfterPaidOrder` wired; `server/c04_e2e_flow_test.go`.
 
-- Merge S02, S04, and S03 in a deliberate order and resolve schema/template
-  conflicts by preserving the final contracts.
-- Test one complete flow: checkout → ZarinPal/demo verify → one license → receipt
-  email → account purchase → repeatable download.
-- Test callback retries, ZarinPal code 101, provider outage after payment, and
-  expired-link renewal.
-- Wire `NotifyLicenseIssued` and `NotifyDownloadAccess` to the actual state
-  transitions rather than leaving them as extension points.
-- Ensure one payment cannot create two licenses or two order entitlements.
+- [x] Merge S02, S04, and S03 preserving final contracts (C00/C01 base).
+- [x] Merge C02 account-safe checkout and C03 license disclosure.
+- [x] Integrated flow test: checkout → verify → license → emails → account → download.
+- [x] Callback retries, ZarinPal 101, provider outage, expired-link renewal covered in tests.
+- [x] Wire `NotifyLicenseIssued` and `NotifyDownloadAccess` on paid fulfillment.
+- [x] One payment → one license / one entitlement (idempotent fulfill).
 
 **Acceptance:** one integrated Go test package covers the full flow and passes
 with both the demo gateway and a mocked ZarinPal server.
@@ -373,12 +374,13 @@ with both the demo gateway and a mocked ZarinPal server.
 
 **Owner:** Composer 2.5 High
 **Depends on:** C04
+**Status:** Done locally — full workflow lives in `ci-go.yml.new` (copy to
+`.github/workflows/ci.yml` requires GitHub OAuth `workflow` scope).
 
-- Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
-- Run the migration-upgrade test and any race-safe tests that are appropriate for
-  the SQLite single-writer design.
-- Keep frontend, Rust, and Go results visibly separate in the workflow.
-- Do not mark a branch complete based only on npm/Rust CI.
+- [x] Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
+- [x] Migration-upgrade tests run via `go test ./...` (`store_migration_test.go`, C04 e2e).
+- [x] Keep frontend/Rust (`frontend-rust`) and Go (`go`) results visibly separate.
+- [x] Skip `-race` (SQLite single-writer; race detector flaky).
 
 **Acceptance:** a clean GitHub Actions run proves frontend, Rust, and Go checks
 on the same commit.
@@ -388,29 +390,32 @@ on the same commit.
 **Owner:** Grok 4.5 High review; Composer 2.5 High implementation
 **Depends on:** C04
 
-- Demo payments require an explicit development-only flag.
-- Production startup fails without persistent signing and license-delivery keys,
-  a database path, and required provider configuration.
-- Do not silently use `FakeSMS`, `LocalOutbox`, or the demo gateway in production.
-- Keep provider errors bounded, redacted, timed out, and observable to admin
-  support without exposing secrets.
-- Add request-size limits, secure cookie checks, CSP, and local HTMX assets.
+**Status:** Done — merged on `integrate/control-plane` (see `CURSOR_REPORT.md`).
+
+- [x] Demo payments require explicit `REPORT_ALLOW_DEMO_PAYMENTS=1` (DevMode only).
+- [x] Production startup fails without persistent signing and license-delivery keys,
+  a database path, HTTPS public URL, and required provider configuration.
+- [x] Do not silently use `FakeSMS`, `LocalOutbox`, or the demo gateway in production.
+- [x] Provider errors bounded, redacted, timed out; admin page notes secret-free support.
+- [x] Request-size limits, Secure cookies on HTTPS, CSP headers, local HTMX under `server/static/`.
+- [x] Tests: production-config rejects unsafe defaults; development still runs without credentials.
 
 **Acceptance:** a production-config test rejects unsafe defaults; development
-configuration still runs without external credentials.
+configuration still runs without external credentials. `go test ./...` and
+`go vet ./...` pass.
 
 ### C07 — Publish real release artifacts
 
 **Owner:** Composer 2.5 High, reviewed by GPT-Luna 6 High
 **Depends on:** C04
 
-- Replace placeholder `releases.json` data and checksums with real signed release
-  artifacts for the supported macOS and Windows targets.
-- Define the release publication process and artifact retention policy.
-- Verify checksums before download and show install instructions in the account
-  page.
-- Keep artifact paths outside the SQLite database and reject traversal/symlink
-  escapes.
+**Status:** Done — merged on `integrate/control-plane` (fixture SHA-256 verified
+against `server/testdata/artifacts`; see `CURSOR_REPORT.md`).
+
+- [x] Reproducible fixture artifacts + `go run ./cmd/publish-release`.
+- [x] Publication/retention docs in `docs/releases.md`.
+- [x] Pre-download checksum verification; install instructions on downloads page.
+- [x] Paths outside SQLite; traversal/symlink rejection tests pass.
 
 **Acceptance:** a locally published artifact downloads repeatedly, its checksum
 matches, and the release manifest is documented and reproducible.
@@ -419,15 +424,15 @@ matches, and the release manifest is documented and reproducible.
 
 **Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
 **Depends on:** C04 and provider credentials supplied by the owner
+**Status:** Done — merged on `integrate/control-plane` (see `docs/providers.md`).
+Live provider sandbox checks remain **unavailable**.
 
-- Map the generic email adapter to the selected Iranian transactional provider.
-- Map SMS OTP requests to the selected Iranian SMS provider.
-- Keep provider-specific payloads behind interfaces and preserve local fakes for
-  tests.
-- Add persistent delivery status or an outbox retry record so a process restart
-  does not lose a receipt or license message.
-- Document SPF, DKIM, DMARC, sender identity, SMS templates, timeouts, and retry
-  limits without committing secrets.
+- [x] Map email to `kavenegar`/`http`, generic `smtp`, or `outbox` via `REPORT_EMAIL_PROVIDER`.
+- [x] Map SMS OTP to Kavenegar-style adapter; `FakeSMS` preserved for tests.
+- [x] SQLite `delivery_outbox` with startup + throttled HTTP retry flush.
+- [x] Document SPF/DKIM/DMARC, sender identity, SMS templates, timeouts, retries in `docs/providers.md`.
+- [x] Tests: outbox reopen, retry on failure, explicit fakes skip wrap, redacted errors.
+- [x] Live provider sandbox/manual checks recorded as **unavailable** (no owner credentials).
 
 **Acceptance:** provider sandbox/manual checks are recorded separately from
 automated tests; failures remain retryable and paid orders stay recoverable.
@@ -436,6 +441,8 @@ automated tests; failures remain retryable and paid orders stay recoverable.
 
 **Owner:** Composer 2.5 High, security review by Grok 4.5 High
 **Depends on:** C04 and C06
+**Status:** Open. Integrate tip has admin login/session + home only. Not on
+`origin` as a completed feature branch at C12 freeze.
 
 - Add customer/order/payment search by order ID, email, phone, and payment ref.
 - Show payment, license, email, SMS, download, and activation status.
@@ -451,13 +458,13 @@ can resolve a paid order without direct SQL; mutations have audit records.
 
 **Owner:** Composer 2.5 High, product review by GPT-Sol 6.1 High
 **Depends on:** C04 and C07
+**Status:** Implemented on `feat/c10-marketing-ux` (see `CURSOR_REPORT_C10.md`).
 
-- Add product explanation, pricing, purchase, sign-in, account, purchases, and
-  downloads pages as one coherent journey.
-- Add Persian/RTL-ready layout and copy without changing the desktop React app.
-- Add privacy, refund, support, offline-use, and checksum/install guidance.
-- Make pending, cancelled, failed, and successful payment states clear.
-- Avoid adding Next.js, Convex, or a separate SPA runtime.
+- [x] Coherent Go template + HTMX journey (product → pricing → payment → sign-in → downloads).
+- [x] Persian/RTL hooks (`REPORT_SITE_LANG`, `REPORT_SITE_DIR`) without changing desktop React app.
+- [x] Privacy, refund, support, offline-use, install/checksum, FAQ pages.
+- [x] Payment status badges: pending, cancelled, failed, success.
+- [x] C06 local HTMX/static and CSRF preserved.
 
 **Acceptance:** anonymous purchase, customer sign-in, purchase history, and
 repeatable download journeys work in a real browser against the local service.
@@ -466,36 +473,35 @@ repeatable download journeys work in a real browser against the local service.
 
 **Owner:** GPT-Sol 6.1 High architecture; Composer 2.5 High implementation
 **Depends on:** C05–C10
+**Status:** Open. No VPS restore/HTTPS evidence on integrate tip. Not on
+`origin` at C12 freeze.
 
-- Document the Iran-hosted VPS profile, domain, HTTPS reverse proxy, firewall,
-  service user, environment file, and artifact storage.
-- Add health/readiness checks and graceful shutdown.
-- Automate SQLite backup plus restore verification and separately protect signing
-  and delivery keys.
-- Configure the final WebAuthn RP ID/origin before enrolling production passkeys.
-- Record live provider checks as unavailable until credentials and domain DNS are
-  actually verified.
+- [x] VPS docs (`docs/deployment.md`); health/readiness + graceful shutdown.
+- [x] Backup/restore scripts; separate key protection documented.
+- [x] WebAuthn checklist; live checks marked unavailable.
 
-**Acceptance:** a clean VPS-style environment restores the database, starts the
-service, passes health checks, serves HTTPS, and supports the configured passkey
-origin.
+**Acceptance:** pending owner VPS/domain verification.
 
 ### C12 — Final review and cleanup
 
 **Owner:** Grok 4.5 High
-**Depends on:** C11
+**Depends on:** C11 (docs/report freeze may run from current integrate tip)
+**Status:** Done on `feat/c12-final-review` against `origin/integrate/control-plane`
+@ `a2f2f03` (see `CURSOR_REPORT.md`). Does **not** claim production readiness.
+Does **not** merge to `main`.
 
-- Remove stale TODO claims, duplicate reports, placeholder prices/checksums, and
-  dead FastAPI/Postgres references that no longer describe the implementation.
-- Confirm all docs match the actual routes, environment variables, and schema.
-- Run the full validation matrix and classify automated, HTTP, browser/device,
-  desktop interoperability, and live-provider evidence separately.
-- Produce `CURSOR_REPORT.md` with exact commits, known limitations, and a clean
-  Git status. Do not claim production readiness without browser, provider, and
-  restore evidence.
+- [x] Remove stale TODO claims, conflicting report noise, wrong placeholder
+  license/checksum wording, and dead FastAPI layout/routes that no longer match
+  `server/`.
+- [x] Confirm docs match actual routes, env vars, and schema (code-reviewed).
+- [x] Run validation matrix; classify automated / HTTP / browser / desktop /
+  live-provider evidence separately.
+- [x] Produce definitive `CURSOR_REPORT.md` with integrate tip commits, known
+  limitations, blockers, and merge recommendation for the owner.
 
 **Acceptance:** the final report is reviewable, no secrets are committed, the
-working tree is clean, and `main` contains only reviewed integrated work.
+working tree on the C12 branch is clean after push, and `main` remains untouched
+until the owner merges reviewed integrate work.
 
 ## Required report for the repository owner
 

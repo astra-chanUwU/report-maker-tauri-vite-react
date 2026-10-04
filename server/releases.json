@@ -1,0 +1,20 @@
+[
+  {
+    "id": "desktop-macos-universal",
+    "version": "1.0.0-fixture",
+    "filename": "ReportMaker_1.0.0_universal.dmg",
+    "sha256": "f631d35cc04cf70dc6a0d256443e631b5ab342f9470632f0f8501b2f9102897e",
+    "relative_path": "macos-universal/ReportMaker_1.0.0_universal.dmg",
+    "platform": "macOS universal",
+    "description": "Test fixture disk image. Replace with signed Tauri build in production."
+  },
+  {
+    "id": "desktop-windows-x64",
+    "version": "1.0.0-fixture",
+    "filename": "ReportMaker_1.0.0_x64-setup.exe",
+    "sha256": "c77b35007eb2d8fb1d76c55df594eac6a4ef8dffba030c89188bbc17eb95c362",
+    "relative_path": "windows-x64/ReportMaker_1.0.0_x64-setup.exe",
+    "platform": "Windows x64",
+    "description": "Test fixture installer. Replace with signed Tauri build in production."
+  }
+]

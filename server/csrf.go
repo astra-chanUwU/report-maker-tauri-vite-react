@@ -25,13 +25,12 @@ func (a *App) ensureCSRF(w http.ResponseWriter, r *http.Request) string {
 	if err != nil {
 		return ""
 	}
-	secure := strings.HasPrefix(strings.ToLower(a.cfg.PublicBaseURL), "https://")
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: false, // double-submit: JS reads cookie for X-CSRF-Token header
-		Secure:   secure,
+		Secure:   a.cfg.cookieSecure(),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   24 * 60 * 60,
 	})

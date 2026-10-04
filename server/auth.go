@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -52,14 +53,17 @@ func (a *App) authRoutes() {
 	a.mux.HandleFunc("POST /auth/passkey/login/finish", a.finishPasskeyLogin)
 	a.mux.HandleFunc("POST /auth/logout", a.logoutCustomer)
 	a.mux.HandleFunc("GET /account", a.customerAccount)
+	a.mux.HandleFunc("GET /account/purchases", a.customerPurchases)
+	a.mux.HandleFunc("POST /account/purchases/reveal", a.revealPurchaseLicense)
 }
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	renderPage(w, "login", PageData{
+	a.renderSite(w, r, "login", PageData{
 		Title: "Sign in", Heading: "Sign in to your Report Maker account",
 		Body: "Use a passkey first, or request a one-time sign-in link by email.",
 		CSRFToken: a.ensureCSRF(w, r), ExtraScript: true,
 		ShowPasskeyLogin: true, ShowMagicLink: true, ShowPasswordLogin: true,
+		ShowJourney: true, JourneyStep: 4,
 	})
 }
 
@@ -74,7 +78,7 @@ func (a *App) requestMagicLink(w http.ResponseWriter, r *http.Request) {
 	if !a.rateLimit(w, r, "magic-link-request", 5, 15*time.Minute) {
 		return
 	}
-	email := strings.TrimSpace(strings.ToLower(r.FormValue("email")))
+	email := normalizeEmail(r.FormValue("email"))
 	if !validEmail(email) {
 		http.Error(w, "enter a valid email", http.StatusBadRequest)
 		return
@@ -97,7 +101,8 @@ func (a *App) requestMagicLink(w http.ResponseWriter, r *http.Request) {
 	linkURL := a.cfg.PublicBaseURL + "/auth/magic-link/consume?token=" + url.QueryEscape(token)
 	_ = a.email.Send(r.Context(), EmailMessage{
 		To: customer.Email, Subject: "Sign in to Report Maker",
-		Body: "Open this link to sign in: " + linkURL, Kind: "magic_link",
+		Body: "Open this link to sign in: " + linkURL, Kind: EmailKindMagicLink,
+		IdempotencyKey: "magic_link:" + hashToken(token),
 	})
 	if a.cfg.AllowDevSeed {
 		w.Header().Set("X-Dev-Magic-Link", linkURL)
@@ -166,14 +171,14 @@ func (a *App) loginWithPassword(w http.ResponseWriter, r *http.Request) {
 		if !decodeJSON(w, r, &body) {
 			return
 		}
-		email = strings.TrimSpace(strings.ToLower(body.Email))
+		email = normalizeEmail(body.Email)
 		password = body.Password
 	} else {
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, "invalid form", http.StatusBadRequest)
 			return
 		}
-		email = strings.TrimSpace(strings.ToLower(r.FormValue("email")))
+		email = normalizeEmail(r.FormValue("email"))
 		password = r.FormValue("password")
 	}
 	customer, ok := a.store.FindCustomerByEmail(email)
@@ -410,8 +415,7 @@ func (a *App) issueCustomerSession(w http.ResponseWriter, customerID string) err
 	if err := a.store.PutCustomerSession(&CustomerSession{ID: randomID("ses_"), CustomerID: customerID, TokenHash: hashToken(token), ExpiresAt: now.Add(30 * 24 * time.Hour), CreatedAt: now, LastSeenAt: now}); err != nil {
 		return err
 	}
-	secure := strings.HasPrefix(strings.ToLower(a.cfg.PublicBaseURL), "https://")
-	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60})
+	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: a.cfg.cookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 60 * 60})
 	return nil
 }
 
@@ -426,8 +430,7 @@ func (a *App) logoutCustomer(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(customerSessionCookie); err == nil && cookie.Value != "" {
 		_ = a.store.DeleteCustomerSession(hashToken(cookie.Value))
 	}
-	secure := strings.HasPrefix(strings.ToLower(a.cfg.PublicBaseURL), "https://")
-	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: customerSessionCookie, Value: "", Path: "/", HttpOnly: true, Secure: a.cfg.cookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	if strings.Contains(r.Header.Get("Accept"), "text/html") {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
@@ -445,11 +448,93 @@ func (a *App) customerAccount(w http.ResponseWriter, r *http.Request) {
 	if customer.PhoneVerifiedAt != nil {
 		phoneStatus = "verified"
 	}
-	renderPage(w, "account", PageData{
+	a.renderSite(w, r, "account", PageData{
 		Title: "Your account", Heading: "Your Report Maker account",
 		Body: "Signed in as " + customer.Email, CSRFToken: a.ensureCSRF(w, r),
 		Email: customer.Email, Phone: customer.Phone, PhoneVerified: phoneStatus,
 		ExtraScript: true, ShowPasskeyRegister: true, ShowPhoneVerify: true, ShowLogout: true,
+		ShowPurchasesLink: true,
+		PrimaryCTA: "Downloads", PrimaryCTAURL: "/account/downloads",
+	})
+}
+
+func (a *App) customerPurchases(w http.ResponseWriter, r *http.Request) {
+	customer, ok := a.customerFromRequest(r)
+	if !ok {
+		http.Redirect(w, r, "/login?return_to="+url.QueryEscape(r.URL.Path), http.StatusSeeOther)
+		return
+	}
+	orders, err := a.store.ListCustomerOrders(customer.ID)
+	if err != nil {
+		http.Error(w, "could not load purchases", http.StatusInternalServerError)
+		return
+	}
+	purchases := make([]PurchaseView, 0, len(orders))
+	for _, order := range orders {
+		view := PurchaseView{OrderID: order.ID, Plan: order.Plan, Status: order.Status}
+		if order.PaidAt != nil {
+			view.PaidAt = order.PaidAt.Format("2006-01-02 15:04 UTC")
+		}
+		if order.LicenseID != "" {
+			if license, ok := a.store.FindLicenseByID(order.LicenseID); ok && license.DeliveryCiphertext != "" {
+				if plain, err := DecryptLicenseKey(a.cfg.LicenseDeliveryKey, license.DeliveryCiphertext); err == nil {
+					view.MaskedKey = MaskLicenseKey(plain)
+					view.CanReveal = order.Status == "paid"
+				}
+			}
+		}
+		purchases = append(purchases, view)
+	}
+	a.renderSite(w, r, "purchases", PageData{
+		Title: "Your purchases", Heading: "Purchases and licenses",
+		Body: "Orders linked to your account. Reveal a license key when you need to activate the desktop app.",
+		CSRFToken: a.ensureCSRF(w, r), Purchases: purchases, ExtraScript: true, ShowLogout: true,
+		PrimaryCTA: "Downloads", PrimaryCTAURL: "/account/downloads",
+	})
+}
+
+func (a *App) revealPurchaseLicense(w http.ResponseWriter, r *http.Request) {
+	customer, ok := a.customerFromRequest(r)
+	if !ok {
+		http.Error(w, "sign in required", http.StatusUnauthorized)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if !a.requireCSRF(w, r) {
+		return
+	}
+	orderID := strings.TrimSpace(r.FormValue("order_id"))
+	order, ok := a.store.GetOrder(orderID)
+	if !ok || order.CustomerID != customer.ID || order.Status != "paid" || order.LicenseID == "" {
+		http.Error(w, "purchase not found", http.StatusNotFound)
+		return
+	}
+	license, ok := a.store.FindLicenseByID(order.LicenseID)
+	if !ok || license.DeliveryCiphertext == "" {
+		http.Error(w, "license unavailable", http.StatusNotFound)
+		return
+	}
+	plain, err := DecryptLicenseKey(a.cfg.LicenseDeliveryKey, license.DeliveryCiphertext)
+	if err != nil {
+		http.Error(w, "license unavailable", http.StatusInternalServerError)
+		return
+	}
+	if r.Header.Get("HX-Request") != "" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<code>" + html.EscapeString(plain) + "</code>"))
+		return
+	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		writeJSON(w, http.StatusOK, map[string]string{"license_key": plain, "masked_key": MaskLicenseKey(plain)})
+		return
+	}
+	a.renderSite(w, r, "purchases", PageData{
+		Title: "Your purchases", Heading: "Purchases and licenses",
+		Body: "License key for order " + orderID, CSRFToken: a.ensureCSRF(w, r),
+		LicenseKey: plain, LicenseMasked: MaskLicenseKey(plain), ExtraScript: true, ShowLogout: true,
 	})
 }
 
