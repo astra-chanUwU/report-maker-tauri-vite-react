@@ -374,7 +374,8 @@ with both the demo gateway and a mocked ZarinPal server.
 
 **Owner:** Composer 2.5 High
 **Depends on:** C04
-**Status:** Done — separate `frontend-rust` and `go` jobs in `.github/workflows/ci.yml`.
+**Status:** Done locally — full workflow lives in `ci-go.yml.new` (copy to
+`.github/workflows/ci.yml` requires GitHub OAuth `workflow` scope).
 
 - [x] Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
 - [x] Migration-upgrade tests run via `go test ./...` (`store_migration_test.go`, C04 e2e).

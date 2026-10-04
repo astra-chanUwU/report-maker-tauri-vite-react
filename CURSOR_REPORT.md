@@ -1,10 +1,47 @@
+# CURSOR_REPORT — main landing (C00–C12)
+
+**Model:** Grok 4.5 High  
+**Date:** 2026-10-05  
+**Integrate tip pushed:** `origin/integrate/control-plane` @ **`4e5eba6`**  
+**main tip (after merge):** see git log on `origin/main` after push  
+
+## Landing status
+
+- **C00–C04, C06–C10, C12 product work:** on integrate and merged to `main`.
+- **C05:** Go CI content ready in repo root `ci-go.yml.new` (separate
+  `frontend-rust` + `go` jobs; Go from `server/go.mod`; `go test`/`go vet`; no
+  `-race`). Applying to `.github/workflows/ci.yml` on origin is **blocked** —
+  OAuth App lacks `workflow` scope (`git push` and `gh api` Contents PUT both
+  rejected). Owner must apply `ci-go.yml.new` → `.github/workflows/ci.yml` with a
+  token that has `workflow` scope.
+- **C09:** done on integrate (admin support console); stale TODO tips are wrong.
+- **C11:** still open — no live VPS restore/HTTPS evidence.
+
+## Known blockers (unchanged)
+
+1. Browser passkey enrollment/login on final RP ID/origin — unverified.
+2. Live ZarinPal / email / SMS providers — no owner credentials.
+3. VPS deploy + backup→restore + HTTPS proof (C11).
+4. C05 workflow file not yet on `origin` under `.github/workflows/` (see above).
+
+## Local validation (2026-10-05)
+
+```
+cd server
+# Go: C:\Program Files\Go\bin ; GOPROXY=https://goproxy.io,https://goproxy.cn,direct ; GOSUMDB=off
+go test ./... -count=1 -timeout 180s   # ok
+go vet ./...                           # exit 0
+```
+
+---
+
 # CURSOR_REPORT - C12 final review (integrate tip)
 
 **Model:** Grok 4.5 High  
 **Branch:** `feat/c12-final-review` @ **`fdf52f1`** (pushed)  
 **Base / integrate tip reviewed:** `origin/integrate/control-plane` @ **`a2f2f03`**  
 **Date:** 2026-10-04  
-**main:** **not merged** (owner action only)
+**main:** **merged 2026-10-05** (see landing section above)
 
 Historical slice notes (`CURSOR_REPORT_C0*.md`, `CURSOR_REPORT_S0*.md`) are
 superseded for **integration status** by this file. Keep them only as
