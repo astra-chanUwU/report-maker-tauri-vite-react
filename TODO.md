@@ -33,7 +33,6 @@ introduce a second backend stack.
 ## Integration branch status
 
 Control-plane work lands on `integrate/control-plane` before `main`.
-Authoritative handoff: [`CURSOR_REPORT.md`](./CURSOR_REPORT.md) (C12).
 
 Already on the integrate tip (do not re-implement blindly):
 
@@ -48,8 +47,7 @@ Already on the integrate tip (do not re-implement blindly):
 - Customer passkey / magic-link / password / phone endpoints; minimal admin login.
 
 Read before editing: `docs/go-architecture.md`, `docs/control-plane.md`,
-`docs/licensing.md`, `docs/providers.md`, `docs/releases.md`, `server/README.md`,
-and `CURSOR_REPORT.md`. Preserve unrelated work; inspect `git status` first.
+`docs/licensing.md`, `docs/providers.md`, `docs/releases.md`, `server/README.md`. Preserve unrelated work; inspect `git status` first.
 
 ## Model allocation in Cursor
 
@@ -98,7 +96,7 @@ passed because a Go unit test passed.
 
 **Depends on:** current SQLite/auth groundwork.
 
-**Status:** Implemented in control plane (see `CURSOR_REPORT.md`). Remaining manual check: real browser passkey registration/login on configured RP ID/origin.
+**Status:** Implemented in control plane. Remaining manual check: real browser passkey registration/login on configured RP ID/origin.
 
 Complete the passkey-first customer account flow:
 
@@ -123,7 +121,7 @@ returned in production responses; `go test ./...` and `go vet ./...` pass.
 
 **Depends on:** S01 and the existing ZarinPal adapter.
 
-**Status:** Implemented in control plane (see `CURSOR_REPORT.md`).
+**Status:** Implemented in control plane.
 
 - [x] Define the license product and plan data in one server-owned catalog.
 - [x] Generate a unique license key only after a verified payment.
@@ -144,7 +142,7 @@ callbacks cannot create a license.
 
 **Depends on:** S01 and S02.
 
-**Status:** Implemented on `feat/s03-release-downloads` (see `CURSOR_REPORT_S03.md`).
+**Status:** Implemented on `feat/s03-release-downloads`.
 
 - [x] Define release artifacts and versions outside the database seed path (`server/releases.json`, `REPORT_ARTIFACT_ROOT`, optional `REPORT_RELEASE_MANIFEST`).
 - [x] Add authenticated customer download routes and a purchase/download page (`/account/downloads`, `/downloads/{artifact_id}`, expiring `/downloads/link/{token}`).
@@ -162,7 +160,7 @@ callbacks cannot create a license.
 **Depends on:** S01 and S02.
 
 **Status:** Implemented and merged on `integrate/control-plane` (see
-`CURSOR_REPORT.md`). `notifyAfterPaidOrder` sends receipt, masked license-access,
+ `notifyAfterPaidOrder` sends receipt, masked license-access,
 and download-access; C08 adds persistent outbox + Iranian provider adapters.
 Live sandbox sends remain **unavailable** without owner credentials.
 
@@ -295,12 +293,12 @@ or rewrite their work.
 
 **Owner:** Composer 2.5 High, reviewed by Grok 4.5 High
 **Depends on:** none
-**Status:** Done on `integrate/control-plane` (see `CURSOR_REPORT.md`).
+**Status:** Done on `integrate/control-plane`.
 
 - [x] Create a dedicated integration branch from current `main`.
 - [x] Inspect `feat/s02-license-provisioning`, `feat/s03-release-downloads`, and
   `feat/s04-provider-adapters` with `git diff` before merging.
-- [x] Record the intended merge order and conflicts in `CURSOR_REPORT.md`.
+- [x] Record the intended merge order and conflicts.
 - [x] Keep `main` untouched until the integrated branch passes all checks.
 
 **Acceptance:** the branch ancestry and scope are documented; no feature branch
@@ -372,25 +370,15 @@ with both the demo gateway and a mocked ZarinPal server.
 
 ### C05 — Add Go checks to GitHub Actions
 
-**Owner:** Composer 2.5 High
-**Depends on:** C04
-**Status:** Done locally — full workflow lives in `ci-go.yml.new` (copy to
-`.github/workflows/ci.yml` requires GitHub OAuth `workflow` scope).
-
-- [x] Add Go setup, module download, `go test ./...`, and `go vet ./...` to CI.
-- [x] Migration-upgrade tests run via `go test ./...` (`store_migration_test.go`, C04 e2e).
-- [x] Keep frontend/Rust (`frontend-rust`) and Go (`go`) results visibly separate.
-- [x] Skip `-race` (SQLite single-writer; race detector flaky).
-
-**Acceptance:** a clean GitHub Actions run proves frontend, Rust, and Go checks
-on the same commit.
+**Status:** Cancelled. Run `cd server && go test ./... && go vet ./...` locally
+before push. No extra GitHub Actions work for Go.
 
 ### C06 — Make production configuration fail closed
 
 **Owner:** Grok 4.5 High review; Composer 2.5 High implementation
 **Depends on:** C04
 
-**Status:** Done — merged on `integrate/control-plane` (see `CURSOR_REPORT.md`).
+**Status:** Done — merged on `integrate/control-plane`.
 
 - [x] Demo payments require explicit `REPORT_ALLOW_DEMO_PAYMENTS=1` (DevMode only).
 - [x] Production startup fails without persistent signing and license-delivery keys,
@@ -410,7 +398,7 @@ configuration still runs without external credentials. `go test ./...` and
 **Depends on:** C04
 
 **Status:** Done — merged on `integrate/control-plane` (fixture SHA-256 verified
-against `server/testdata/artifacts`; see `CURSOR_REPORT.md`).
+against `server/testdata/artifacts`).
 
 - [x] Reproducible fixture artifacts + `go run ./cmd/publish-release`.
 - [x] Publication/retention docs in `docs/releases.md`.
@@ -458,7 +446,7 @@ can resolve a paid order without direct SQL; mutations have audit records.
 
 **Owner:** Composer 2.5 High, product review by GPT-Sol 6.1 High
 **Depends on:** C04 and C07
-**Status:** Implemented on `feat/c10-marketing-ux` (see `CURSOR_REPORT_C10.md`).
+**Status:** Implemented on `feat/c10-marketing-ux`.
 
 - [x] Coherent Go template + HTMX journey (product → pricing → payment → sign-in → downloads).
 - [x] Persian/RTL hooks (`REPORT_SITE_LANG`, `REPORT_SITE_DIR`) without changing desktop React app.
@@ -487,7 +475,7 @@ repeatable download journeys work in a real browser against the local service.
 **Owner:** Grok 4.5 High
 **Depends on:** C11 (docs/report freeze may run from current integrate tip)
 **Status:** Done on `feat/c12-final-review` against `origin/integrate/control-plane`
-@ `a2f2f03` (see `CURSOR_REPORT.md`). Does **not** claim production readiness.
+@ `a2f2f03`. Does **not** claim production readiness.
 Does **not** merge to `main`.
 
 - [x] Remove stale TODO claims, conflicting report noise, wrong placeholder
@@ -496,39 +484,9 @@ Does **not** merge to `main`.
 - [x] Confirm docs match actual routes, env vars, and schema (code-reviewed).
 - [x] Run validation matrix; classify automated / HTTP / browser / desktop /
   live-provider evidence separately.
-- [x] Produce definitive `CURSOR_REPORT.md` with integrate tip commits, known
-  limitations, blockers, and merge recommendation for the owner.
+- [x] Integration landed on `main`; leftover agent report/CI stubs removed.
 
-**Acceptance:** the final report is reviewable, no secrets are committed, the
-working tree on the C12 branch is clean after push, and `main` remains untouched
-until the owner merges reviewed integrate work.
-
-## Required report for the repository owner
-
-After each completed slice, and again at the end, write a report for review. Save
-the final report as `CURSOR_REPORT.md` and also return it in the Cursor response.
-Do not claim work is complete merely because files changed.
-
-Use this structure:
-
-1. **Slice and outcome** — what was implemented and what remains.
-2. **Files changed** — grouped by backend, website, desktop, docs, and tests.
-3. **Architecture decisions** — choices made and why they fit the SQLite-first
-   Go monolith.
-4. **Security/privacy review** — auth boundary, secrets, CSRF, rate limits,
-   payment verification, download authorization, and telemetry redaction.
-5. **Validation evidence** — exact commands and pass/fail results, separated by
-   automated, HTTP, browser/device, and live-provider checks.
-6. **Known limitations** — especially anything not verified with a real browser,
-   ZarinPal credentials, SMS, email, VPS, or domain.
-7. **Next slice** — one bounded recommendation with dependencies and acceptance
-   checks.
-8. **Git state** — branch, commit, changed files, and whether anything remains
-   uncommitted. Never include secrets.
-
-The report should be factual, concise, and suitable for another engineer to
-review. If blocked, explain the exact external dependency and leave the checkout
-in a recoverable state.
+**Acceptance:** product code on `main`; no secrets committed.
 
 ## Historical format notes
 

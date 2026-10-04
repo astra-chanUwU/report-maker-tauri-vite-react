@@ -22,7 +22,7 @@ import (
 // entitled repeat download, plus ZarinPal 100/101, retries, cancel/mismatch,
 // email outage recoverability, expired-link renewal, anonymous key masking,
 // and privacy redaction. Helpers are c04*-prefixed to avoid colliding with
-// C02/C03 test helpers. See CURSOR_REPORT_C04_TESTS.md.
+// C02/C03 test helpers.
 
 func c04FlowApp(t *testing.T, gateway PaymentGateway) (*App, *httptest.Server, *LocalOutbox, string) {
 	t.Helper()
