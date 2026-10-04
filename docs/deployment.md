@@ -1,78 +1,71 @@
-# VPS deployment (C11)
+# Go service deployment
 
-Production deployment for the Report Maker control plane on an Iran-hosted VPS.
-**No live VPS credentials or DNS in this repo** — external checks **unavailable**
-until the owner supplies them.
+This document describes the intended first production deployment. It does not
+claim that a VPS, DNS, HTTPS certificate, payment account, email provider, SMS
+provider, or restore drill has been completed.
 
-## VPS profile
+## Initial VPS shape
 
-2–4 vCPU, 4 GB RAM, 40–80 GB NVMe, public IPv4, outbound HTTPS (ZarinPal, email,
-SMS). Ubuntu 22.04 or Debian 12. Single Go process + SQLite writer.
+Use an Iran-hosted VPS with roughly 2–4 vCPU, 4 GB RAM, 40–80 GB NVMe, public
+IPv4, and outbound HTTPS access to the selected payment, email, and SMS
+providers. A single Go process and SQLite writer are the initial deployment
+shape.
 
-## Domain, service user, paths
-
-Choose final domain before passkey enrollment. User `reportmaker`:
+Choose the final domain before enrolling production passkeys. Example paths:
 
 | Path | Purpose |
 | --- | --- |
-| `/var/lib/report-maker/report-maker.db` | `REPORT_DB_PATH` |
-| `/var/lib/report-maker/artifacts` | `REPORT_ARTIFACT_ROOT` |
-| `/var/backups/report-maker` | local backups (copy offsite) |
-| `/etc/report-maker/env` | secrets (640) |
-| `/etc/report-maker/keys/` | signing + delivery keys (600) |
+| `/var/lib/report-maker/report-maker.db` | Persistent SQLite database |
+| `/var/lib/report-maker/artifacts` | Published desktop artifacts |
+| `/var/backups/report-maker` | Local backup staging |
+| `/etc/report-maker/env` | Environment configuration and secrets |
+| `/etc/report-maker/keys/` | Restricted signing and delivery keys |
 
-Build: `cd server && go build -o /usr/local/bin/report-maker ./cmd/controlplane`
+Build the service with:
 
-## Environment
+```bash
+cd server
+go build -o /usr/local/bin/report-maker ./cmd/controlplane
+```
 
-Production fail-closed — see [`server/README.md`](../server/README.md). Set
-`PUBLIC_BASE_URL=https://example.ir`, `HTTP_ADDR=127.0.0.1:8080`,
-`REPORT_WEB_AUTHN_RP_ID`, `REPORT_WEB_AUTHN_ORIGINS`, provider vars.
+## Production configuration
 
-## Signing and delivery keys (separate protection)
+Production is fail-closed. Set a persistent `REPORT_DB_PATH`, HTTPS
+`PUBLIC_BASE_URL`, WebAuthn RP id/origins, Ed25519 signing key, license-delivery
+key, ZarinPal merchant id, and real email/SMS provider settings. Development
+flags, demo payments, local outbox, fake SMS, and ephemeral keys must not be
+used on the host.
 
-| Key | Env | Role |
-| --- | --- | --- |
-| Ed25519 | `REPORT_SIGNING_PRIVATE_KEY` | Lease signatures |
-| AES | `REPORT_LICENSE_DELIVERY_KEY` | License delivery encryption |
+The full environment matrix is in [server/README.md](../server/README.md).
 
-Store under `/etc/report-maker/keys/` (600). Back up **separately** from SQLite.
+## Reverse proxy and process
 
-## HTTPS, firewall, systemd
+Terminate TLS at nginx or Caddy and bind the Go process to loopback, for example
+`HTTP_ADDR=127.0.0.1:8080`. Forward the original host and HTTPS scheme so
+WebAuthn origin checks and Secure cookies see the public request. Allow SSH,
+HTTP, and HTTPS through the firewall and keep the application port private.
 
-TLS at nginx/Caddy; app on loopback. ufw: SSH, 80, 443. systemd:
-`KillSignal=SIGTERM`, `TimeoutStopSec=20`, `EnvironmentFile=/etc/report-maker/env`.
+Run the service under systemd with an `EnvironmentFile`, `SIGTERM` shutdown,
+and a stop timeout long enough for the server's 15-second graceful drain.
 
-## Health, readiness, graceful shutdown
-
-`GET /healthz`, `GET /readyz`. `cmd/controlplane` drains HTTP (15 s) on SIGTERM
-then `App.Close()`.
-
-## SQLite backup / restore verification
+## Backups
 
 ```bash
 server/scripts/backup-sqlite.sh [DB_PATH] [BACKUP_DIR]
 server/scripts/verify-sqlite-restore.sh BACKUP_FILE
 ```
 
-Windows: `backup-sqlite.ps1`, `verify-sqlite-restore.ps1`.
+Copy backups off the VPS. Back up the Ed25519 signing key and AES license
+delivery key separately with restricted access. A backup is not verified until a
+clean restore starts the service and passes health checks.
 
-## WebAuthn checklist
+## Required manual checks
 
-- [ ] Final domain + DNS before enrollment
-- [ ] Canonical HTTPS `PUBLIC_BASE_URL`
-- [ ] RP ID = registrable domain; origins complete
-- [ ] Proxy forwards Host / X-Forwarded-Proto
-- [ ] Manual passkey test (**unavailable** here)
+These remain unavailable until the owner supplies infrastructure and credentials:
 
-## Live provider checks
-
-| Check | Status |
-| --- | --- |
-| ZarinPal | **Unavailable** |
-| Email SPF/DKIM/DMARC | **Unavailable** |
-| SMS OTP | **Unavailable** |
-| VPS HTTPS + passkey | **Unavailable** |
-| Offsite restore drill | **Unavailable** (scripts only) |
-
-See [`releases.md`](releases.md), [`providers.md`](providers.md).
+- final domain, DNS, HTTPS, and WebAuthn passkey registration/login;
+- ZarinPal request, redirect, callback, amount verification, and retry;
+- real email receipt/magic-link delivery and SPF/DKIM/DMARC;
+- real SMS phone verification/recovery;
+- clean VPS deployment and offsite restore drill;
+- signed Tauri artifact publication and customer download.

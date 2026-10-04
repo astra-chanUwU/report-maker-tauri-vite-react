@@ -1,24 +1,53 @@
-# Release artifact publication
+# Release artifacts
 
-Installers live outside SQLite in `REPORT_ARTIFACT_ROOT`. Manifest: `releases.json` or `REPORT_RELEASE_MANIFEST`.
+Desktop installers are stored outside SQLite under `REPORT_ARTIFACT_ROOT`.
+The manifest is `server/releases.json` by default or the path configured by
+`REPORT_RELEASE_MANIFEST`.
 
-## Publish
+## Publish locally
 
 ```bash
-cd server && go run ./cmd/publish-release
+cd server
+go run ./cmd/publish-release
 ```
 
-Targets: `desktop-windows-x64`, `desktop-macos-universal`.
+The current manifest contains Windows x64 and macOS universal entries. The
+files under `server/testdata/artifacts/` are tiny test fixtures used to exercise
+path and checksum handling; they are not signed customer installers.
 
-## Security
+## Download safety
 
-- SHA-256 computed by publish tool; verified before download.
-- Path traversal and symlinks rejected.
+- The publisher computes SHA-256 from the exact artifact bytes.
+- The download path is resolved under the configured artifact root.
+- Traversal and symlink escapes are rejected.
+- Entitled customers can download repeatedly; expiring links can be renewed
+  after authentication.
+- Download audit rows contain artifact and order/license references, never report
+  contents.
+
+## Production release checklist
+
+Before publishing a customer release, build and sign real Tauri bundles for the
+supported platforms, publish their exact checksums, place them in the artifact
+root, and verify a clean authenticated download. Keep test fixtures separate from
+the production artifact store.
+
+The release workflow can build draft GitHub Releases from a version tag. It does
+not deploy the Go service or replace the manual signing and artifact verification
+steps.
 
 ## Retention
 
-Current major: while supported. Previous patch: 12 months. Older majors: 6 months after EOL.
+Keep the current major while supported, previous patches for twelve months, and
+older majors for six months after end of life unless the product policy changes.
 
-## Local dev
+## Local service
 
-`REPORT_ARTIFACT_ROOT=testdata/artifacts REPORT_ALLOW_DEV_SEED=1 go run ./cmd/controlplane`
+```bash
+cd server
+REPORT_ENV=development \
+REPORT_ARTIFACT_ROOT=testdata/artifacts \
+REPORT_ALLOW_DEV_SEED=1 \
+REPORT_ALLOW_DEMO_PAYMENTS=1 \
+go run ./cmd/controlplane
+```

@@ -1,81 +1,116 @@
-# Report Maker — Tauri + React + TypeScript
+# Report Maker
 
-Tauri 2 + Vite 8 + React 19 + TypeScript + Tailwind 4 + docx 9. Offline spectral report maker — `.sp3` (Jet MDB) or Data-table CSV → editable Word `.docx`.
+Report Maker is an offline-first vibration report maker. The desktop app imports
+`.sp3`/Jet MDB data or Data-table CSV files, lets an engineer review and edit the
+report, and exports an editable Word document. Customer accounts, payments,
+license activation, downloads, and optional hosted services live in a separate
+Go web service.
 
-Source of truth for logic to port: `../report-generator/src/{parseSp3,generateDocx,ai}.js` (offline heuristics).
+The repository contains two deployables in one monorepo:
 
-## Screenshots
-
-> Add PNGs to `docs/screenshots/` and reference here (300–500px wide, light + dark).
-
-- `ingest.png` — drop zone + spectra chart + table (spec-csv, UTF-16LE)
-- `chart-edit.png` — draggable chart points, smoothing, point limit
-- `export.png` — save dialog / download fallback, history tab
-
-## Quick start
-
-```bash
-npm ci            # or npm install (Node 20+, tested Node 26 + npm 11)
-npm run dev       # Vite web only → http://localhost:1420
-npm run tauri dev # full Tauri (file dialogs, store, mdb-export)
+```text
+src/                 React + TypeScript desktop interface
+src-tauri/           Rust/Tauri desktop shell and native file/database access
+server/              Go website, control-plane API, payments, auth, and admin
+server/cmd/controlplane
+                     Go service entry point
 ```
 
-Harden lanes: A (bundle/a11y/large-file), B (Tauri bundle + CI/release), C (this polish) are done. Tests: `npm test` (33), Rust: `cargo test --manifest-path src-tauri/Cargo.toml --lib`.
+The desktop report pipeline remains local. `.sp3` files, report content,
+filesystem paths, and DOCX generation are not uploaded by the normal workflow.
 
-## Toolchain (S00 decision)
+## Desktop development
 
-- **Package manager: npm** (`package-lock.json` committed). Do not use pnpm/yarn — `pnpm-lock.yaml` is git-ignored.
-  `src-tauri/tauri.conf.json` uses `npm run dev` / `npm run build`.
-- Node 20+ (tested on Node 26 + npm 11).
-- Rust stable for `src-tauri` (optional for frontend-only work).
+Requirements: Node 20+, npm, and Rust stable for Tauri work.
 
-## Scripts
+```bash
+npm ci
+npm run dev          # Vite browser shell at http://localhost:1420
+npm run tauri dev   # full desktop application
+```
 
-| Command                        | What it does                                                        |
-| ------------------------------ | ------------------------------------------------------------------- |
-| `npm run dev`                  | Vite web dev only (browser, no Tauri APIs, `http://localhost:1420`) |
-| `npm run tauri dev`            | Full Tauri dev (WebView + Rust, uses `npm run dev` under the hood)  |
-| `npm run tauri build`          | Full Tauri production bundle (runs `npm run build` + `cargo`)       |
-| `npm run build`                | Typecheck (`tsc -b`) + Vite production build to `dist/`             |
-| `npm run preview`              | Preview `dist/` locally                                             |
-| `npm run typecheck`            | `tsc --noEmit`                                                      |
-| `npm run lint`                 | `prettier --check .`                                                |
-| `npm run format`               | `prettier --write .`                                                |
-| `node scripts/gen-license.mjs` | Print a valid v1 `RM-XXXX-XXXX-XXXX` key (see `docs/licensing.md`)  |
+Use `npm run dev` for fast UI work. Use `npm run tauri dev` when testing native
+file dialogs, the OS keychain, MDB export, local storage, or DOCX saving.
 
-`npm run dev` vs `npm run tauri` vs `npm run tauri dev`:
+Useful commands:
 
-- Use `npm run dev` for fast UI iteration (Tauri APIs mocked/absent).
-- Use `npm run tauri dev` when you need file-save dialogs, store, opener, etc.
-- `npm run tauri` alone is just the Tauri CLI passthrough.
+```bash
+npm run typecheck
+npm test
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+```
 
-## Importing real data
+`index.html` is the Vite entry shell for this React application. It is not the
+customer marketing website.
 
-`.sp3` files are MS Access Jet databases — browsers cannot read them directly.
+## Go service development
 
-- **Tauri (recommended):** `Open .sp3 file` → backend runs `mdb-export file.sp3 Data` to a temp CSV (streamed, never full-RAM), then parses first row. Remaining measurements are listed via the measurement picker (rows → on-demand load). No install if `mdb-export` is on `PATH`; override via `MDB_EXPORT_PATH` env or Settings → Tool path.
-- **Web / fallback:** export the Data table yourself:
+The Go service renders the public site with `html/template` and HTMX and serves
+JSON endpoints under `/v1/*` for the desktop application. It uses SQLite first,
+with WAL, foreign keys, a busy timeout, and a single writer connection.
 
-  ```bash
-  # macOS (brew) / Ubuntu
-  brew install mdbtools        # or: sudo apt-get install mdbtools
-  mdb-export file.sp3 Data > data.csv   # 38 columns incl. Specdata (octal blob)
-  # then drop data.csv in the web build — header + first row parsed only (<4 MB head),
-  # huge files use first-row-only preview; picker streams rows in Tauri.
-  ```
+```bash
+cd server
+REPORT_ENV=development \
+REPORT_ALLOW_DEV_SEED=1 \
+REPORT_ALLOW_DEMO_PAYMENTS=1 \
+go run ./cmd/controlplane
+```
 
-Spec CSV shape: 38 columns, `Specdata` = `\ooo` octal of `NoLines` float32-LE amps; `freq(i) = (i+1)*BandWidth`; overall fields (`MeasDate` OLE date → ISO, RMS/Peak, Unit, PointID) travel into preview + docx. Real examples: sample CSV downloadable from the onboarding card.
+The local service listens on `http://localhost:8080` by default. Its public
+surface includes:
 
-## Project slices
+- marketing and checkout pages: `/`, `/pricing`, `/download`, `/checkout/*`;
+- customer sign-in, purchases, and downloads: `/login`, `/account/*`;
+- domestic payment redirects and callbacks: `/payments/*`;
+- desktop licensing, AI, and telemetry contracts: `/v1/*`;
+- separate support administration: `/admin/*`.
 
-See [TODO.md](./TODO.md) for remaining control-plane slices (C09–C11 open;
-integration branch `integrate/control-plane`). Desktop docx follow-ups live in
-[TODO.next.md](./TODO.next.md).
+Development uses a demo payment gateway, local email outbox, fake SMS, and
+ephemeral development keys. Production rejects those substitutes and requires
+explicit persistent configuration. See [server/README.md](server/README.md).
+
+## Repository documentation
+
+- [docs/go-architecture.md](docs/go-architecture.md) — deployables, boundaries,
+  routes, persistence, and security rules.
+- [docs/control-plane.md](docs/control-plane.md) — desktop/server contracts and
+  privacy boundaries.
+- [docs/licensing.md](docs/licensing.md) — license and signed-lease lifecycle.
+- [docs/providers.md](docs/providers.md) — email, SMS, and delivery outbox.
+- [docs/releases.md](docs/releases.md) — artifact publication and verification.
+- [docs/deployment.md](docs/deployment.md) — planned VPS deployment and manual
+  checks that are still unavailable.
+- [TODO.md](TODO.md) — current work and verification backlog.
+- [TODO.next.md](TODO.next.md) — desktop report/DOCX backlog.
+
+## Real data import
+
+Browsers cannot read Jet MDB files directly. In the Tauri application, the Rust
+side invokes `mdb-export` and streams the Data table to the parser. Install
+`mdbtools` separately and override the binary path in Settings or with
+`MDB_EXPORT_PATH` when needed:
+
+```bash
+brew install mdbtools
+mdb-export file.sp3 Data > data.csv
+```
+
+The web-only Vite shell accepts CSV fixtures for development; native `.sp3`
+access requires Tauri.
 
 ## Releases
 
-- `.github/workflows/release.yml` — on a `v*` tag or manual dispatch, builds Tauri bundles per OS (Tauri Action) and publishes a **draft** GitHub Release.
+`.github/workflows/release.yml` is the only GitHub automation remaining. A
+`v*` tag or manual dispatch builds draft Tauri bundles for the supported desktop
+targets. The Go service is built and deployed separately. Test fixture files in
+`server/testdata/artifacts/` are not production installers.
 
-## Recommended IDE Setup
+## Current limitations
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+The codebase has automated unit and contract tests, but production readiness
+still requires a real browser passkey test, a ZarinPal sandbox/manual payment
+test, configured email/SMS providers, a domain and HTTPS origin, a VPS restore
+drill, and signed release artifacts. Those checks are intentionally documented
+as unavailable until the required external accounts and infrastructure exist.
