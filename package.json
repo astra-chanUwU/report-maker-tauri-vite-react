@@ -1,7 +1,7 @@
 {
   "name": "report-maker-tauri-vite-react",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "env -u npm_config_npm_globalconfig -u npm_config_verify_deps_before_run -u npm_config__jsr_registry -u NPM_CONFIG_NPM_GLOBALCONFIG -u NPM_CONFIG_VERIFY_DEPS_BEFORE_RUN -u NPM_CONFIG__JSR_REGISTRY vite",
@@ -9,8 +9,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "typecheck": "tsc --noEmit",
-    "lint": "biome lint .",
-    "format": "biome format --write .",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
     "test": "vitest run"
   },
   "dependencies": {
@@ -33,13 +34,14 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
     "@types/node": "^26.6.3",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "vite": "^8.0.16",

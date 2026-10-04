@@ -84,8 +84,6 @@ explicit persistent configuration. See [server/README.md](server/README.md).
 - [docs/releases.md](docs/releases.md) — artifact publication and verification.
 - [docs/deployment.md](docs/deployment.md) — planned VPS deployment and manual
   checks that are still unavailable.
-- [TODO.md](TODO.md) — current work and verification backlog.
-- [TODO.next.md](TODO.next.md) — desktop report/DOCX backlog.
 
 ## Editor tooling
 
@@ -93,8 +91,9 @@ explicit persistent configuration. See [server/README.md](server/README.md).
   extensions; it does not affect builds or runtime behavior.
 - `.editorconfig` gives editors a shared baseline for UTF-8, LF line endings,
   indentation, final newlines, and trailing whitespace.
-- `biome.json` configures the Rust-based Biome formatter and linter for the
-  JavaScript/TypeScript/CSS toolchain. Prettier and ESLint are not dependencies.
+- `.oxlintrc.json` configures the Rust-based Oxlint linter.
+- `.oxfmtrc.json` configures the Rust-based Oxfmt formatter.
+- Prettier, ESLint, and Biome are not dependencies.
 
 ## Real data import
 

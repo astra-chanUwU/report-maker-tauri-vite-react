@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "jsx-a11y", "typescript", "unicorn", "oxc"],
+  "env": {
+    "builtin": true,
+    "browser": true,
+    "es2022": true,
+    "node": true,
+    "worker": true,
+    "vitest": true
+  },
+  "ignorePatterns": [
+    "node_modules/**",
+    "dist/**",
+    "src-tauri/**",
+    "server/static/htmx.min.js",
+    "public/*.svg",
+    "src/assets/*.svg"
+  ],
+  "categories": {
+    "correctness": "warn"
+  },
+  "rules": {}
+}

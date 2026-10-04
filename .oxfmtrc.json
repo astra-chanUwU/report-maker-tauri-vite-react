@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "semi": true,
+  "singleQuote": false,
+  "tabWidth": 2,
+  "useTabs": false,
+  "trailingComma": "es5",
+  "ignorePatterns": [
+    "node_modules/**",
+    "dist/**",
+    "src-tauri/**",
+    "server/static/htmx.min.js",
+    "public/*.svg",
+    "src/assets/*.svg",
+    "package-lock.json",
+    "pnpm-lock.yaml"
+  ]
+}
