@@ -2,8 +2,8 @@
 
 **Model:** Grok 4.5 High  
 **Date:** 2026-10-05  
-**Integrate tip pushed:** `origin/integrate/control-plane` @ **`4e5eba6`**  
-**main tip (after merge):** see git log on `origin/main` after push  
+**Integrate tip pushed:** `origin/integrate/control-plane` @ **`3af5c80`**  
+**main tip:** `origin/main` @ **`03a71b7`** (`merge: integrate control-plane C00-C12`)  
 
 ## Landing status
 
