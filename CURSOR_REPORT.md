@@ -3,7 +3,7 @@
 **Model:** Grok 4.5 High  
 **Date:** 2026-10-05  
 **Integrate tip pushed:** `origin/integrate/control-plane` @ **`3af5c80`**  
-**main tip:** `origin/main` @ **`a173970`** (merge commit `03a71b7` + report pin)  
+**main tip:** `origin/main` @ **`ebeb5cd`** (control-plane merge `03a71b7`)  
 
 ## Landing status
 
