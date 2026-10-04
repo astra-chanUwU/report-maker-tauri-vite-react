@@ -72,10 +72,9 @@ See [TODO.md](./TODO.md) for remaining control-plane slices (C09–C11 open;
 integration branch `integrate/control-plane`). Desktop docx follow-ups live in
 [TODO.next.md](./TODO.next.md).
 
-## CI & Releases
+## Releases
 
-- `.github/workflows/ci.yml` — typecheck + build + vitest + `cargo check` + `cargo test` on every push/PR.
-- `.github/workflows/release.yml` — on `v*` tag or manual dispatch, builds Tauri bundles per OS (Tauri Action) and publishes a **draft** GitHub Release.
+- `.github/workflows/release.yml` — on a `v*` tag or manual dispatch, builds Tauri bundles per OS (Tauri Action) and publishes a **draft** GitHub Release.
 
 ## Recommended IDE Setup
 
