@@ -142,11 +142,11 @@ export function validateReportOptions(o: ReportOptions): FormErrors {
 const BRANDING_KEY = "report-maker:branding:v1";
 
 export interface Branding {
-  /** PNG bytes as base64 (no data: prefix). Null when no logo. */
+  /** User-supplied PNG bytes as base64 (no data: prefix). Null when no logo. */
   logoBase64: string | null;
-  /** Cover-page image (JPEG/PNG base64, no prefix). Null = no cover page. */
+  /** User-supplied cover image (JPEG/PNG base64, no prefix). Null = no cover page. */
   coverBase64: string | null;
-  /** Signature stamp (PNG base64, no prefix). Null = no signature block. */
+  /** User-supplied signature stamp (PNG base64, no prefix). Null = no signature block. */
   signatureBase64: string | null;
 }
 
@@ -175,33 +175,6 @@ export function saveBranding(b: Branding): void {
   } catch {
     // quota — keep in-memory only
   }
-}
-
-/** True when the user has branding stored (used to seed Elika defaults once). */
-export function hasStoredBranding(): boolean {
-  return lsGet(BRANDING_KEY) !== null;
-}
-
-async function fetchAssetBase64(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return bytesToBase64(new Uint8Array(await res.arrayBuffer()));
-  } catch {
-    return null;
-  }
-}
-
-/** First-run defaults from public/branding (Elika logo / cover / signature). */
-export async function seedDefaultBranding(): Promise<Branding | null> {
-  const base = import.meta.env.BASE_URL || "/";
-  const [logoBase64, coverBase64, signatureBase64] = await Promise.all([
-    fetchAssetBase64(`${base}branding/logo.png`),
-    fetchAssetBase64(`${base}branding/cover.jpg`),
-    fetchAssetBase64(`${base}branding/signature.png`),
-  ]);
-  if (!logoBase64 && !coverBase64 && !signatureBase64) return null;
-  return { logoBase64, coverBase64, signatureBase64 };
 }
 
 export function base64ToBytes(b64: string): Uint8Array {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultBranding, hasStoredBranding, loadBranding, saveBranding } from "../settings";
+import { defaultBranding, loadBranding, saveBranding } from "../settings";
 
 describe("branding storage (logo / cover / signature)", () => {
   it("defaults to empty branding", () => {
@@ -10,12 +10,10 @@ describe("branding storage (logo / cover / signature)", () => {
     });
     // vitest has no localStorage → falls back to defaults
     expect(loadBranding()).toEqual(defaultBranding());
-    expect(hasStoredBranding()).toBe(false);
   });
 
   it("round-trips all three assets", () => {
     saveBranding({ logoBase64: "bG9nbw==", coverBase64: "Y292ZXI=", signatureBase64: "c2ln" });
-    expect(hasStoredBranding()).toBe(true);
     expect(loadBranding()).toEqual({
       logoBase64: "bG9nbw==",
       coverBase64: "Y292ZXI=",
