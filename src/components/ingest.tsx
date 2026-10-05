@@ -57,7 +57,9 @@ export function useIngest(onParsed: OnParsed): Ingest {
   const [tool, setTool] = useState<MdbToolStatus | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const onParsedRef = useRef(onParsed);
-  onParsedRef.current = onParsed;
+  useEffect(() => {
+    onParsedRef.current = onParsed;
+  }, [onParsed]);
 
   const refreshTool = useCallback(() => {
     void mdbToolStatus()

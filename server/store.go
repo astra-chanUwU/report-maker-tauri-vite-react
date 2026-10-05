@@ -185,6 +185,18 @@ func NewStore() *Store {
 }
 func (s *Store) Close() error { return s.db.Close() }
 
+func (s *Store) Ping() error {
+	if s == nil || s.db == nil {
+		return errors.New("store unavailable")
+	}
+	// Use a short check that validates the DB connection.
+	if err := s.db.Ping(); err != nil {
+		return err
+	}
+	var one int
+	return s.db.QueryRow(`SELECT 1`).Scan(&one)
+}
+
 func LicenseKeyHash(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])

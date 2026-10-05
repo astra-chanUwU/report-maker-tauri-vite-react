@@ -51,5 +51,3 @@ self.onmessage = async (e: MessageEvent<DocxWorkerRequest>) => {
     (self as unknown as { postMessage: (msg: DocxWorkerResponse) => void }).postMessage(response);
   }
 };
-
-export {};

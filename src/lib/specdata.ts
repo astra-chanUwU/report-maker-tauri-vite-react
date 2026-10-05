@@ -221,10 +221,10 @@ export function freqOf(index0: number, bandWidth: number): number {
 }
 
 export function rowToSpectrum(row: SpecRow): SpectraPoint[] {
-  const out: SpectraPoint[] = new Array(row.noLines);
-  for (let i = 0; i < row.noLines; i++) {
-    out[i] = { freq: Math.round(freqOf(i, row.bandWidth) * 1000) / 1000, amp: row.amplitudes[i] };
-  }
+  const out: SpectraPoint[] = Array.from({ length: row.noLines }, (_, i) => ({
+    freq: Math.round(freqOf(i, row.bandWidth) * 1000) / 1000,
+    amp: row.amplitudes[i],
+  }));
   return out;
 }
 

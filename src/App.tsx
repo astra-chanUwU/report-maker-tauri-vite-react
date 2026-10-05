@@ -135,7 +135,9 @@ function App() {
   const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
   const pendingSp3PathRef = useRef<string | null>(null);
   const jobsRef = useRef<ImportJob[]>([]);
-  jobsRef.current = importJobs;
+  useEffect(() => {
+    jobsRef.current = importJobs;
+  }, [importJobs]);
 
   const uiLang: UiLang = options.language === "fa" ? "fa" : "en";
   const t = useCallback(
@@ -427,7 +429,9 @@ function App() {
 
   // Native window drops (Tauri) carry real paths, so .sp3 can go through mdb-export.
   const handlePathRef = useRef(ingest.handlePath);
-  handlePathRef.current = ingest.handlePath;
+  useEffect(() => {
+    handlePathRef.current = ingest.handlePath;
+  }, [ingest.handlePath]);
   const isInsideBrandingDrop = (target: EventTarget | null) =>
     target instanceof HTMLElement && !!target.closest("[data-branding-drop],[data-schematic-drop]");
   const dragLooksLikeIngest = (e: React.DragEvent) => {

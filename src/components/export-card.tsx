@@ -169,7 +169,9 @@ export function ExportControls({
   const { t } = useUi();
   const [lastPath, setLastPath] = useState<string | null>(null);
   const progressRef = useRef(onProgress);
-  progressRef.current = onProgress;
+  useEffect(() => {
+    progressRef.current = onProgress;
+  }, [onProgress]);
 
   const report = async (p: ExportProgress) => {
     progressRef.current?.(p);
@@ -525,7 +527,9 @@ export function ExportControls({
   };
 
   const exportRef = useRef(handleExport);
-  exportRef.current = handleExport;
+  useEffect(() => {
+    exportRef.current = handleExport;
+  });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "e") {

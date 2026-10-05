@@ -206,7 +206,7 @@ func (a *App) Close() error {
 }
 func (a *App) routes() {
 	a.mux.HandleFunc("GET /healthz", a.health)
-	a.mux.HandleFunc("GET /readyz", a.health)
+	a.mux.HandleFunc("GET /readyz", a.ready)
 	a.mux.HandleFunc("GET /", a.home)
 	a.mux.HandleFunc("GET /pricing", a.pricing)
 	a.mux.HandleFunc("GET /download", a.download)
@@ -221,6 +221,16 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /v1/telemetry/batch", a.telemetry)
 }
 func (a *App) health(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "report-maker-control-plane"})
+}
+
+func (a *App) ready(w http.ResponseWriter, _ *http.Request) {
+	if a.store != nil {
+		if err := a.store.Ping(); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "not_ready", "reason": "store_unavailable"})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "report-maker-control-plane"})
 }
 func (a *App) home(w http.ResponseWriter, r *http.Request) {
