@@ -796,8 +796,8 @@ function App() {
                   <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
                 </div>
               ) : !effective ? (
-                <div className="grid gap-4">
-                  <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+                <div className="grid gap-3.5">
+                  <div className="grid items-stretch gap-3.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)] xl:gap-4">
                     <DropZone ingest={ingestWithPath} />
                     <Onboarding />
                   </div>
@@ -997,7 +997,7 @@ function App() {
 
             <Page active={page === "layout"}>
               <div className="grid gap-4">
-                <div className="grid items-start gap-4 xl:grid-cols-2">
+                <div className="grid items-start gap-4">
                   <TemplateCard options={options} onOptions={setOptions} />
                   <ReportContentsCard options={options} onChange={setOptions} />
                 </div>
@@ -1036,7 +1036,7 @@ function App() {
             </Page>
 
             <Page active={page === "settings"}>
-              <div className="grid gap-6">
+              <div className="grid gap-5">
                 <section className="grid gap-3">
                   <div className="flex items-center gap-2">
                     <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -1083,7 +1083,7 @@ function App() {
                 </section>
 
                 {import.meta.env.DEV ? (
-                  <section className="grid gap-3 border-t pt-6">
+                  <section className="grid gap-3 border-t pt-5">
                     <div className="flex items-center gap-2">
                       <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       <h2 className="text-sm font-semibold">Design system</h2>
@@ -1177,7 +1177,7 @@ function Page({ active, children }: { active: boolean; children: ReactNode }) {
       )}
       aria-hidden={!active}
     >
-      <div className="mx-auto w-full max-w-[1400px] px-5 py-5">{children}</div>
+      <div className="mx-auto w-full max-w-[1360px] px-4 py-4 sm:px-5">{children}</div>
     </div>
   );
 }

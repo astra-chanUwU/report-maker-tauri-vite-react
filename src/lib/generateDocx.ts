@@ -26,6 +26,7 @@ import {
   type IRunOptions,
   type ITableCellBorders,
 } from "docx";
+import { ChartRun } from "docx/charts";
 import { computeStats, type ReportOptions, type SpectraPoint, type Sp3Meta } from "./parseSp3";
 import { sectionTitle } from "./fa";
 import { encodePng, drawCallout, line, setPixel } from "./png";
@@ -33,15 +34,18 @@ import { applyWordRtl } from "./docx-rtl";
 import { findDominantPeaks, formatPeakLabel } from "./spectra-peaks";
 import { getTemplate, type DocTemplate } from "./templates";
 import { buildIsoTableData, ISO_COLUMN_DXA, type IsoCell, type IsoDataRow } from "./iso10816";
-import { secondaryLabels, secondaryLimits, type SecondaryMetric } from "./metrics";
+import { secondaryLabels, secondaryLimits, type SecondaryMetric, type TrendMetric } from "./metrics";
 import {
   classifyZone,
+  DEFAULT_ZONE_LIMITS,
   formatLimits,
   limitsDisabled,
   limitsShort,
+  resolveLimits,
   ZONE_FILL,
   ZONE_TEXT,
   type ZoneLimitSet,
+  type ZoneLimits,
 } from "./zones";
 
 /** Persian reports set paragraph base direction and run language. Cleared at the start of each build. */
@@ -264,7 +268,7 @@ export function buildMeasuringTableData(
     }
     return cells;
   });
-  const widths = show ? [920, 3590, 660, 800, 560, 3590, 652] : [1100, 6000, 900, 1100, 1672];
+  const widths = show ? [1200, 3450, 660, 800, 560, 3450, 652] : [1300, 5800, 900, 1100, 1672];
   return { groups, header, headerFill, body, widths };
 }
 
@@ -326,19 +330,49 @@ export interface BuildDocxInput {
     pointLabel: string;
     sampleCount: number;
     window: string;
+    /** Preview sparklines used by the app UI; never used for DOCX trend rendering. */
     velocityPng: Uint8Array;
+    /** Preview sparklines used by the app UI; never used for DOCX trend rendering. */
     accelPng: Uint8Array;
+    /** Real chart data — actual dates and values with null gaps preserved. */
+    velocityCategories?: (string | number)[];
+    velocityValues?: (number | null)[];
+    accelCategories?: (string | number)[];
+    accelValues?: (number | null)[];
+    secondaryMetric?: SecondaryMetric | TrendMetric;
+    velocityLimits?: ZoneLimits;
+    accelLimits?: ZoneLimits;
   };
   /** All-points trends (brochure p.6): V+A PNG pair per point. */
   allTrends?: {
     pointLabel: string;
     sampleCount: number;
+    window: string;
+    secondaryMetric?: SecondaryMetric | TrendMetric;
+    /** Preview sparklines used by the app UI; never used for DOCX trend rendering. */
     velocityPng: Uint8Array;
+    /** Preview sparklines used by the app UI; never used for DOCX trend rendering. */
     accelPng: Uint8Array;
     envelopePng?: Uint8Array;
+    /** Real chart data. */
+    velocityCategories?: (string | number)[];
+    velocityValues?: (number | null)[];
+    accelCategories?: (string | number)[];
+    accelValues?: (number | null)[];
+    envelopeCategories?: (string | number)[];
+    envelopeValues?: (number | null)[];
+    velocityLimits?: ZoneLimits;
+    accelLimits?: ZoneLimits;
+    envelopeLimits?: ZoneLimits;
   }[];
   /** FFT gallery for all points (brochure p.7). */
-  fftGallery?: { label: string; png: Uint8Array; peak?: string }[];
+  fftGallery?: {
+    label: string;
+    png: Uint8Array;
+    peak?: string;
+    /** Optional raw spectra for editable chart; if present, native chart is used. */
+    spectra?: SpectraPoint[];
+  }[];
   /** Analyst-edited ISO 10816-3 rows (printed when options.useCustomIso). */
   isoRows?: IsoDataRow[];
   /** Envelope unit from EnvelopeData (default gEN). */
@@ -416,6 +450,153 @@ function downsample(spectra: SpectraPoint[], max: number): SpectraPoint[] {
   const out: SpectraPoint[] = [];
   for (let i = 0; i < max; i++) out.push(spectra[Math.floor(i * step)]);
   return out;
+}
+
+// ── Native editable charts (docx ChartRun) ──────────────────────────────
+// Keep the existing PNG helpers for sparklines/small inline images.
+// Full-size charts become editable Word objects via these helpers.
+
+const CHART_COLOR_SPECTRUM = "1B4F72"; // navy — spectrum line
+const CHART_COLOR_VEL = "1B5E20"; // dark green — velocity
+const CHART_COLOR_ACC = "1976D2"; // blue — acceleration
+const CHART_COLOR_ENVELOPE = "2E7D32";
+
+export function spectrumChartRun(
+  spectra: SpectraPoint[],
+  opts: { title?: string; width?: number; height?: number; lang?: "en" | "fa"; unit?: string } = {}
+): ChartRun {
+  const pts = downsample(spectra, 400);
+  const safe = pts.length > 0 ? pts : [{ freq: 0, amp: 0 }];
+  const lang = opts.lang ?? "en";
+  const unit = opts.unit ?? "";
+  const xTitle = lang === "fa" ? sectionTitle(lang, "freq") + " (Hz)" : "Frequency (Hz)";
+  const yLabel = sectionTitle(lang, "amp");
+  const yTitle = unit ? `${yLabel} (${unit})` : yLabel;
+  const seriesName = lang === "fa" ? "دامنه" : "Amplitude";
+  return new ChartRun({
+    type: "scatter",
+    title: opts.title ? { text: opts.title } : undefined,
+    series: [
+      {
+        name: seriesName,
+        color: CHART_COLOR_SPECTRUM,
+        points: safe.map((p) => ({ x: p.freq, y: p.amp })),
+      },
+    ],
+    lines: "straight",
+    markers: { shape: "circle", size: 5 },
+    xAxis: { title: { text: xTitle }, gridlines: true },
+    yAxis: { title: { text: yTitle }, gridlines: true },
+    legend: false,
+    transformation: { width: opts.width ?? 600, height: opts.height ?? 300 },
+  });
+}
+
+export function trendChartRun(
+  categories: (string | number)[],
+  values: (number | null)[],
+  opts: {
+    title?: string;
+    seriesName?: string;
+    color?: string;
+    width?: number;
+    height?: number;
+    lang?: "en" | "fa";
+    unit?: string;
+    limits?: ZoneLimits;
+  } = {}
+): ChartRun {
+  const cats = categories.length > 0 ? categories : ["—"];
+  const vals = values.length > 0 ? values : [null];
+  const safeVals = cats.map((_, i) => (i < vals.length ? vals[i] : null));
+  const lang = opts.lang ?? "en";
+  const unit = opts.unit ?? "";
+  const seriesName = opts.seriesName ?? (lang === "fa" ? "مقدار" : "Value");
+  const xTitle = lang === "fa" ? "تاریخ" : "Date";
+  const yTitle = unit ? `${seriesName} (${unit})` : seriesName;
+  const series: { name: string; values: (number | null)[]; color?: string; markers?: boolean; line?: { color?: string; dash?: "dash" | "dot"; width?: number } }[] = [
+    {
+      name: seriesName,
+      values: safeVals,
+      color: opts.color ?? CHART_COLOR_VEL,
+      markers: true,
+    },
+  ];
+  // Threshold lines as editable series (dashed)
+  if (opts.limits && !limitsDisabled(opts.limits)) {
+    const lim = resolveLimits(opts.limits);
+    const thresholds: [string, number | null, string][] = [
+      [lang === "fa" ? `حد B (${lim.bottom ?? "—"})` : `B Threshold (${lim.bottom ?? "—"})`, lim.bottom, "FFEB3B"],
+      [lang === "fa" ? `حد U (${lim.mid ?? "—"})` : `U Threshold (${lim.mid ?? "—"})`, lim.mid, "F57C00"],
+      [lang === "fa" ? `حد C (${lim.top ?? "—"})` : `C Threshold (${lim.top ?? "—"})`, lim.top, "D32F2F"],
+    ];
+    for (const [name, val, col] of thresholds) {
+      if (val !== null && val > 0) {
+        const thrVals = cats.map(() => val);
+        series.push({ name, values: thrVals, color: col, markers: false, line: { color: col, dash: "dash", width: 1 } } as never);
+      }
+    }
+  }
+  return new ChartRun({
+    type: "line",
+    title: opts.title ? { text: opts.title } : undefined,
+    categories: cats,
+    series: series as never,
+    categoryAxis: { title: { text: xTitle }, gridlines: false },
+    valueAxis: { title: { text: yTitle }, gridlines: true },
+    markers: true,
+    legend: series.length > 1 ? { position: "bottom" } : false,
+    transformation: { width: opts.width ?? 600, height: opts.height ?? 300 },
+  });
+}
+
+export function createVelocityTrendChart(
+  categories: string[],
+  values: (number | null)[]
+): ChartRun {
+  return trendChartRun(categories, values, {
+    seriesName: "Velocity",
+    color: CHART_COLOR_VEL,
+  });
+}
+
+export function createAccelTrendChart(
+  categories: string[],
+  values: (number | null)[]
+): ChartRun {
+  return trendChartRun(categories, values, {
+    seriesName: "Acceleration",
+    color: CHART_COLOR_ACC,
+  });
+}
+
+function trendChartParagraph(
+  categories: (string | number)[] | undefined,
+  values: (number | null)[] | undefined,
+  color: string,
+  seriesName: string,
+  lang: "en" | "fa" = "en",
+  unit?: string,
+  limits?: ZoneLimits
+): Paragraph | null {
+  if (categories && values && categories.length > 0 && values.length > 0) {
+    return docParagraph({
+      children: [
+        trendChartRun(categories, values, {
+          seriesName,
+          color,
+          width: 600,
+          height: 300,
+          lang,
+          unit,
+          limits,
+        }),
+      ],
+      alignment: AlignmentType.CENTER,
+    });
+  }
+  const msg = lang === "fa" ? "داده روند موجود نیست" : "No trend data available";
+  return docParagraph({ children: [docRun({ text: msg, italics: true, color: "737373" })], alignment: AlignmentType.CENTER });
 }
 
 /** §3 equipment page: name + technical specs + machine schematic + status/AI fields. */
@@ -632,7 +813,8 @@ function tocSection(
   if (equipments.length === 0) return [];
   const lang: "en" | "fa" = fa ? "fa" : "en";
   const rows = buildTocRows(equipments);
-  const cell = (children: Paragraph[]) => new TableCell({ children });
+  const cell = (children: Paragraph[]) =>
+    new TableCell({ children, margins: headerCellPad });
   const textCell = (t: string, bold = false) =>
     cell([docParagraph({ children: [docRun({ text: t, bold })] })]);
   const linkCell = (label: string, anchor: string, indent = false) =>
@@ -785,7 +967,9 @@ const SEAMLESS: ITableCellBorders = {
 };
 const shade = (fill?: string) =>
   fill ? { shading: { type: ShadingType.CLEAR, fill, color: "auto" } } : {};
-const tight = { top: 30, bottom: 30, left: 50, right: 50 };
+const tight = { top: 60, bottom: 60, left: 120, right: 120 };
+const paddedCell = { top: 80, bottom: 80, left: 150, right: 150 };
+const headerCellPad = { top: 60, bottom: 60, left: 130, right: 130 };
 
 function centered(text: string, run: IRunOptions = {}): Paragraph {
   const parts = text.split("\n");
@@ -902,7 +1086,7 @@ function specsTable(rows: [string, string][]): Table {
   const cell = (t: string, isLabel: boolean) =>
     new TableCell({
       width: { size: isLabel ? label : TABLE_DXA - label, type: WidthType.DXA },
-      margins: { top: 40, bottom: 40, left: 100, right: 100 },
+      margins: paddedCell,
       ...shade(isLabel ? "F1F8E9" : undefined),
       children: [
         docParagraph({
@@ -928,7 +1112,7 @@ function identityTable(rows: [string, string][]): Table {
   const cell = (t: string, isLabel: boolean) =>
     new TableCell({
       width: { size: isLabel ? label : TABLE_DXA - label, type: WidthType.DXA },
-      margins: { top: 40, bottom: 40, left: 100, right: 100 },
+      margins: paddedCell,
       ...shade(isLabel ? "E8F5E9" : undefined),
       children: [
         docParagraph({
@@ -1008,7 +1192,7 @@ function metaPairTable(
                 left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
                 right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
               },
-              margins: { top: 60, bottom: 60, left: 80, right: 80 },
+              margins: { top: 70, bottom: 70, left: 130, right: 130 },
               children: [
                 docParagraph({
                   alignment: fa ? AlignmentType.RIGHT : AlignmentType.LEFT,
@@ -1251,7 +1435,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const stats = computeStats(input.spectra);
   const limit = input.options.pointLimit ?? 120;
   const rows = input.spectra.slice(0, Math.max(1, Math.min(limit, input.spectra.length)));
-  const png = renderChartPng(input.spectra);
+  void renderChartPng; // kept for sparklines; main spectrum now uses editable chart
   const d = input.aiDraft;
   const templateId = input.templateId ?? input.options.templateId ?? "classic";
   const template = getTemplate(templateId);
@@ -1267,6 +1451,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         ].map(
           (t) =>
             new TableCell({
+              margins: paddedCell,
               children: [docParagraph({ children: [docRun({ text: t, bold: true })] })],
             })
         ),
@@ -1275,7 +1460,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         (p) =>
           new TableRow({
             children: [String(p.freq), String(p.amp)].map(
-              (t) => new TableCell({ children: [docParagraph(t)] })
+              (t) => new TableCell({ children: [docParagraph(t)], margins: tight })
             ),
           })
       ),
@@ -1313,47 +1498,22 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       headingWithBookmark(sectionTitle(lang, "trendsAll"), HeadingLevel.HEADING_1, bookmarkId)
     );
     for (const t of list.slice(0, 40)) {
+      const secMetric = (t.secondaryMetric ?? input.options.secondaryMetric ?? "acceleration") as SecondaryMetric;
+      const secLabel = secondaryLabels(secMetric, lang, input.envelopeUnit);
       children.push(
         docParagraph({
           text: `${t.pointLabel} · ${t.sampleCount} samples`,
           heading: HeadingLevel.HEADING_2,
         }),
-        docParagraph({
-          children: [
-            new ImageRun({
-              data: t.velocityPng,
-              transformation: { width: 600, height: 300 },
-              type: "png",
-            }),
-          ],
-          alignment: AlignmentType.CENTER,
-        }),
-        docParagraph({
-          children: [
-            new ImageRun({
-              data: t.accelPng,
-              transformation: { width: 600, height: 300 },
-              type: "png",
-            }),
-          ],
-          alignment: AlignmentType.CENTER,
-        }),
+        trendChartParagraph(t.velocityCategories, t.velocityValues, CHART_COLOR_VEL, sectionTitle(lang, "velocity"), lang, "mm/s", t.velocityLimits ?? input.zones?.limits.velocity)!,
+        trendChartParagraph(t.accelCategories, t.accelValues, CHART_COLOR_ACC, secLabel.short, lang, secLabel.unit, t.accelLimits ?? secondaryLimits(input.zones?.limits ?? DEFAULT_ZONE_LIMITS, secMetric))!,
         ...(t.envelopePng
           ? [
               docParagraph({
                 text: sectionTitle(lang, "envelope"),
                 heading: HeadingLevel.HEADING_2,
               }),
-              docParagraph({
-                children: [
-                  new ImageRun({
-                    data: t.envelopePng,
-                    transformation: { width: 600, height: 300 },
-                    type: "png",
-                  }),
-                ],
-                alignment: AlignmentType.CENTER,
-              }),
+              trendChartParagraph(t.envelopeCategories, t.envelopeValues, CHART_COLOR_ENVELOPE, sectionTitle(lang, "envelope"), lang, t.envelopeLimits ? secondaryLabels("envelope", lang, input.envelopeUnit).unit : secLabel.unit, t.envelopeLimits ?? input.zones?.limits.envelope)!,
             ]
           : [])
       );
@@ -1369,7 +1529,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     // Brochure p.7: 2 spectra per row in a bordered grid
     const items = list.slice(0, 24);
     const half = TABLE_DXA / 2;
-    const fftCell = (g: { label: string; png: Uint8Array; peak?: string }) =>
+    const fftCell = (g: { label: string; png: Uint8Array; peak?: string; spectra?: SpectraPoint[] }) =>
       new TableCell({
         width: { size: half, type: WidthType.DXA },
         margins: tight,
@@ -1383,16 +1543,20 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
               ...(g.peak ? [docRun({ text: `   ${g.peak}`, size: 15, color: "616161" })] : []),
             ],
           }),
-          docParagraph({
-            children: [
-              new ImageRun({
-                data: g.png,
-                transformation: { width: 340, height: 170 },
-                type: "png",
-              }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
+          g.spectra && g.spectra.length > 0
+            ? docParagraph({
+                children: [spectrumChartRun(g.spectra, { width: 340, height: 170, lang, unit: input.meta.overall?.unit || input.options.units || "" })],
+                alignment: AlignmentType.CENTER,
+              })
+            : g.png && g.png.length > 0
+              ? docParagraph({
+                  children: [new ImageRun({ data: g.png, transformation: { width: 340, height: 170 }, type: "png" })],
+                  alignment: AlignmentType.CENTER,
+                })
+              : docParagraph({
+                  children: [docRun({ text: lang === "fa" ? "داده طیف موجود نیست" : "No spectrum data", italics: true, color: "737373" })],
+                  alignment: AlignmentType.CENTER,
+                }),
         ],
       });
     const rows: TableRow[] = [];
@@ -1408,6 +1572,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
                 fftCell(left),
                 new TableCell({
                   width: { size: half, type: WidthType.DXA },
+                  margins: tight,
                   children: [docParagraph("")],
                 }),
               ],
@@ -1494,7 +1659,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const overall = multi ? undefined : input.meta.overall;
   if (overall) {
     const cell = (t: string, bold = false) =>
-      new TableCell({ children: [docParagraph({ children: [docRun({ text: t, bold })] })] });
+      new TableCell({ children: [docParagraph({ children: [docRun({ text: t, bold })] })], margins: paddedCell });
     const extraRows: [string, string][] = [];
     if (input.zones) {
       extraRows.push(
@@ -1546,12 +1711,11 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   }
 
   if (!multi) {
+    const specUnit = input.meta.overall?.unit || input.options.units || "";
     children.push(
       docParagraph({ text: sectionTitle(lang, "spectra"), heading: HeadingLevel.HEADING_1 }),
       docParagraph({
-        children: [
-          new ImageRun({ data: png, transformation: { width: 600, height: 300 }, type: "png" }),
-        ],
+        children: [spectrumChartRun(input.spectra, { width: 600, height: 300, lang, unit: specUnit })],
         alignment: AlignmentType.CENTER,
       }),
       docParagraph({
@@ -1568,20 +1732,15 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
 
   if (input.trends && input.trends.sampleCount > 0) {
     const t = input.trends;
-    const trendImg = (data: Uint8Array) =>
-      docParagraph({
-        children: [
-          new ImageRun({ data, transformation: { width: 600, height: 300 }, type: "png" }),
-        ],
-        alignment: AlignmentType.CENTER,
-      });
+    const secMetric = (t.secondaryMetric ?? input.options.secondaryMetric ?? "acceleration") as SecondaryMetric;
+    const secLabel = secondaryLabels(secMetric, lang, input.envelopeUnit);
     children.push(
       docParagraph({ text: sectionTitle(lang, "trends"), heading: HeadingLevel.HEADING_1 }),
       docParagraph(`Point ${t.pointLabel} · ${t.window} · ${t.sampleCount} samples.`),
       docParagraph({ text: sectionTitle(lang, "velocity"), heading: HeadingLevel.HEADING_2 }),
-      trendImg(t.velocityPng),
-      docParagraph({ text: sectionTitle(lang, "acceleration"), heading: HeadingLevel.HEADING_2 }),
-      trendImg(t.accelPng)
+      trendChartParagraph(t.velocityCategories, t.velocityValues, CHART_COLOR_VEL, sectionTitle(lang, "velocity"), lang, "mm/s", t.velocityLimits ?? input.zones?.limits.velocity)!,
+      docParagraph({ text: secLabel.group, heading: HeadingLevel.HEADING_2 }),
+      trendChartParagraph(t.accelCategories, t.accelValues, CHART_COLOR_ACC, secLabel.short, lang, secLabel.unit, t.accelLimits ?? secondaryLimits(input.zones?.limits ?? DEFAULT_ZONE_LIMITS, secMetric))!
     );
   }
 
@@ -1590,47 +1749,22 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
       docParagraph({ text: sectionTitle(lang, "trendsAll"), heading: HeadingLevel.HEADING_1 })
     );
     for (const t of input.allTrends.slice(0, 40)) {
+      const secMetric = (t.secondaryMetric ?? input.options.secondaryMetric ?? "acceleration") as SecondaryMetric;
+      const secLabel = secondaryLabels(secMetric, lang, input.envelopeUnit);
       children.push(
         docParagraph({
           text: `${t.pointLabel} · ${t.sampleCount} samples`,
           heading: HeadingLevel.HEADING_2,
         }),
-        docParagraph({
-          children: [
-            new ImageRun({
-              data: t.velocityPng,
-              transformation: { width: 600, height: 300 },
-              type: "png",
-            }),
-          ],
-          alignment: AlignmentType.CENTER,
-        }),
-        docParagraph({
-          children: [
-            new ImageRun({
-              data: t.accelPng,
-              transformation: { width: 600, height: 300 },
-              type: "png",
-            }),
-          ],
-          alignment: AlignmentType.CENTER,
-        }),
+        trendChartParagraph(t.velocityCategories, t.velocityValues, CHART_COLOR_VEL, sectionTitle(lang, "velocity"), lang, "mm/s", t.velocityLimits ?? input.zones?.limits.velocity)!,
+        trendChartParagraph(t.accelCategories, t.accelValues, CHART_COLOR_ACC, secLabel.short, lang, secLabel.unit, t.accelLimits ?? secondaryLimits(input.zones?.limits ?? DEFAULT_ZONE_LIMITS, secMetric))!,
         ...(t.envelopePng
           ? [
               docParagraph({
                 text: sectionTitle(lang, "envelope"),
                 heading: HeadingLevel.HEADING_2,
               }),
-              docParagraph({
-                children: [
-                  new ImageRun({
-                    data: t.envelopePng,
-                    transformation: { width: 600, height: 300 },
-                    type: "png",
-                  }),
-                ],
-                alignment: AlignmentType.CENTER,
-              }),
+              trendChartParagraph(t.envelopeCategories, t.envelopeValues, CHART_COLOR_ENVELOPE, sectionTitle(lang, "envelope"), lang, t.envelopeLimits ? secondaryLabels("envelope", lang, input.envelopeUnit).unit : secLabel.unit, t.envelopeLimits ?? input.zones?.limits.envelope)!,
             ]
           : [])
       );
@@ -1651,12 +1785,20 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
           text: g.peak ? `${g.label} · peak ${g.peak}` : g.label,
           heading: HeadingLevel.HEADING_2,
         }),
-        docParagraph({
-          children: [
-            new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" }),
-          ],
-          alignment: AlignmentType.CENTER,
-        })
+        g.spectra && g.spectra.length > 0
+          ? docParagraph({
+              children: [spectrumChartRun(g.spectra, { width: 600, height: 300, lang, unit: input.meta.overall?.unit || input.options.units || "" })],
+              alignment: AlignmentType.CENTER,
+            })
+          : g.png && g.png.length > 0
+            ? docParagraph({
+                children: [new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" })],
+                alignment: AlignmentType.CENTER,
+              })
+            : docParagraph({
+                children: [docRun({ text: lang === "fa" ? "داده طیف موجود نیست" : "No spectrum data", italics: true, color: "737373" })],
+                alignment: AlignmentType.CENTER,
+              })
       );
     }
   }
@@ -1702,6 +1844,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     children: [
       docParagraph({
         alignment: fa ? AlignmentType.RIGHT : AlignmentType.LEFT,
+        indent: { left: 150, right: 150 },
         border: {
           bottom: { style: BorderStyle.SINGLE, size: 12, color: template.accentHex, space: 8 },
         },
@@ -1716,6 +1859,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     children: [
       docParagraph({
         alignment: AlignmentType.CENTER,
+        indent: { left: 150, right: 150 },
         border: {
           top: { style: BorderStyle.SINGLE, size: 6, color: template.accentSoft, space: 6 },
         },
@@ -1818,7 +1962,7 @@ function buildIsoSection(
             ? VerticalMergeType.CONTINUE
             : undefined,
       verticalAlign: VerticalAlign.CENTER,
-      margins: { top: 20, bottom: 20, left: 80, right: 80 },
+      margins: { top: 30, bottom: 30, left: 130, right: 130 },
       ...(c.seamless ? { borders: SEAMLESS } : {}),
       ...shade(c.fill),
       children: [

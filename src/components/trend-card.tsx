@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { TrendingUp } from "lucide-react";
 import type { CsvRowSummary } from "../lib/mdb";
-import { groupHistories, renderTrendPng, takeLastHistory } from "../lib/trends";
+import { groupHistories, renderTrendPng, sampleValue, takeLastHistory } from "../lib/trends";
 import { limitsShort, type ZoneLimitSet } from "../lib/zones";
+import type { TrendMetric } from "../lib/metrics";
 import { useUi } from "../lib/i18n";
 import { Panel } from "./ui/card";
 import { Segmented, Select } from "./ui/form";
@@ -12,8 +13,15 @@ export interface TrendSnapshot {
   pointLabel: string;
   sampleCount: number;
   window: string;
+  secondaryMetric: TrendMetric;
   velocityPng: Uint8Array;
   accelPng: Uint8Array;
+  velocityCategories: string[];
+  velocityValues: (number | null)[];
+  accelCategories: string[];
+  accelValues: (number | null)[];
+  velocityLimits?: import("../lib/zones").ZoneLimits;
+  accelLimits?: import("../lib/zones").ZoneLimits;
 }
 
 const WINDOWS = [10, 25, 50, "all"] as const;
@@ -56,10 +64,12 @@ function usePngUrl(png: Uint8Array | null): string | null {
 export function TrendCard({
   rows,
   limits,
+  secondaryMetric = "rmsA",
   onSnapshot,
 }: {
   rows: CsvRowSummary[];
   limits: ZoneLimitSet;
+  secondaryMetric?: TrendMetric;
   onSnapshot?: (snap: TrendSnapshot | null) => void;
 }) {
   const { t } = useUi();
@@ -78,8 +88,15 @@ export function TrendCard({
     [samples, limits.velocity]
   );
   const accelPng = useMemo(
-    () => (samples.length ? renderTrendPng(samples, "rmsA", limits.acceleration) : null),
-    [samples, limits.acceleration]
+    () =>
+      samples.length
+        ? renderTrendPng(
+            samples,
+            secondaryMetric,
+            secondaryMetric === "envelope" ? (limits.envelope ?? limits.acceleration) : limits.acceleration
+          )
+        : null,
+    [samples, limits.acceleration, limits.envelope, secondaryMetric]
   );
   const velUrl = usePngUrl(velocityPng);
   const accUrl = usePngUrl(accelPng);
@@ -89,14 +106,25 @@ export function TrendCard({
       onSnapshot?.(null);
       return;
     }
+    const velocityCategories = samples.map((s) => s.dateISO);
+    const velocityValues = samples.map((s) => sampleValue(s, "rmsV"));
+    const accelCategories = samples.map((s) => s.dateISO);
+    const accelValues = samples.map((s) => sampleValue(s, secondaryMetric));
     onSnapshot?.({
       pointLabel: history.label,
       sampleCount: samples.length,
       window: window === "all" ? "all data" : `last ${window}`,
+      secondaryMetric,
       velocityPng,
       accelPng,
+      velocityCategories,
+      velocityValues,
+      accelCategories,
+      accelValues,
+      velocityLimits: limits.velocity,
+      accelLimits: secondaryMetric === "envelope" ? (limits.envelope ?? limits.acceleration) : limits.acceleration,
     });
-  }, [history?.label, samples.length, velocityPng, accelPng, window]);
+  }, [history?.label, samples.length, velocityPng, accelPng, window, secondaryMetric, limits.velocity, limits.acceleration, limits.envelope]);
 
   if (histories.length === 0) return null;
   const first = samples[0]?.dateISO ?? "—";

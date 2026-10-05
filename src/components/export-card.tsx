@@ -311,7 +311,7 @@ export function ExportControls({
         return null;
       };
       const loadFft = async (rows: CsvRowSummary[], labels?: Record<string, string>) => {
-        const items: { label: string; png: Uint8Array; peak?: string }[] = [];
+        const items: { label: string; png: Uint8Array; peak?: string; spectra?: import("../lib/parseSp3").SpectraPoint[] }[] = [];
         const points = latestPerPoint(rows).slice(0, 40);
         for (const row of points) {
           const pr = await loadSpectrum(row);
@@ -331,6 +331,7 @@ export function ExportControls({
             label: `${named || fallback} · ${oleDateToISO(Number(row.measDate)) || ""}`,
             png: (await getRenderChartPng())(pr.spectra),
             peak: formatSpectrumPeak(computeStats(pr.spectra).peak),
+            spectra: pr.spectra,
           });
           await bumpFft();
         }

@@ -36,8 +36,13 @@ export function Onboarding() {
     { title: t("onboardingStep3Title"), body: t("onboardingStep3Body") },
   ];
   return (
-    <Panel title={t("onboardingTitle")} description={t("onboardingStepsDesc")} contentClassName="grid gap-4">
-      <ol className="grid gap-3">
+    <Panel
+      title={t("onboardingTitle")}
+      description={t("onboardingStepsDesc")}
+      className="flex h-full flex-col"
+      contentClassName="grid flex-1 content-start gap-3"
+    >
+      <ol className="grid gap-2.5">
         {STEPS.map((s, i) => (
           <li key={s.title} className="flex gap-3 rounded-md border bg-muted/30 px-3 py-2.5">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">

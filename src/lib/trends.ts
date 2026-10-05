@@ -148,34 +148,80 @@ export function buildAllTrendSnapshots(
 ): {
   pointLabel: string;
   sampleCount: number;
+  window: string;
+  secondaryMetric: TrendMetric;
   velocityPng: Uint8Array;
   accelPng: Uint8Array;
   envelopePng?: Uint8Array;
+  velocityCategories: string[];
+  velocityValues: (number | null)[];
+  accelCategories: string[];
+  accelValues: (number | null)[];
+  envelopeCategories?: string[];
+  envelopeValues?: (number | null)[];
+  velocityLimits: ZoneLimits;
+  accelLimits: ZoneLimits;
+  envelopeLimits?: ZoneLimits;
 }[] {
   const out: {
     pointLabel: string;
     sampleCount: number;
+    window: string;
+    secondaryMetric: TrendMetric;
     velocityPng: Uint8Array;
     accelPng: Uint8Array;
     envelopePng?: Uint8Array;
+    velocityCategories: string[];
+    velocityValues: (number | null)[];
+    accelCategories: string[];
+    accelValues: (number | null)[];
+    envelopeCategories?: string[];
+    envelopeValues?: (number | null)[];
+    velocityLimits: ZoneLimits;
+    accelLimits: ZoneLimits;
+    envelopeLimits?: ZoneLimits;
   }[] = [];
+  const windowLabel = window === "all" ? "all data" : `last ${window}`;
   for (const h of histories.slice(0, Math.max(1, capPoints))) {
     const samples = takeLastHistory(h.samples, window);
     if (samples.length === 0) continue;
     const secLimits =
       secondary === "envelope" ? (limits.envelope ?? limits.acceleration) : limits.acceleration;
     try {
+      const velocityCategories = samples.map((s) => s.dateISO);
+      const velocityValues = samples.map((s) => sampleValue(s, "rmsV"));
+      const accelCategories = samples.map((s) => s.dateISO);
+      const accelValues = samples.map((s) => sampleValue(s, secondary));
+      const envelopeCategories =
+        includeEnvelope && secondary !== "envelope" && samples.some((s) => s.envelope != null)
+          ? samples.map((s) => s.dateISO)
+          : undefined;
+      const envelopeValues =
+        includeEnvelope && secondary !== "envelope" && samples.some((s) => s.envelope != null)
+          ? samples.map((s) => sampleValue(s, "envelope"))
+          : undefined;
       out.push({
         pointLabel: h.label,
         sampleCount: samples.length,
+        window: windowLabel,
+        secondaryMetric: secondary,
+        velocityLimits: limits.velocity,
+        accelLimits: secLimits,
+        envelopeLimits: limits.envelope ?? limits.acceleration,
         velocityPng: renderTrendPng(samples, "rmsV", limits.velocity, { bands }),
         accelPng: renderTrendPng(samples, secondary, secLimits, { bands }),
         envelopePng:
-          includeEnvelope && secondary !== "envelope" && samples.some((s) => s.envelope != null)
+          envelopeValues && envelopeCategories
             ? renderTrendPng(samples, "envelope", limits.envelope ?? limits.acceleration, {
                 bands,
               })
             : undefined,
+        velocityCategories,
+        velocityValues,
+        accelCategories,
+        accelValues,
+        envelopeCategories,
+        envelopeValues,
       });
     } catch {
       // skip undecodable histories — single-point export still works

@@ -282,7 +282,7 @@ export function ReportContentsCard({ options, onChange }: FormProps) {
       icon={<ListChecks />}
       title={t("reportContents")}
       description={t("reportContentsDesc")}
-      contentClassName="grid gap-4 md:grid-cols-2"
+      contentClassName="grid gap-3 md:grid-cols-2"
     >
       <div className="grid content-start gap-1">
         <FieldGroupTitle className="px-2 pb-1">{t("sections")}</FieldGroupTitle>

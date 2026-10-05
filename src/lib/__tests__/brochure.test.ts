@@ -304,6 +304,7 @@ describe("equipments + toc", () => {
         {
           pointLabel: "7 / 1",
           sampleCount: 3,
+          window: "last 30 days",
           velocityPng: renderTrendPng(samples, "rmsV", DEFAULT_ZONE_LIMITS.velocity),
           accelPng: renderTrendPng(samples, "rmsA", DEFAULT_ZONE_LIMITS.acceleration),
         },

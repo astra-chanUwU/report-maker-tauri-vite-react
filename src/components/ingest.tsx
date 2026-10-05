@@ -235,26 +235,26 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
 
   return (
     <div
-      className="relative flex min-h-[22rem] flex-col items-center justify-center gap-5 overflow-hidden rounded-xl border border-dashed border-input bg-card px-6 py-14 text-center shadow-xs"
+      className="relative flex min-h-[18.5rem] flex-col items-center justify-center gap-3.5 overflow-hidden rounded-xl border border-dashed border-input bg-card px-6 py-8 text-center shadow-xs lg:min-h-[20rem] lg:py-10"
       aria-busy={ingest.loading}
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-80"
         style={{
           background:
-            "radial-gradient(ellipse 70% 55% at 50% 0%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 70%)",
+            "radial-gradient(ellipse 68% 52% at 50% 0%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 72%)",
         }}
         aria-hidden="true"
       />
-      <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
+      <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
         {ingest.loading ? (
-          <Loader2 className="h-7 w-7 animate-spin" aria-hidden="true" />
+          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
         ) : (
-          <FileUp className="h-7 w-7" aria-hidden="true" />
+          <FileUp className="h-6 w-6" aria-hidden="true" />
         )}
       </div>
-      <div className="relative grid max-w-md gap-1.5">
-        <p className="text-lg font-semibold tracking-tight" aria-live="polite">
+      <div className="relative grid max-w-[30rem] gap-1">
+        <p className="text-[17px] font-semibold tracking-tight" aria-live="polite">
           {ingest.loading ? t("reading") : t("dropMeasurementFile")}
         </p>
         <p className="text-[13px] leading-relaxed text-muted-foreground">{t("dropMeasurementHint")}</p>

@@ -27,8 +27,8 @@ function TemplateThumb({ tpl }: { tpl: DocTemplate }) {
   const accent = `#${tpl.accentHex}`;
   const soft = `#${tpl.accentSoft}`;
   return (
-    <div className="flex h-28 items-center justify-center rounded-md bg-muted/70 p-2">
-      <div className="flex h-full w-[4.4rem] flex-col gap-1 overflow-hidden rounded-sm bg-white p-1.5 shadow-sm">
+    <div className="flex h-32 items-center justify-center rounded-md bg-muted/70 p-2">
+      <div className="flex h-full w-[5rem] flex-col gap-1 overflow-hidden rounded-sm bg-white p-1.5 shadow-sm">
         {tpl.coverStyle === "modern" ? (
           <>
             <div className="-mx-1.5 -mt-1.5 mb-1 space-y-1 px-1.5 py-1.5" style={{ backgroundColor: accent }}>
