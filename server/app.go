@@ -224,6 +224,11 @@ func (a *App) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "report-maker-control-plane"})
 }
 func (a *App) home(w http.ResponseWriter, r *http.Request) {
+	lang := a.mergePageData(r, PageData{}).Lang
+	if lang == "fa" {
+		a.renderSite(w, r, "home", PageData{Lang: "fa", Title: "گزارش‌های مهندسی آفلاین", Heading: "گزارش‌ساز", Body: "گزارش‌های مهندسی پولیش شده را از داده‌های محلی خود بسازید. گردش کار گزارش شما روی دستگاهتان می‌ماند.", ShowJourney: true, JourneyStep: 1, PrimaryCTA: "مشاهده قیمت", PrimaryCTAURL: "/pricing", SecondaryCTA: "دانلود", SecondaryCTAURL: "/download"})
+		return
+	}
 	a.renderSite(w, r, "home", PageData{
 		Title: "Offline engineering reports", Heading: "Report Maker",
 		Body:  "Build polished engineering reports from your local data. Your report workflow stays on your machine.",
@@ -233,9 +238,16 @@ func (a *App) home(w http.ResponseWriter, r *http.Request) {
 	})
 }
 func (a *App) pricing(w http.ResponseWriter, r *http.Request) {
+	lang := a.mergePageData(r, PageData{}).Lang
+	heading := "Choose a license"
+	body := "Pay through a domestic payment gateway. The desktop app remains useful offline."
+	if lang == "fa" {
+		heading = "یک لایسنس انتخاب کنید"
+		body = "از طریق درگاه پرداخت داخلی پرداخت کنید. اپ دسکتاپ همچنان آفلاین قابل استفاده است."
+	}
 	a.renderSite(w, r, "pricing", PageData{
-		Title: "Pricing", Heading: "Choose a license",
-		Body:  "Pay through a domestic payment gateway. The desktop app remains useful offline.",
+		Lang: lang, Title: "Pricing", Heading: heading,
+		Body:  body,
 		Plans: catalogPlansForView(), CSRFToken: a.ensureCSRF(w, r),
 		ShowJourney: true, JourneyStep: 2,
 	})

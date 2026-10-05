@@ -1,0 +1,609 @@
+package controlplane
+
+templ HomePage(data PageData) {
+	@layout(data) {
+		<div class="wrap">
+			<section class="hero">
+				<div class="hero-copy">
+					<span class="kicker"><i></i> Desktop app · stays offline · exports to Word</span>
+					<h1>Reports stay local.<br/>Delivery stays polished.</h1>
+					<p class="lead">Import SP3 or CSV vibration data on your machine, review and edit in a native desktop app, and export an editable DOCX. No uploads, no hosted lock-in. One perpetual licence, three devices, offline for 30 days.</p>
+					<div class="cta-row">
+						<a class="btn" href="/pricing">Buy licence — view pricing</a>
+						<a class="btn secondary" href="/download">Download desktop app</a>
+					</div>
+					<div class="meta-row">
+						<span>
+							<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8l3 3 7-7"></path></svg> Offline DOCX export
+						</span>
+						<span>
+							<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"></circle><path d="M8 5v4l3 2"></path></svg> Signed offline lease
+						</span>
+						<span>
+							<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5h12M5 5V3h6v2"></path><path d="M3 5v8h10V5"></path></svg> Import SP3 + CSV
+						</span>
+					</div>
+					<div class="trustbar">
+						<div><b>100%</b><span>Local processing</span></div>
+						<div><b>30 days</b><span>Offline lease</span></div>
+						<div><b>3 devices</b><span>Per licence</span></div>
+					</div>
+				</div>
+				<div class="hero-card" aria-hidden="true">
+					<div class="hero-card-head"><strong>Report_Maker — Engine 4A</strong><small>SHA-256 verified</small></div>
+					<div class="doc-preview">
+						<div class="doc-sheet">
+							<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;font-size:13px">Vibration Report · 2026-03-18</span><span style="font-size:11px;color:var(--muted);border:1px solid var(--line);padding:2px 6px;border-radius:999px;background:var(--panel)">.docx</span></div>
+							<div class="doc-line w80"></div>
+							<div class="doc-line w60"></div>
+							<div class="doc-grid">
+								<div class="doc-cell"><b>Channel A — RMS</b><p>4.12 mm/s · within tolerance</p></div>
+								<div class="doc-cell"><b>Channel B — Peak</b><p>7.8 mm/s · review flagged</p></div>
+							</div>
+							<div class="doc-line w40"></div>
+							<div style="height:42px;border:1px dashed var(--line);border-radius:6px;display:grid;place-items:center;color:var(--muted);font-size:12px;background:var(--panel)">Spectral plot — rendered locally</div>
+						</div>
+						<p style="font-size:12px;color:var(--muted);margin:10px 0 0">Preview of the editable Word export. Your data never leaves the device.</p>
+					</div>
+				</div>
+			</section>
+		</div>
+		<div class="wrap">
+			<section id="product" class="section">
+				<div class="section-head">
+					<div>
+						<h2>Built for the site, not the cloud</h2>
+						<p>Engineers open a native desktop app — not a browser tab. The same file you imported is the file you deliver.</p>
+					</div>
+					<a class="btn secondary" href="/offline-use">Why offline →</a>
+				</div>
+				<div class="feature-grid" id="features">
+					<div class="feat">
+						<div class="feat-icon">
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M8 20h8"></path><path d="M12 14v6"></path></svg>
+						</div>
+						<h3>Offline by default</h3>
+						<p>Generate CSV and DOCX reports without uploading. The lease is signed for 30 days so the shop floor stays productive without internet.</p>
+					</div>
+					<div class="feat">
+						<div class="feat-icon">
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M10 13H8"></path><path d="M16 17H8"></path><path d="M13 13h1"></path></svg>
+						</div>
+						<h3>SP3 + CSV import</h3>
+						<p>Open .sp3 via mdb-export or drop a Data-table CSV. Parsers run locally with row-level validation and reversible edits.</p>
+					</div>
+					<div class="feat">
+						<div class="feat-icon">
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+						</div>
+						<h3>Editable DOCX</h3>
+						<p>Exports are real Word documents — headings, tables, and plots you can hand to the client without rebuilding layout.</p>
+					</div>
+					<div class="feat">
+						<div class="feat-icon">
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+						</div>
+						<h3>Per-major-version licence</h3>
+						<p>Pay once per major version. Activate up to three devices with Ed25519-signed leases — no subscription meter.</p>
+					</div>
+					<div class="feat">
+						<div class="feat-icon">
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+						</div>
+						<h3>Device-bound lease</h3>
+						<p>Each device generates a keypair in the OS keychain. The control plane signs a lease bound to that key — refresh to pick up revocations.</p>
+					</div>
+					<div class="feat">
+						<div class="feat-icon">
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+						</div>
+						<h3>Own your account</h3>
+						<p>Sign in with passkey, magic link, or password. Reveal your licence from Purchases and renew download links when they expire.</p>
+					</div>
+				</div>
+			</section>
+			<section class="section">
+				<div class="section-head">
+					<div>
+						<h2>How it works</h2>
+						<p>Three steps from purchase to polished report.</p>
+					</div>
+				</div>
+				<div class="steps">
+					<div class="step"><div class="step-num">1</div><h3>Buy a licence</h3><p>Pay through ZarinPal on the pricing page. You get a masked licence immediately and the full key after sign-in. Contact support with your order ID if anything stalls.</p></div>
+					<div class="step"><div class="step-num">2</div><h3>Activate the desktop app</h3><p>Paste your licence, let the app generate a device key in the keychain, and fetch a signed offline lease. Works for 30 days without internet.</p></div>
+					<div class="step"><div class="step-num">3</div><h3>Import, edit, export</h3><p>Import SP3 or CSV locally, tune the report, and export DOCX. Verify SHA-256 on the installer before first run — see <a href="/install">Install</a>.</p></div>
+				</div>
+			</section>
+			<section class="section">
+				<div class="section-head">
+					<div>
+						<h2>Offline versus cloud</h2>
+						<p>Same report, different custody.</p>
+					</div>
+				</div>
+				<div class="compare">
+					<div class="compare-row compare-head"><div>Capability</div><div>Report Maker (this)</div><div>Typical cloud reporter</div></div>
+					<div class="compare-row"><div>Report data location</div><div><span class="tick">✓</span> Local only</div><div>Uploaded to provider</div></div>
+					<div class="compare-row"><div>Works on site without internet</div><div><span class="tick">✓</span> 30-day lease</div><div>Requires connection</div></div>
+					<div class="compare-row"><div>Export format</div><div>Editable .docx</div><div>PDF or locked export</div></div>
+					<div class="compare-row"><div>Licence</div><div>Perpetual / major version</div><div>Monthly subscription</div></div>
+					<div class="compare-row"><div>Install verification</div><div>SHA-256 + signed lease</div><div>Varies</div></div>
+				</div>
+			</section>
+			<section class="section">
+				<div class="pricing-grid">
+					<div>
+						<h2>One licence. No surprises.</h2>
+						<p style="color:var(--muted);max-width:520px">A single perpetual plan covers core report creation and export for the current major version. Hosted AI is optional and never holds your report data hostage.</p>
+						<div class="cta-row">
+							<a class="btn" href="/pricing">See full pricing</a>
+							<a class="btn secondary" href="/faq">Read FAQ</a>
+						</div>
+					</div>
+					<div class="plan-card">
+						<div class="plan-head">
+							<h2>Perpetual</h2>
+							<p style="margin:4px 0 0;color:var(--muted);font-size:14px">Core export for one major version · 3 devices</p>
+							<div class="plan-price">
+								for _, p := range data.Plans {
+									{ p.Price }
+								}
+								<small> · one-time</small>
+							</div>
+						</div>
+						<div class="plan-body">
+							<ul class="bullet">
+								<li><i>✓</i> Local SP3 and CSV import</li>
+								<li><i>✓</i> Offline DOCX generation</li>
+								<li><i>✓</i> 30-day offline lease · Ed25519 signed</li>
+								<li><i>✓</i> Download + SHA-256 verification</li>
+							</ul>
+							<a href="/pricing" class="btn" style="width:100%;margin-top:14px;justify-content:center">Continue to payment</a>
+						</div>
+					</div>
+				</div>
+			</section>
+		</div>
+	}
+}
+
+templ PricingPage(data PageData) {
+	@layout(data) {
+		<div class="wrap" style="padding:28px 0 10px">
+			<div class="section-head" style="margin-bottom:22px">
+				<div>
+					<span class="kicker"><i></i> Pricing · domestic payment</span>
+					<h1 style="margin:6px 0 8px">{ data.Heading }</h1>
+					<p style="max-width:640px">{ data.Body }</p>
+				</div>
+			</div>
+			if len(data.Plans) > 0 {
+				<div class="pricing-grid">
+					<div>
+						for _, plan := range data.Plans {
+							<div class="plan-card">
+								<div class="plan-head">
+									<h2>{ plan.Name }</h2>
+									<p style="margin:4px 0 0;color:var(--muted);font-size:14px">{ plan.Description }</p>
+									<div class="plan-price">{ plan.Price }<small> · one-time · perpetual</small></div>
+									<p style="margin:8px 0 0;font-size:13px;color:var(--muted)">Includes 3 device activations · 30-day offline lease · renew downloads after sign-in.</p>
+								</div>
+								<div class="plan-body">
+									<ul class="bullet">
+										<li><i>✓</i> SP3 and CSV import — local only</li>
+										<li><i>✓</i> Editable Word export (DOCX)</li>
+										<li><i>✓</i> Offline for 30 days between lease refreshes</li>
+										<li><i>✓</i> Verified installers with SHA-256</li>
+										<li><i>✓</i> Licence revealed only to the purchasing account</li>
+									</ul>
+									<div style="margin-top:16px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--accent-soft)">
+										<strong style="font-size:13px">Not sure?</strong>
+										<p style="margin:4px 0 0;font-size:13px;color:var(--muted)">Try the desktop shell with npm run dev for UI work, or npm run tauri dev for native file dialogs and keychain. You only pay when you need a production licence.</p>
+									</div>
+								</div>
+							</div>
+						}
+						<div style="margin-top:16px;border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff">
+							<h3 style="font-family:system-ui,sans-serif;font-size:14px;margin:0 0 6px">What happens after you pay</h3>
+							<ol style="margin:0;padding-inline-start:18px;color:var(--muted);font-size:14px;line-height:1.6">
+								<li>Gateway verifies the payment server-to-server before any licence is created.</li>
+								<li>Your order page shows a masked licence; sign in to reveal the full key.</li>
+								<li>Paste the key in the desktop app to fetch a signed lease for this device.</li>
+								<li>Download installers from <a href="/account/downloads">Downloads</a> — renew links when they expire.</li>
+							</ol>
+						</div>
+					</div>
+					<div class="checkout-form">
+						<h3>Continue to payment</h3>
+						<p style="font-size:13px;color:var(--muted);margin:0 0 12px">You will be redirected to the domestic payment gateway. We collect only what is needed to deliver your licence and support your order.</p>
+						for _, plan := range data.Plans {
+							<form method="post" action="/checkout/start">
+								@csrfInputTempl(data.CSRFToken)
+								<input type="hidden" name="plan" value={ plan.ID }/>
+								<div class="grid2">
+									<div class="field"><label>First name</label><input name="first_name" autocomplete="given-name" required placeholder="e.g. Sara"/></div>
+									<div class="field"><label>Surname</label><input name="last_name" autocomplete="family-name" required placeholder="e.g. Ahmadi"/></div>
+								</div>
+								<div class="field"><label>Email for delivery</label><input type="email" name="email" autocomplete="email" required placeholder="sara@example.com"/></div>
+								<div class="field"><label>Phone for support <span style="font-weight:400;color:var(--muted)">— Iranian mobile, 09…</span></label><input name="phone" autocomplete="tel" inputmode="tel" required placeholder="09120000000"/></div>
+								<button type="submit" class="btn" style="width:100%;margin-top:6px">Continue to payment →</button>
+								<p style="font-size:12px;color:var(--muted);margin:8px 0 0">By continuing you agree to the <a href="/refund">refund policy</a> and to receive licence delivery email.</p>
+							</form>
+						}
+						<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+							<span style="font-size:12px;border:1px solid var(--line);padding:4px 8px;border-radius:999px;background:#fff">ZarinPal verified</span>
+							<span style="font-size:12px;border:1px solid var(--line);padding:4px 8px;border-radius:999px;background:#fff">SHA-256 checked</span>
+							<span style="font-size:12px;border:1px solid var(--line);padding:4px 8px;border-radius:999px;background:#fff">Offline lease Ed25519</span>
+						</div>
+					</div>
+				</div>
+			}
+			<section class="section noborder">
+				<h2 style="font-size:18px">Questions before you buy?</h2>
+				<div class="faq" style="margin-top:10px">
+					<details class="faq-item"><summary>Is the report data ever uploaded? <span style="color:var(--muted)">+</span></summary><p>No. The Tauri desktop app reads SP3 and CSV locally and writes DOCX locally. The Go service only stores account, order, and anonymised telemetry if you opt in.</p></details>
+					<details class="faq-item"><summary>What if payment shows pending or cancelled? <span style="color:var(--muted)">+</span></summary><p>We verify every payment server-to-server. Pending means the gateway has not confirmed yet — keep your receipt and contact <a href="/support">support</a> with the order ID. Cancelled means no charge was recorded.</p></details>
+					<details class="faq-item"><summary>Can I reinstall on another machine? <span>+</span></summary><p>Yes. Each Perpetual licence allows three concurrent device activations. Revoke a device from the desktop or ask support to revoke via admin if you lost access.</p></details>
+				</div>
+			</section>
+		</div>
+	}
+}
+
+templ StaticPage(data PageData) {
+	@layout(data) {
+		<div class="wrap" style="padding:28px 0 8px">
+			<main class="prose">
+				if data.StatusLabel != "" {
+					<p class={ "status-badge " + data.StatusKind }>{ data.StatusLabel }</p>
+				}
+				<h1>{ data.Heading }</h1>
+				if data.Body != "" {
+					<p>{ data.Body }</p>
+				}
+				if data.PrimaryCTA != "" {
+					<div class="cta-row">
+						<a class="btn" href={ templ.URL(data.PrimaryCTAURL) }>{ data.PrimaryCTA }</a>
+						if data.SecondaryCTA != "" {
+							<a class="btn secondary" href={ templ.URL(data.SecondaryCTAURL) }>{ data.SecondaryCTA }</a>
+						}
+					</div>
+				}
+				if len(data.Sections) > 0 {
+					<div class="feature-grid" style="margin:18px 0">
+						for _, sec := range data.Sections {
+							<div class="feat">
+								<h3>{ sec.Title }</h3>
+								<ul style="margin:8px 0 0;padding-inline-start:18px;color:var(--muted);font-size:14px;line-height:1.65">
+									for _, item := range sec.Items {
+										<li style="margin:4px 0">{ item }</li>
+									}
+								</ul>
+							</div>
+						}
+					</div>
+				}
+				if data.Status != "" {
+					<p style="margin:12px 0">Order: <strong><code>{ data.Status }</code></strong> · keep this order ID for <a href="/support">support</a>.</p>
+				}
+				if data.LicenseKey != "" {
+					<div style="margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)">
+						<p style="margin:0;font-weight:650">License key</p>
+						<p style="margin:6px 0 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code style="font-size:14px;word-break:break-all">{ data.LicenseKey }</code> <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px" data-copy={ data.LicenseKey }>Copy</button></p>
+						<p style="margin:6px 0 0;color:var(--muted);font-size:13px">Store this safely. You can reveal it again from <a href="/account/purchases">Purchases</a>.</p>
+					</div>
+				} else if data.LicenseMasked != "" {
+					<div style="margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:#fff">
+						<p style="margin:0;font-weight:650">License key (masked)</p>
+						<p style="margin:6px 0 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code>{ data.LicenseMasked }</code> <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px" data-copy={ data.LicenseMasked }>Copy</button></p>
+						<p style="margin:6px 0 0;color:var(--muted);font-size:13px"><a href="/login">Sign in</a> with the purchase email to reveal the full key.</p>
+					</div>
+				}
+				if data.ShowPurchasesLink {
+					<p><a href="/account/purchases">View purchases and licenses</a></p>
+				}
+				// Purchases, downloads, auth etc are handled by GenericPage below - StaticPage is for marketing statics only.
+			</main>
+		</div>
+	}
+}
+
+templ GenericPage(data PageData) {
+	@layout(data) {
+		<div class="wrap" style="padding:28px 0 8px">
+			<main class="prose">
+				if data.StatusLabel != "" {
+					<p class={ "status-badge " + data.StatusKind }>{ data.StatusLabel }</p>
+				}
+				<h1>{ data.Heading }</h1>
+				if data.Body != "" {
+					<p>{ data.Body }</p>
+				}
+				if data.PrimaryCTA != "" {
+					<div class="cta-row">
+						<a class="btn" href={ templ.URL(data.PrimaryCTAURL) }>{ data.PrimaryCTA }</a>
+						if data.SecondaryCTA != "" {
+							<a class="btn secondary" href={ templ.URL(data.SecondaryCTAURL) }>{ data.SecondaryCTA }</a>
+						}
+					</div>
+				}
+				if len(data.Sections) > 0 {
+					<div class="feature-grid" style="margin:18px 0">
+						for _, sec := range data.Sections {
+							<div class="feat">
+								<h3>{ sec.Title }</h3>
+								<ul style="margin:8px 0 0;padding-inline-start:18px;color:var(--muted);font-size:14px;line-height:1.65">
+									for _, item := range sec.Items {
+										<li style="margin:4px 0">{ item }</li>
+									}
+								</ul>
+							</div>
+						}
+					</div>
+				}
+				if len(data.Plans) > 0 {
+					<section>
+						for _, plan := range data.Plans {
+							<article>
+								<h2>{ plan.Name }</h2>
+								<p>{ plan.Description }</p>
+								<strong>{ plan.Price }</strong>
+								<form method="post" action="/checkout/start">
+									@csrfInputTempl(data.CSRFToken)
+									<input type="hidden" name="plan" value={ plan.ID }/>
+									<label>First name<input name="first_name" autocomplete="given-name" required/></label>
+									<label>Surname<input name="last_name" autocomplete="family-name" required/></label>
+									<label>Email for delivery<input type="email" name="email" autocomplete="email" required/></label>
+									<label>Phone for support<input name="phone" autocomplete="tel" inputmode="tel" required/></label>
+									<button type="submit">Continue to payment</button>
+								</form>
+							</article>
+						}
+					</section>
+				}
+				if data.Status != "" {
+					<p style="margin:12px 0">Order: <strong><code>{ data.Status }</code></strong> · keep this order ID for <a href="/support">support</a>.</p>
+				}
+				if data.LicenseKey != "" {
+					<div style="margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)">
+						<p style="margin:0;font-weight:650">License key</p>
+						<p style="margin:6px 0 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code style="font-size:14px;word-break:break-all">{ data.LicenseKey }</code> <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px" data-copy={ data.LicenseKey }>Copy</button></p>
+						<p style="margin:6px 0 0;color:var(--muted);font-size:13px">Store this safely. You can reveal it again from <a href="/account/purchases">Purchases</a>.</p>
+					</div>
+				} else if data.LicenseMasked != "" {
+					<div style="margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:#fff">
+						<p style="margin:0;font-weight:650">License key (masked)</p>
+						<p style="margin:6px 0 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code>{ data.LicenseMasked }</code> <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px" data-copy={ data.LicenseMasked }>Copy</button></p>
+						<p style="margin:6px 0 0;color:var(--muted);font-size:13px"><a href="/login">Sign in</a> with the purchase email to reveal the full key.</p>
+					</div>
+				}
+				if len(data.Purchases) > 0 {
+					<section style="display:grid;gap:12px;margin:14px 0">
+						for _, pur := range data.Purchases {
+							<article class="purchase" style="border:1px solid var(--line);border-radius:10px;padding:16px;background:#fff">
+								<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+									<h3 style="margin:0;font-family:system-ui,sans-serif">{ pur.Plan }</h3>
+									<span
+										class={
+											"status-badge " + func() string {
+												if pur.Status == "paid" {
+													return "success"
+												} else if pur.Status == "pending" {
+													return "pending"
+												}
+												return "cancelled"
+											}(),
+										}
+										style="font-size:12px"
+									>{ pur.Status }</span>
+								</div>
+								<p style="margin:6px 0 0;color:var(--muted);font-size:13px">Order <code>{ pur.OrderID }</code>
+									if pur.PaidAt != "" {
+										<span> · paid { pur.PaidAt }</span>
+									}
+								</p>
+								if pur.MaskedKey != "" {
+									<p style="margin:10px 0 0">License: <code id={ "key-" + pur.OrderID }>{ pur.MaskedKey }</code></p>
+									if pur.CanReveal {
+										<form method="post" action="/account/purchases/reveal" hx-post="/account/purchases/reveal" hx-target={ "#key-" + pur.OrderID } hx-swap="outerHTML" style="margin-top:8px">
+											@csrfInputTempl(data.CSRFToken)
+											<input type="hidden" name="order_id" value={ pur.OrderID }/>
+											<button type="submit" class="btn secondary" style="padding:7px 12px;font-size:13px">Reveal license key</button>
+										</form>
+									}
+								}
+							</article>
+						}
+					</section>
+				}
+				if data.ShowPurchasesLink {
+					<p><a href="/account/purchases">View purchases and licenses</a></p>
+				}
+				if data.ShowDownloads {
+					if data.Entitled {
+						<section style="display:grid;gap:12px;margin:14px 0">
+							for _, dl := range data.DownloadLinks {
+								<article class="download" style="border:1px solid var(--line);border-radius:10px;padding:16px;background:#fff">
+									<h3 style="margin:0;font-family:system-ui,sans-serif">{ dl.Filename }</h3>
+									<p style="margin:4px 0 0;color:var(--muted);font-size:13px">{ dl.Description } · { dl.Platform } · v{ dl.Version }</p>
+									<p style="margin:8px 0 0;font-size:13px">SHA-256: <code style="word-break:break-all">{ dl.SHA256 }</code></p>
+									<p style="margin:4px 0 0;color:var(--muted);font-size:12px">Link expires { dl.ExpiresAt.Format("2006-01-02 15:04 UTC") }</p>
+									<p style="margin:10px 0 0"><a class="btn" href={ templ.URL(dl.URL) }>Download</a> <a class="btn secondary" href="/install" style="margin-inline-start:8px">Verify →</a></p>
+								</article>
+							}
+						</section>
+					} else {
+						<div style="margin:14px 0;padding:14px;border:1px dashed var(--line);border-radius:10px;background:var(--panel)">
+							<p style="margin:0">No download access yet.</p>
+							<p style="margin:6px 0 0;color:var(--muted);font-size:14px">Complete a purchase on <a href="/pricing">Pricing</a>, then return to <a href="/account/downloads">Downloads</a> after sign-in.</p>
+						</div>
+					}
+				}
+				if data.Email != "" {
+					<p style="margin-top:12px">Signed in as <strong>{ data.Email }</strong> · Phone: { data.Phone } ({ data.PhoneVerified })</p>
+				}
+				if data.ShowPasskeyLogin {
+					<div class="auth-section">
+						<h3>Passkey</h3>
+						<p style="font-size:14px;color:var(--muted)">Fast, phishing-resistant sign-in. Uses the browser WebAuthn API — no password to remember.</p>
+						<button type="button" class="btn" onclick="passkeyLogin()">Sign in with passkey</button>
+					</div>
+				}
+				if data.ShowMagicLink {
+					<div class="auth-section">
+						<h3>Magic link</h3>
+						<p style="font-size:14px;color:var(--muted)">We will email a one-time link. It expires in 15 minutes.</p>
+						<form method="post" action="/auth/magic-link/request" hx-post="/auth/magic-link/request" hx-swap="none">
+							@csrfInputTempl(data.CSRFToken)
+							<div class="field"><label>Email</label><input type="email" name="email" autocomplete="email" required/></div>
+							<button type="submit" class="btn secondary">Send sign-in link</button>
+						</form>
+					</div>
+				}
+				if data.ShowPasswordLogin {
+					<div class="auth-section">
+						<h3>Password</h3>
+						<form method="post" action="/auth/password/login">
+							@csrfInputTempl(data.CSRFToken)
+							<div class="field"><label>Email</label><input type="email" name="email" autocomplete="email" required/></div>
+							<div class="field"><label>Password</label><input type="password" name="password" autocomplete="current-password" required/></div>
+							<button type="submit" class="btn secondary">Sign in with password</button>
+						</form>
+					</div>
+				}
+				if data.ShowPasskeyRegister {
+					<div class="auth-section">
+						<h3>Register a passkey</h3>
+						<p style="font-size:14px;color:var(--muted)">Add a passkey to this account for next time. Requires you to be signed in.</p>
+						<button type="button" class="btn secondary" onclick="passkeyRegister()">Register a passkey</button>
+					</div>
+				}
+				if data.ShowPhoneVerify {
+					<div class="auth-section">
+						<h3>Phone verification</h3>
+						<p style="font-size:14px;color:var(--muted)">Verify the Iranian mobile you used at checkout. Used only for support.</p>
+						<button type="button" class="btn secondary" onclick="requestPhoneCode()">Send verification code</button>
+						<div class="field"><label>Code</label><input id="phone-code" inputmode="numeric" maxlength="6" placeholder="123456"/></div>
+						<button type="button" class="btn" onclick="verifyPhone()">Verify phone</button>
+						<p id="phone-status"></p>
+					</div>
+				}
+				if data.ShowDownloads && data.Entitled {
+					if len(data.DownloadLinks) > 0 {
+						<section style="margin-top:16px">
+							<h2>Offline desktop installer</h2>
+							<p>Order { data.OrderID } includes download access. Verify SHA-256 after download.</p>
+							for _, dl := range data.DownloadLinks {
+								<article class="download" style="border:1px solid var(--line);border-radius:10px;padding:16px;background:#fff;margin:10px 0">
+									<h3 style="margin:0">{ dl.Platform } · v{ dl.Version }</h3>
+									<p>{ dl.Description }</p>
+									<p><strong>File:</strong> { dl.Filename }</p>
+									<p><strong>SHA-256:</strong> <code>{ dl.SHA256 }</code></p>
+									<p><strong>Install:</strong> { dl.InstallInstructions }</p>
+									<p><a class="btn" href={ templ.URL(dl.URL) }>Download installer</a> <a class="btn secondary" href={ templ.URL("/downloads/" + dl.ArtifactID) }>Direct download (signed in)</a></p>
+									<form method="post" action="/account/downloads/renew">
+										@csrfInputTempl(data.CSRFToken)
+										<input type="hidden" name="artifact_id" value={ dl.ArtifactID }/>
+										<button type="submit" class="btn secondary">Renew expiring link</button>
+									</form>
+								</article>
+							}
+						</section>
+					}
+				} else if data.ShowDownloads {
+					<p>Purchase a license to unlock downloads, or sign in with the account used at checkout.</p>
+					<p><a href="/pricing">View pricing</a></p>
+				}
+				if data.ShowLogout {
+					<form method="post" action="/auth/logout" style="margin-top:16px">
+						@csrfInputTempl(data.CSRFToken)
+						<button type="submit" class="btn secondary">Sign out</button>
+					</form>
+				}
+				if data.ShowAdminLogin {
+					<form method="post" action="/admin/login" style="margin-top:12px">
+						@csrfInputTempl(data.CSRFToken)
+						<div class="field"><label>Admin password</label><input type="password" name="password" required/></div>
+						<button type="submit" class="btn">Sign in</button>
+					</form>
+				}
+				if data.ShowAdminLogout {
+					<div style="margin:14px 0">
+						<form method="post" action="/admin/logout" style="display:inline">
+							@csrfInputTempl(data.CSRFToken)
+							<button type="submit" class="btn secondary">Sign out</button>
+						</form>
+						<form method="get" action="/admin" style="display:inline-flex;gap:8px;margin-inline-start:8px">
+							<input name="q" value={ data.AdminQuery } placeholder="Search order, email, phone" style="padding:9px 12px;border:1px solid var(--line);border-radius:8px"/>
+							<button type="submit" class="btn secondary">Search</button>
+						</form>
+					</div>
+				}
+				if data.AdminFlash != "" {
+					<p><strong>{ data.AdminFlash }</strong></p>
+				}
+				if len(data.AdminSearchHits) > 0 {
+					for _, hit := range data.AdminSearchHits {
+						<p><a href={ templ.URL("/admin/orders/" + hit.OrderID) }>{ hit.OrderID }</a> · { hit.Email } · { hit.Status }</p>
+					}
+				}
+				if data.AdminOrder != nil {
+					<section style="margin:14px 0;display:grid;gap:16px">
+						<div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:#fff">
+							<h2 style="margin:0;font-family:system-ui,sans-serif">Order { data.AdminOrder.OrderID }</h2>
+							<p style="margin:6px 0 0;color:var(--muted);font-size:13px">Status: <strong>{ data.AdminOrder.Status }</strong> · { data.AdminOrder.Email } · { data.AdminOrder.Phone }</p>
+							<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+								<form method="post" action={ templ.URL("/admin/orders/" + data.AdminOrder.OrderID + "/resend-delivery") }>
+									@csrfInputTempl(data.CSRFToken)
+									<button type="submit" class="btn secondary" style="padding:7px 12px;font-size:13px">Resend delivery</button>
+								</form>
+							</div>
+							<form method="post" action={ templ.URL("/admin/orders/" + data.AdminOrder.OrderID + "/support-note") } style="margin-top:14px">
+								@csrfInputTempl(data.CSRFToken)
+								<div class="field"><label>Support note</label><textarea name="note" required rows="3" placeholder="Internal note — visible to other agents"></textarea></div>
+								<button type="submit" class="btn" style="padding:7px 12px;font-size:13px">Save note</button>
+							</form>
+						</div>
+						if len(data.AdminOrder.SupportNotes) > 0 {
+							<div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--panel)">
+								<h3 style="margin:0 0 8px;font-family:system-ui,sans-serif">Notes</h3>
+								for _, n := range data.AdminOrder.SupportNotes {
+									<article style="padding:8px 0;border-bottom:1px solid var(--line)">
+										<p style="margin:0">{ n.Body }</p>
+										<p><small style="color:var(--muted)">{ n.CreatedAt }</small></p>
+									</article>
+								}
+							</div>
+						}
+						if len(data.AdminOrder.Activations) > 0 {
+							<div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:#fff">
+								<h3 style="margin:0 0 8px;font-family:system-ui,sans-serif">Activations</h3>
+								for _, act := range data.AdminOrder.Activations {
+									<article style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)">
+										<span style="font-size:13px">{ act.ID } · { act.Status } · { act.Platform }</span>
+										if act.Status == "active" {
+											<form method="post" action={ templ.URL("/admin/activations/" + act.ID + "/revoke") }>
+												@csrfInputTempl(data.CSRFToken)
+												<button type="submit" class="btn secondary" style="padding:6px 10px;font-size:12px">Revoke</button>
+											</form>
+										}
+									</article>
+								}
+							</div>
+						}
+						if len(data.AdminOrder.AuditLog) > 0 {
+							<div style="border:1px solid var(--line);border-radius:10px;padding:16px;background:#fff">
+								<h3 style="margin:0 0 8px;font-family:system-ui,sans-serif">Audit</h3>
+								for _, a := range data.AdminOrder.AuditLog {
+									<p style="margin:6px 0;color:var(--muted);font-size:13px">{ a.Action } · { a.TargetType } · { a.Detail } · <span style="color:var(--ink2)">{ a.CreatedAt }</span></p>
+								}
+							</div>
+						}
+					</section>
+				}
+				<p id="auth-status"></p>
+			</main>
+		</div>
+	}
+}

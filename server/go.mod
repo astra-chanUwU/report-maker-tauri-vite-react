@@ -3,6 +3,7 @@ module reportmaker/controlplane
 go 1.26.0
 
 require (
+	github.com/a-h/templ v0.3.1070
 	github.com/go-webauthn/webauthn v0.18.2
 	golang.org/x/crypto v0.57.0
 	modernc.org/sqlite v1.60.1
