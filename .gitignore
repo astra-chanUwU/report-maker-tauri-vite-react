@@ -17,6 +17,14 @@ dist-ssr
 vite.config.js
 vite.config.d.ts
 
+# Go service local runtime state
+server/*.db
+server/*.db-shm
+server/*.db-wal
+server/.env
+server/.env.*
+!server/.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
