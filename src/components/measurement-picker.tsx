@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ListOrdered, Loader2, Search } from "lucide-react";
 import type { ParseResult } from "../lib/parseSp3";
 import { oleDateToISO } from "../lib/specdata";
 import {
-  listFileRows,
-  listTauriRows,
   loadFileRow,
   loadTauriRow,
-  type CsvRowList,
+  type CsvRowSummary,
 } from "../lib/mdb";
 import { cn } from "../lib/utils";
 import { Panel } from "./ui/card";
@@ -29,6 +27,8 @@ export function MeasurementPicker({
   filename,
   current,
   onSelect,
+  rows,
+  loading,
   className,
 }: {
   tauriPath: string | null;
@@ -36,41 +36,18 @@ export function MeasurementPicker({
   filename: string;
   current: PickerCurrent | null;
   onSelect: (r: ParseResult) => void;
+  rows: CsvRowSummary[] | null;
+  loading: boolean;
   className?: string;
 }) {
-  const [list, setList] = useState<CsvRowList | null>(null);
-  const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [busyIdx, setBusyIdx] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!tauriPath && !file) {
-      setList(null);
-      return;
-    }
-    let alive = true;
-    setLoading(true);
-    const load = tauriPath ? listTauriRows(tauriPath) : listFileRows(file!);
-    load
-      .then((l) => alive && setList(l))
-      .catch((e) => {
-        if (!alive) return;
-        const lang = document.documentElement.lang === "fa" ? "fa" : "en";
-        toast.error(
-          e instanceof Error && e.message ? e.message : translate(lang as "fa" | "en", "toastCouldNotListMeasurements")
-        );
-      })
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [tauriPath, file]);
-
   const filtered = useMemo(() => {
-    if (!list) return [];
+    if (!rows) return [];
     const q = query.trim().toLowerCase();
-    const rows = q
-      ? list.rows.filter((r) =>
+    const matching = q
+      ? rows.filter((r) =>
           [
             r.pointId,
             r.directionId,
@@ -82,17 +59,17 @@ export function MeasurementPicker({
             .filter(Boolean)
             .some((s) => s.toLowerCase().includes(q))
         )
-      : list.rows;
-    return rows.slice(0, DISPLAY_CAP);
-  }, [list, query]);
+      : rows;
+    return matching.slice(0, DISPLAY_CAP);
+  }, [rows, query]);
 
   if (!tauriPath && !file) return null;
 
   const handleSelect = async (index: number) => {
-    if (!list) return;
+    if (!rows || loading) return;
     setBusyIdx(index);
     try {
-      const total = list.rows.length;
+      const total = rows.length;
       const result = tauriPath
         ? await loadTauriRow(tauriPath, index, filename, total)
         : await loadFileRow(file!, filename, index, total);
@@ -115,8 +92,8 @@ export function MeasurementPicker({
       description={
         loading
           ? translate(langUi, "featuredMeasurementLoading")
-          : list
-            ? translate(langUi, "featuredMeasurementDesc", { count: list.rows.length.toLocaleString() })
+          : rows
+            ? translate(langUi, "featuredMeasurementDesc", { count: rows.length.toLocaleString() })
             : ""
       }
       className={cn("flex min-h-0 flex-col", className)}
@@ -145,7 +122,7 @@ export function MeasurementPicker({
               <button
                 type="button"
                 aria-current={active ? "true" : undefined}
-                disabled={busyIdx !== null}
+                disabled={loading || busyIdx !== null}
                 onClick={() => void handleSelect(r.index)}
                 className={cn(
                   "grid w-full cursor-default grid-cols-[2.5rem_1fr_auto] items-center gap-2 px-2.5 py-1.5 text-start text-[13px] tabular-nums disabled:opacity-60",
@@ -178,11 +155,11 @@ export function MeasurementPicker({
             </li>
           );
         })}
-        {list && filtered.length === 0 ? (
+        {rows && filtered.length === 0 ? (
           <li className="px-3 py-6 text-center text-[13px] text-muted-foreground">No matches.</li>
         ) : null}
       </ul>
-      {list && list.rows.length > DISPLAY_CAP && filtered.length >= DISPLAY_CAP ? (
+      {rows && rows.length > DISPLAY_CAP && filtered.length >= DISPLAY_CAP ? (
         <p className="text-xs text-muted-foreground">
           Showing first {DISPLAY_CAP}. Type to filter the rest.
         </p>

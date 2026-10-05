@@ -79,7 +79,6 @@ import { DiagnosticsPanel } from "./components/diagnostics-panel";
 import { ImportPill, ImportProgress } from "./components/import-progress";
 import { ExportPill, ExportProgressPanel } from "./components/export-progress";
 import {
-  catalogPercent,
   formatBytes,
   makeJob,
   stagedExportPercent,
@@ -255,33 +254,14 @@ function App() {
               progress: `Step 1/3 — Dumping Data table · ${formatBytes(p.bytes)}${p.rows ? ` · ${p.rows.toLocaleString()} rows` : ""}${speedMbs != null ? ` · ${speedMbs.toFixed(1)} MB/s` : ""} · ${elapsedSec}s`,
             });
           });
-          const elapsedAfterExport = Math.max(0, Math.round((Date.now() - startAt) / 1000));
-          patchJob(id, {
-            stage: "catalog",
-            percent: catalogPercent(0, 1),
-            progress: `Step 2/3 — Building catalog (Plant/Machine/Point/Direction)… · ${elapsedAfterExport}s`,
-            elapsedSec: elapsedAfterExport,
-          });
-          // Yield so the bar actually paints before the catalog IPCs
+          // Catalog loading belongs to MachinePicker; do not export and
+          // discard it here. Hidden pages stay mounted, so it loads after
+          // handleParsed updates the source paths.
           await new Promise<void>((r) => setTimeout(r, 0));
-          // Pre-warm catalog so the next UI (machine picker) is instant;
-          // progress stays at 60→85 while fetchSpectraCatalog runs in rayon.
-          try {
-            const { fetchSpectraCatalog: fetchCat } = await import("./lib/mdb");
-            await fetchCat(path);
-            patchJob(id, {
-              stage: "catalog",
-              percent: 85,
-              progress: `Step 2/3 — Catalog ready · ${elapsedAfterExport}s`,
-              elapsedSec: elapsedAfterExport,
-            });
-          } catch {
-            // catalog is non-fatal for the preview; continue to indexing
-          }
           patchJob(id, {
             stage: "indexing",
-            percent: 92,
-            progress: `Step 3/3 — Parsing preview & indexing rows…`,
+            percent: 85,
+            progress: "Step 2/3 — Catalog deferred until machine selection · Step 3/3 — Preparing measurement preview…",
             elapsedSec: Math.max(0, Math.round((Date.now() - startAt) / 1000)),
           });
           handleParsed(result, null);
@@ -991,6 +971,8 @@ function App() {
                       className="max-h-[28rem] xl:sticky xl:top-0 xl:max-h-[calc(100vh-12rem)]"
                       tauriPath={rowPath}
                       file={rowFile}
+                      rows={measureRows}
+                      loading={rowsLoading}
                       filename={effective.meta.filename}
                       current={
                         effective.meta.overall

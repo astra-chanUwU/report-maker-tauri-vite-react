@@ -209,8 +209,11 @@ export async function listTauriRowsPaged(
   csvPath: string,
   batch = 2500,
   onProgress?: (loaded: number) => void,
+  signal?: AbortSignal,
 ): Promise<CsvRowList> {
+  signal?.throwIfAborted();
   const first = await listTauriRows(csvPath, { limit: batch, offset: 0 });
+  signal?.throwIfAborted();
   const header = first.header;
   const rows: CsvRowSummary[] = [...first.rows];
   onProgress?.(rows.length);
@@ -219,7 +222,9 @@ export async function listTauriRowsPaged(
   for (;;) {
     // yield to the browser event loop so app switching stays smooth
     await new Promise<void>((r) => setTimeout(r, 0));
+    signal?.throwIfAborted();
     const chunk = await listTauriRows(csvPath, { limit: batch, offset });
+    signal?.throwIfAborted();
     if (chunk.rows.length === 0) break;
     rows.push(...chunk.rows);
     onProgress?.(rows.length);

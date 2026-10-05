@@ -9,11 +9,13 @@
 //! small head (for preview parsing) is returned over IPC.
 
 use serde::Serialize;
+use std::collections::VecDeque;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 use tauri::ipc::Channel;
 
 /// First bytes of the CSV returned inline for preview parsing (1 MiB cap).
@@ -146,7 +148,14 @@ pub async fn export_mdb_csv(
     .await
     .map_err(|e| format!("export task failed: {e}"))??;
     if is_data {
-        crate::cache::put_cached(&input_for_put, res.csv_path.clone(), res.bytes, res.rows, res.head.clone()).await;
+        crate::cache::put_cached(
+            &input_for_put,
+            res.csv_path.clone(),
+            res.bytes,
+            res.rows,
+            res.head.clone(),
+        )
+        .await;
     }
     Ok(res)
 }
@@ -214,7 +223,6 @@ fn export_mdb_csv_blocking(
     let mut head: Vec<u8> = Vec::new();
     let mut newline_seen = false;
     let mut last_emit = Instant::now() - Duration::from_secs(1);
-    let mut last_emit_bytes: u64 = 0;
     let emit_progress = |bytes: u64, rows: usize, channel: &Channel<MdbExportProgress>| {
         let _ = channel.send(MdbExportProgress { bytes, rows });
     };
@@ -246,12 +254,10 @@ fn export_mdb_csv_blocking(
                     }
                 }
             }
-            // Throttle IPC: every ~250ms or every ~2 MiB.
-            if last_emit.elapsed() >= Duration::from_millis(250) || bytes - last_emit_bytes >= 2 * 1024 * 1024
-            {
+            // Keep normal progress updates at most four times per second.
+            if last_emit.elapsed() >= Duration::from_millis(250) {
                 emit_progress(bytes, rows, &on_progress);
                 last_emit = Instant::now();
-                last_emit_bytes = bytes;
             }
         }
     }
@@ -378,346 +384,321 @@ fn col(cells: &[String], header: &[String], name: &str) -> String {
         .unwrap_or_default()
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CsvEncoding {
+    Utf8,
+    Utf16Le,
+}
+
+#[derive(Clone, Copy)]
+struct CsvRowOffset {
+    offset: u64,
+}
+
+#[derive(Clone)]
+struct CsvIndex {
+    path: PathBuf,
+    size: u64,
+    modified: Option<SystemTime>,
+    encoding: CsvEncoding,
+    header: Vec<String>,
+    rows: Vec<CsvRowOffset>,
+}
+
+const CSV_INDEX_CACHE_CAP: usize = 4;
+static CSV_INDEX_CACHE: OnceLock<Mutex<VecDeque<Arc<CsvIndex>>>> = OnceLock::new();
+
+fn csv_index_cache() -> &'static Mutex<VecDeque<Arc<CsvIndex>>> {
+    CSV_INDEX_CACHE.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+fn canonical_csv_identity(path: &str) -> Result<(PathBuf, u64, Option<SystemTime>), String> {
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
+    let metadata = std::fs::metadata(&canonical).map_err(|e| format!("cannot read csv: {e}"))?;
+    if metadata.len() > 1536 * 1024 * 1024 {
+        return Err("CSV larger than 1.5 GiB is not supported.".to_string());
+    }
+    Ok((canonical, metadata.len(), metadata.modified().ok()))
+}
+
+fn csv_index_matches(
+    index: &CsvIndex,
+    path: &Path,
+    size: u64,
+    modified: Option<SystemTime>,
+) -> bool {
+    index.path == path && index.size == size && index.modified == modified
+}
+
+fn decode_utf8_record(raw: &[u8]) -> String {
+    let mut end = raw.len();
+    if end > 0 && raw[end - 1] == b'\n' {
+        end -= 1;
+    }
+    if end > 0 && raw[end - 1] == b'\r' {
+        end -= 1;
+    }
+    String::from_utf8_lossy(&raw[..end]).into_owned()
+}
+
+fn read_utf8_record(reader: &mut BufReader<File>) -> Result<Option<(u64, String)>, String> {
+    let offset = reader
+        .stream_position()
+        .map_err(|e| format!("cannot seek csv: {e}"))?;
+    let mut raw = Vec::new();
+    let n = reader
+        .read_until(b'\n', &mut raw)
+        .map_err(|e| format!("cannot read csv: {e}"))?;
+    if n == 0 {
+        return Ok(None);
+    }
+    Ok(Some((offset, decode_utf8_record(&raw))))
+}
+
+fn read_utf16_record(reader: &mut BufReader<File>) -> Result<Option<(u64, String)>, String> {
+    let offset = reader
+        .stream_position()
+        .map_err(|e| format!("cannot seek csv: {e}"))?;
+    let mut units = Vec::new();
+    let mut saw_bytes = false;
+    loop {
+        let mut pair = [0u8; 2];
+        match reader.read_exact(&mut pair) {
+            Ok(()) => {
+                saw_bytes = true;
+                let unit = u16::from_le_bytes(pair);
+                if unit == 0x000A {
+                    break;
+                }
+                units.push(unit);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                if !saw_bytes || units.is_empty() {
+                    return Ok(None);
+                }
+                break;
+            }
+            Err(e) => return Err(format!("cannot read UTF-16 CSV: {e}")),
+        }
+    }
+    let mut text = String::from_utf16_lossy(&units);
+    while text.ends_with('\r') {
+        text.pop();
+    }
+    Ok(Some((offset, text)))
+}
+
+fn record_is_blank(line: &str) -> bool {
+    line.trim().is_empty()
+}
+
+fn build_csv_index(
+    path: PathBuf,
+    size: u64,
+    modified: Option<SystemTime>,
+) -> Result<CsvIndex, String> {
+    let file = File::open(&path).map_err(|e| format!("cannot read csv: {e}"))?;
+    let mut reader = BufReader::new(file);
+    let is_utf16 = {
+        let buf = reader
+            .fill_buf()
+            .map_err(|e| format!("cannot read csv: {e}"))?;
+        buf.len() >= 2 && buf[0] == 0xFF && buf[1] == 0xFE
+    };
+    let is_utf8_bom = {
+        let buf = reader
+            .fill_buf()
+            .map_err(|e| format!("cannot read csv: {e}"))?;
+        buf.len() >= 3 && buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF
+    };
+    let encoding = if is_utf16 {
+        reader.consume(2);
+        CsvEncoding::Utf16Le
+    } else {
+        if is_utf8_bom {
+            reader.consume(3);
+        }
+        CsvEncoding::Utf8
+    };
+
+    let mut header: Option<Vec<String>> = None;
+    let mut rows = Vec::new();
+    loop {
+        let record = match encoding {
+            CsvEncoding::Utf8 => read_utf8_record(&mut reader)?,
+            CsvEncoding::Utf16Le => read_utf16_record(&mut reader)?,
+        };
+        let Some((offset, line)) = record else {
+            break;
+        };
+        if header.is_none() {
+            if record_is_blank(&line) {
+                continue;
+            }
+            let parsed = split_csv_line(&line);
+            if !parsed.contains(&"Specdata".to_string()) {
+                return Err("Not a Data-table export (no Specdata column).".to_string());
+            }
+            header = Some(parsed);
+            continue;
+        }
+        if !record_is_blank(&line) {
+            rows.push(CsvRowOffset { offset });
+        }
+    }
+    let header = header.ok_or("CSV is empty.")?;
+    Ok(CsvIndex {
+        path,
+        size,
+        modified,
+        encoding,
+        header,
+        rows,
+    })
+}
+
+fn get_csv_index(path: &str) -> Result<Arc<CsvIndex>, String> {
+    let (canonical, size, modified) = canonical_csv_identity(path)?;
+    {
+        let mut cache = csv_index_cache()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(pos) = cache
+            .iter()
+            .position(|entry| csv_index_matches(entry, &canonical, size, modified))
+        {
+            let entry = cache.remove(pos).expect("cache position must exist");
+            let result = Arc::clone(&entry);
+            cache.push_back(entry);
+            return Ok(result);
+        }
+    }
+
+    let index = Arc::new(build_csv_index(canonical.clone(), size, modified)?);
+    let mut cache = csv_index_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache.retain(|entry| entry.path != canonical);
+    cache.push_back(Arc::clone(&index));
+    while cache.len() > CSV_INDEX_CACHE_CAP {
+        cache.pop_front();
+    }
+    Ok(index)
+}
+
+fn read_indexed_record(
+    reader: &mut BufReader<File>,
+    encoding: CsvEncoding,
+) -> Result<Option<String>, String> {
+    Ok(match encoding {
+        CsvEncoding::Utf8 => read_utf8_record(reader)?.map(|(_, line)| line),
+        CsvEncoding::Utf16Le => read_utf16_record(reader)?.map(|(_, line)| line),
+    })
+}
+
+fn row_summary(index: &CsvIndex, row_index: usize, line: &str) -> CsvRowSummary {
+    let cells = split_csv_line(line);
+    CsvRowSummary {
+        index: row_index,
+        point_id: col(&cells, &index.header, "PointID"),
+        direction_id: col(&cells, &index.header, "DirectionID"),
+        meas_date: col(&cells, &index.header, "MeasDate"),
+        peak_v: col(&cells, &index.header, "ValuePeakMaxV"),
+        peak_freq: col(&cells, &index.header, "FreqPeakMaxV"),
+        rms_v: col(&cells, &index.header, "TotalRMSV"),
+        rms_a: col(&cells, &index.header, "TotalRMSA"),
+        peak_a: col(&cells, &index.header, "TotalPeakA"),
+        bc: col(&cells, &index.header, "BC"),
+        unit: col(&cells, &index.header, "Unit"),
+        no_lines: col(&cells, &index.header, "NoLines"),
+    }
+}
+
+fn read_indexed_rows(
+    index: &CsvIndex,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<CsvRowSummary>, String> {
+    if offset >= index.rows.len() || limit == 0 {
+        return Ok(Vec::new());
+    }
+    let end = offset.saturating_add(limit).min(index.rows.len());
+    let file = File::open(&index.path).map_err(|e| format!("cannot read csv: {e}"))?;
+    let mut reader = BufReader::new(file);
+    reader
+        .seek(SeekFrom::Start(index.rows[offset].offset))
+        .map_err(|e| format!("cannot seek csv: {e}"))?;
+    let mut rows = Vec::with_capacity(end - offset);
+    let mut row_index = offset;
+    while row_index < end {
+        let Some(line) = read_indexed_record(&mut reader, index.encoding)? else {
+            return Err("CSV changed while reading its row index.".to_string());
+        };
+        if record_is_blank(&line) {
+            continue;
+        }
+        rows.push(row_summary(index, row_index, &line));
+        row_index += 1;
+    }
+    Ok(rows)
+}
+
+fn read_indexed_row(index: &CsvIndex, row_index: usize) -> Result<CsvFullRow, String> {
+    let row = index
+        .rows
+        .get(row_index)
+        .ok_or_else(|| format!("Row {row_index} out of range."))?;
+    let file = File::open(&index.path).map_err(|e| format!("cannot read csv: {e}"))?;
+    let mut reader = BufReader::new(file);
+    reader
+        .seek(SeekFrom::Start(row.offset))
+        .map_err(|e| format!("cannot seek csv: {e}"))?;
+    let line = read_indexed_record(&mut reader, index.encoding)?
+        .ok_or_else(|| format!("Row {row_index} out of range."))?;
+    if record_is_blank(&line) {
+        return Err("CSV changed while reading its row index.".to_string());
+    }
+    Ok(CsvFullRow {
+        header: index.header.clone(),
+        cells: split_csv_line(&line),
+    })
+}
+
 #[tauri::command]
-pub fn list_csv_rows(
+pub async fn list_csv_rows(
     path: String,
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Result<CsvRowList, String> {
-    let file = File::open(&path).map_err(|e| format!("cannot read csv: {e}"))?;
-    let meta_len = file.metadata().map(|m| m.len()).unwrap_or(0);
-    if meta_len > 1536 * 1024 * 1024 {
-        return Err("CSV larger than 1.5 GiB is not supported.".to_string());
-    }
-    let mut reader = BufReader::new(file);
-    // Detect BOM via peek without consuming whole file
-    let is_utf16 = {
-        let buf = reader.fill_buf().map_err(|e| format!("cannot read csv: {e}"))?;
-        buf.len() >= 2 && buf[0] == 0xFF && buf[1] == 0xFE
-    };
-    let is_utf8_bom = {
-        let buf = reader.fill_buf().map_err(|e| format!("cannot read csv: {e}"))?;
-        buf.len() >= 3 && buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF
-    };
-    if is_utf16 {
-        reader.consume(2);
-        // Streaming UTF-16LE decode in 64 KiB chunks to avoid doubling 500 MB files
-        let cap = limit.unwrap_or(ROW_LIST_CAP).min(ROW_LIST_CAP);
-        let off = offset.unwrap_or(0);
-        let mut carry = String::new();
-        let mut header: Option<Vec<String>> = None;
-        let mut header_vec: Vec<String> = Vec::new();
-        let mut rows: Vec<CsvRowSummary> = Vec::new();
-        let mut logical_index: usize = 0;
-        let mut skipped: usize = 0;
-        let mut buf = [0u8; 65536];
-        let mut leftover: Option<u8> = None;
-        let mut done = false;
-        let mut eof = false;
-        while !done && !eof {
-            let n = reader.read(&mut buf).map_err(|e| format!("cannot read csv: {e}"))?;
-            let mut raw: Vec<u8> = Vec::with_capacity(n + 1);
-            if let Some(b) = leftover.take() {
-                raw.push(b);
-            }
-            raw.extend_from_slice(&buf[..n]);
-            if n == 0 {
-                eof = true;
-            }
-            if raw.len() % 2 == 1 {
-                leftover = raw.pop();
-                if eof {
-                    if let Some(b) = leftover.take() {
-                        raw.push(b);
-                        raw.push(0);
-                    }
-                } else {
-                    if raw.is_empty() {
-                        continue;
-                    }
-                }
-            }
-            if raw.is_empty() && !eof {
-                continue;
-            }
-            if !raw.is_empty() {
-                let u16s: Vec<u16> = raw
-                    .chunks_exact(2)
-                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                    .collect();
-                carry.push_str(&String::from_utf16_lossy(&u16s));
-            }
-            if eof && leftover.is_some() {
-                carry.push_str(&String::from_utf16_lossy(&[leftover.take().unwrap() as u16]));
-            }
-            let mut start = 0usize;
-            while let Some(pos) = carry[start..].find('\n') {
-                let abs = start + pos;
-                let line_raw = carry[start..abs].trim_end_matches(|c| c == '\r' || c == '\n').to_string();
-                start = abs + 1;
-                if header.is_none() {
-                    if line_raw.trim().is_empty() {
-                        continue;
-                    }
-                    let h = split_csv_line(&line_raw);
-                    if !h.contains(&"Specdata".to_string()) {
-                        return Err("Not a Data-table export (no Specdata column).".to_string());
-                    }
-                    header_vec = h.clone();
-                    header = Some(h);
-                    continue;
-                }
-                if line_raw.trim().is_empty() {
-                    logical_index += 1;
-                    continue;
-                }
-                if skipped < off {
-                    skipped += 1;
-                    logical_index += 1;
-                    continue;
-                }
-                if rows.len() >= cap {
-                    done = true;
-                    break;
-                }
-                let cells = split_csv_line(&line_raw);
-                rows.push(CsvRowSummary {
-                    index: logical_index,
-                    point_id: col(&cells, header_vec.as_slice(), "PointID"),
-                    direction_id: col(&cells, header_vec.as_slice(), "DirectionID"),
-                    meas_date: col(&cells, header_vec.as_slice(), "MeasDate"),
-                    peak_v: col(&cells, header_vec.as_slice(), "ValuePeakMaxV"),
-                    peak_freq: col(&cells, header_vec.as_slice(), "FreqPeakMaxV"),
-                    rms_v: col(&cells, header_vec.as_slice(), "TotalRMSV"),
-                    rms_a: col(&cells, header_vec.as_slice(), "TotalRMSA"),
-                    peak_a: col(&cells, header_vec.as_slice(), "TotalPeakA"),
-                    bc: col(&cells, header_vec.as_slice(), "BC"),
-                    unit: col(&cells, header_vec.as_slice(), "Unit"),
-                    no_lines: col(&cells, header_vec.as_slice(), "NoLines"),
-                });
-                logical_index += 1;
-            }
-            if start > 0 {
-                carry = carry[start..].to_string();
-            }
-            if eof && !carry.trim().is_empty() && !done {
-                let line_raw = carry.trim_end_matches(|c| c == '\r' || c == '\n').to_string();
-                if header.is_none() {
-                    if !line_raw.trim().is_empty() {
-                        let h = split_csv_line(&line_raw);
-                        if !h.contains(&"Specdata".to_string()) {
-                            return Err("Not a Data-table export (no Specdata column).".to_string());
-                        }
-                        header_vec = h.clone();
-                        header = Some(h);
-                    }
-                } else if !line_raw.trim().is_empty() && skipped >= off && rows.len() < cap {
-                    let cells = split_csv_line(&line_raw);
-                    rows.push(CsvRowSummary {
-                        index: logical_index,
-                        point_id: col(&cells, header_vec.as_slice(), "PointID"),
-                        direction_id: col(&cells, header_vec.as_slice(), "DirectionID"),
-                        meas_date: col(&cells, header_vec.as_slice(), "MeasDate"),
-                        peak_v: col(&cells, header_vec.as_slice(), "ValuePeakMaxV"),
-                        peak_freq: col(&cells, header_vec.as_slice(), "FreqPeakMaxV"),
-                        rms_v: col(&cells, header_vec.as_slice(), "TotalRMSV"),
-                        rms_a: col(&cells, header_vec.as_slice(), "TotalRMSA"),
-                        peak_a: col(&cells, header_vec.as_slice(), "TotalPeakA"),
-                        bc: col(&cells, header_vec.as_slice(), "BC"),
-                        unit: col(&cells, header_vec.as_slice(), "Unit"),
-                        no_lines: col(&cells, header_vec.as_slice(), "NoLines"),
-                    });
-                }
-                carry.clear();
-            }
-        }
-        let h = header.ok_or("CSV is empty.")?;
-        return Ok(CsvRowList { header: h, rows });
-    }
-    if is_utf8_bom {
-        reader.consume(3);
-    }
-    // UTF-8 path: true BufReader streaming line-by-line (no whole-file fs::read)
-    let mut header_line = String::new();
-    let n = reader
-        .read_line(&mut header_line)
-        .map_err(|e| format!("cannot read csv: {e}"))?;
-    if n == 0 {
-        return Err("CSV is empty.".to_string());
-    }
-    // trim trailing newline(s)
-    while header_line.ends_with('\n') || header_line.ends_with('\r') {
-        header_line.pop();
-    }
-    let header = split_csv_line(&header_line);
-    if !header.contains(&"Specdata".to_string()) {
-        return Err("Not a Data-table export (no Specdata column).".to_string());
-    }
+    tauri::async_runtime::spawn_blocking(move || list_csv_rows_blocking(path, limit, offset))
+        .await
+        .map_err(|e| format!("row index task failed: {e}"))?
+}
+
+fn list_csv_rows_blocking(
+    path: String,
+    limit: Option<usize>,
+    offset: Option<usize>,
+) -> Result<CsvRowList, String> {
+    let index = get_csv_index(&path)?;
     let cap = limit.unwrap_or(ROW_LIST_CAP).min(ROW_LIST_CAP);
-    let off = offset.unwrap_or(0);
-    let mut rows = Vec::new();
-    let mut line_buf = String::new();
-    let mut logical_index: usize = 0;
-    let mut skipped: usize = 0;
-    loop {
-        line_buf.clear();
-        let n = reader
-            .read_line(&mut line_buf)
-            .map_err(|e| format!("cannot read csv: {e}"))?;
-        if n == 0 {
-            break;
-        }
-        // Trim trailing newline for parsing, but keep original for empty check
-        let trimmed_end = line_buf.trim_end_matches(|c| c == '\n' || c == '\r');
-        let line = trimmed_end;
-        if line.trim().is_empty() {
-            logical_index += 1;
-            continue;
-        }
-        if skipped < off {
-            skipped += 1;
-            logical_index += 1;
-            continue;
-        }
-        if rows.len() >= cap {
-            break;
-        }
-        let cells = split_csv_line(line);
-        rows.push(CsvRowSummary {
-            index: logical_index,
-            point_id: col(&cells, &header, "PointID"),
-            direction_id: col(&cells, &header, "DirectionID"),
-            meas_date: col(&cells, &header, "MeasDate"),
-            peak_v: col(&cells, &header, "ValuePeakMaxV"),
-            peak_freq: col(&cells, &header, "FreqPeakMaxV"),
-            rms_v: col(&cells, &header, "TotalRMSV"),
-            rms_a: col(&cells, &header, "TotalRMSA"),
-            peak_a: col(&cells, &header, "TotalPeakA"),
-            bc: col(&cells, &header, "BC"),
-            unit: col(&cells, &header, "Unit"),
-            no_lines: col(&cells, &header, "NoLines"),
-        });
-        logical_index += 1;
-    }
-    Ok(CsvRowList { header, rows })
+    let rows = read_indexed_rows(&index, offset.unwrap_or(0), cap)?;
+    Ok(CsvRowList {
+        header: index.header.clone(),
+        rows,
+    })
 }
 
 #[tauri::command]
-pub fn read_csv_row(path: String, index: usize) -> Result<CsvFullRow, String> {
-    let file = File::open(&path).map_err(|e| format!("cannot read csv: {e}"))?;
-    let mut reader = BufReader::new(file);
-    let is_utf16 = {
-        let buf = reader.fill_buf().map_err(|e| format!("cannot read csv: {e}"))?;
-        buf.len() >= 2 && buf[0] == 0xFF && buf[1] == 0xFE
-    };
-    let is_utf8_bom = {
-        let buf = reader.fill_buf().map_err(|e| format!("cannot read csv: {e}"))?;
-        buf.len() >= 3 && buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF
-    };
-    if is_utf16 {
-        reader.consume(2);
-        let mut carry = String::new();
-        let mut header: Option<Vec<String>> = None;
-        let mut header_vec: Vec<String> = Vec::new();
-        let mut logical: usize = 0;
-        let mut buf = [0u8; 65536];
-        let mut leftover: Option<u8> = None;
-        let mut eof = false;
-        while !eof {
-            let n = reader.read(&mut buf).map_err(|e| format!("cannot read csv: {e}"))?;
-            let mut raw: Vec<u8> = Vec::with_capacity(n + 1);
-            if let Some(b) = leftover.take() {
-                raw.push(b);
-            }
-            raw.extend_from_slice(&buf[..n]);
-            if n == 0 {
-                eof = true;
-            }
-            if raw.len() % 2 == 1 {
-                leftover = raw.pop();
-                if eof {
-                    if let Some(b) = leftover.take() {
-                        raw.push(b);
-                        raw.push(0);
-                    }
-                } else if raw.is_empty() {
-                    continue;
-                }
-            }
-            if !raw.is_empty() {
-                let u16s: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-                carry.push_str(&String::from_utf16_lossy(&u16s));
-            }
-            let mut start = 0usize;
-            while let Some(pos) = carry[start..].find('\n') {
-                let abs = start + pos;
-                let line_raw = carry[start..abs].trim_end_matches(|c| c == '\r' || c == '\n').to_string();
-                start = abs + 1;
-                if header.is_none() {
-                    if line_raw.trim().is_empty() {
-                        continue;
-                    }
-                    let h = split_csv_line(&line_raw);
-                    header = Some(h.clone());
-                    header_vec = h;
-                    continue;
-                }
-                if line_raw.trim().is_empty() {
-                    continue;
-                }
-                if logical == index {
-                    let h = header_vec.clone();
-                    return Ok(CsvFullRow { header: h, cells: split_csv_line(&line_raw) });
-                }
-                logical += 1;
-            }
-            if start > 0 {
-                carry = carry[start..].to_string();
-            }
-            if eof && !carry.trim().is_empty() {
-                let line_raw = carry.trim_end_matches(|c| c == '\r' || c == '\n').to_string();
-                if header.is_some() && !line_raw.trim().is_empty() && logical == index {
-                    let h = header_vec.clone();
-                    return Ok(CsvFullRow { header: h, cells: split_csv_line(&line_raw) });
-                }
-                break;
-            }
-            if n == 0 && carry.trim().is_empty() {
-                break;
-            }
-        }
-        return Err(format!("Row {index} out of range."));
-    }
-    if is_utf8_bom {
-        reader.consume(3);
-    }
-    let mut header_line = String::new();
-    let n = reader.read_line(&mut header_line).map_err(|e| format!("cannot read csv: {e}"))?;
-    if n == 0 {
-        return Err("CSV is empty.".to_string());
-    }
-    while header_line.ends_with('\n') || header_line.ends_with('\r') {
-        header_line.pop();
-    }
-    let header = split_csv_line(&header_line);
-    let mut seen = 0usize;
-    let mut line_buf = String::new();
-    loop {
-        line_buf.clear();
-        let n = reader.read_line(&mut line_buf).map_err(|e| format!("cannot read csv: {e}"))?;
-        if n == 0 {
-            break;
-        }
-        let line = line_buf.trim_end_matches(|c| c == '\n' || c == '\r');
-        if line.trim().is_empty() {
-            continue;
-        }
-        if seen == index {
-            return Ok(CsvFullRow { header: header.clone(), cells: split_csv_line(line) });
-        }
-        seen += 1;
-    }
-    Err(format!("Row {index} out of range."))
+pub async fn read_csv_row(path: String, index: usize) -> Result<CsvFullRow, String> {
+    tauri::async_runtime::spawn_blocking(move || read_csv_row_blocking(path, index))
+        .await
+        .map_err(|e| format!("row read task failed: {e}"))?
+}
+
+fn read_csv_row_blocking(path: String, index: usize) -> Result<CsvFullRow, String> {
+    let csv_index = get_csv_index(&path)?;
+    read_indexed_row(&csv_index, index)
 }
 
 // ---------------------------------------------------------------------------
@@ -761,7 +742,16 @@ fn run_mdb_export(
 }
 
 #[tauri::command]
-pub fn list_spectra_catalog(
+pub async fn list_spectra_catalog(
+    input: String,
+    tool: Option<String>,
+) -> Result<SpectraCatalogCsv, String> {
+    tauri::async_runtime::spawn_blocking(move || list_spectra_catalog_blocking(input, tool))
+        .await
+        .map_err(|e| format!("catalog export task failed: {e}"))?
+}
+
+fn list_spectra_catalog_blocking(
     input: String,
     tool: Option<String>,
 ) -> Result<SpectraCatalogCsv, String> {
@@ -773,30 +763,18 @@ pub fn list_spectra_catalog(
     if !input_path.is_file() {
         return Err(format!("Input file not found: {input}"));
     }
-    // Parallelize 4 catalog tables via rayon::join (nested for 4-way parallelism)
-    let (plant_res, machine_res, point_res, direction_res) = {
-        let bin_ref = &bin;
-        let input_ref = &input;
-        let ((a, b), (c, d)) = rayon::join(
-            || {
-                rayon::join(
-                    || run_mdb_export(bin_ref, input_ref, "Plant", "strip"),
-                    || run_mdb_export(bin_ref, input_ref, "Machine", "strip"),
-                )
-            },
-            || {
-                rayon::join(
-                    || run_mdb_export(bin_ref, input_ref, "Point", "strip"),
-                    || run_mdb_export(bin_ref, input_ref, "Direction", "strip"),
-                )
-            },
-        );
-        (a, b, c, d)
-    };
-    let plant = String::from_utf8_lossy(&plant_res?).into_owned();
-    let machine = String::from_utf8_lossy(&machine_res?).into_owned();
-    let point = String::from_utf8_lossy(&point_res?).into_owned();
-    let direction = String::from_utf8_lossy(&direction_res?).into_owned();
+    // Keep catalog extraction on one worker and one mdb-export process at a
+    // time. Running four scans of the same Jet database concurrently caused
+    // avoidable disk contention during startup. GMachine/GDirection remain
+    // part of the response because they provide the vector schematic fallback.
+    let plant =
+        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Plant", "strip")?).into_owned();
+    let machine =
+        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Machine", "strip")?).into_owned();
+    let point =
+        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Point", "strip")?).into_owned();
+    let direction =
+        String::from_utf8_lossy(&run_mdb_export(&bin, &input, "Direction", "strip")?).into_owned();
     if !machine.contains("MachineID") {
         return Err("Machine table missing from this .sp3.".to_string());
     }
@@ -860,7 +838,10 @@ pub fn list_envelope_samples(
             direction_id: col(&cells, &header, "DirectionID"),
             meas_date: col(&cells, &header, "MeasDate"),
             rms,
-            unit: col(&cells, &header, "Unit").trim_matches('"').trim().to_string(),
+            unit: col(&cells, &header, "Unit")
+                .trim_matches('"')
+                .trim()
+                .to_string(),
         });
     }
     Ok(out)
@@ -931,5 +912,56 @@ fn hex_val(b: u8) -> Option<u8> {
         b'a'..=b'f' => Some(b - b'a' + 10),
         b'A'..=b'F' => Some(b - b'A' + 10),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_csv(name: &str, bytes: &[u8]) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("report-maker-{name}-{nonce}.csv"));
+        fs::write(&path, bytes).expect("write test CSV");
+        path
+    }
+
+    fn utf16le(text: &str) -> Vec<u8> {
+        text.encode_utf16()
+            .flat_map(|unit| unit.to_le_bytes())
+            .collect()
+    }
+
+    #[test]
+    fn indexed_rows_support_random_access_and_ignore_blank_lines() {
+        let csv = b"PointID,DirectionID,Specdata,NoLines\nP1,V1,blob,4\n\nP2,V2,blob,8\n";
+        let path = temp_csv("indexed-utf8", csv);
+        let index = get_csv_index(path.to_str().unwrap()).expect("build index");
+        assert_eq!(index.rows.len(), 2);
+        let page = read_indexed_rows(&index, 1, 1).expect("read page");
+        assert_eq!(page[0].index, 1);
+        assert_eq!(page[0].point_id, "P2");
+        let row = read_indexed_row(&index, 0).expect("read random row");
+        assert_eq!(row.cells[0], "P1");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn indexed_rows_support_utf16le_exports() {
+        let mut bytes = vec![0xFF, 0xFE];
+        bytes.extend(utf16le(
+            "PointID,DirectionID,Specdata,NoLines\r\nP7,V,blob,4\r\n",
+        ));
+        let path = temp_csv("indexed-utf16", &bytes);
+        let index = get_csv_index(path.to_str().unwrap()).expect("build UTF-16 index");
+        assert_eq!(index.rows.len(), 1);
+        let row = read_indexed_row(&index, 0).expect("read UTF-16 row");
+        assert_eq!(row.cells[0], "P7");
+        let _ = fs::remove_file(path);
     }
 }

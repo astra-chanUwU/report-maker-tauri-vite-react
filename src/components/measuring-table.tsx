@@ -161,28 +161,28 @@ export function useMeasureRows(
   file: File | null,
   onRows?: (rows: CsvRowSummary[] | null) => void
 ) {
-  const [rows, setRows] = useState<CsvRowSummary[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{
+    path: string | null;
+    file: File | null;
+    rows: CsvRowSummary[] | null;
+    loading: boolean;
+  } | null>(null);
   useEffect(() => {
     if (!tauriPath && !file) {
-      setRows(null);
+      setResult(null);
       onRows?.(null);
       return;
     }
     let alive = true;
-    setLoading(true);
+    const controller = new AbortController();
+    setResult({ path: tauriPath, file, rows: null, loading: true });
     const run = async () => {
       try {
         const l = tauriPath
-          ? await listTauriRowsPaged(tauriPath, 2500, (n) => {
-              // progressive hint while paging large exports; final set below wins
-              if (alive && n % 5000 === 0) {
-                // keep loading true but allow event loop to breathe
-              }
-            })
+          ? await listTauriRowsPaged(tauriPath, 2500, undefined, controller.signal)
           : await listFileRows(file!);
         if (!alive) return;
-        setRows(l.rows);
+        setResult({ path: tauriPath, file, rows: l.rows, loading: false });
         onRows?.(l.rows);
       } catch (e) {
         if (alive) {
@@ -194,15 +194,20 @@ export function useMeasureRows(
           );
         }
       } finally {
-        if (alive) setLoading(false);
+        if (alive) setResult((current) => current ? { ...current, loading: false } : null);
       }
     };
     run();
     return () => {
       alive = false;
+      controller.abort();
     };
   }, [tauriPath, file]);
-  return { rows, loading };
+  const matchesSource = result?.path === tauriPath && result?.file === file;
+  return {
+    rows: matchesSource ? result.rows : null,
+    loading: !!(tauriPath || file) && (!matchesSource || result.loading),
+  };
 }
 
 /**
