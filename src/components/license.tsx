@@ -48,7 +48,7 @@ export function LicenseCard() {
       setRecord(rec);
       if (rec.valid) {
         void track("license_validated", {});
-        toast.success("Device activated.");
+        toast.success(t("toastDeviceActivated"));
       } else toast.error(rec.reason);
     } finally {
       setBusy(false);
@@ -60,11 +60,11 @@ export function LicenseCard() {
     try {
       const r = await checkForUpdates();
       setUpdate(r);
-      if (r.error) toast.error(`Update check failed: ${r.error}`);
-      else if (!r.latest) toast.success("No releases yet — you are current.");
+      if (r.error) toast.error(t("toastUpdateCheckFailed", { error: r.error }));
+      else if (!r.latest) toast.success(t("toastNoReleases"));
       else if (r.latest.replace(/^v/, "") === APP_VERSION)
-        toast.success(`Up to date (${APP_VERSION}).`);
-      else toast.success(`Latest is ${r.latest} — see release page.`);
+        toast.success(t("toastUpToDate", { version: APP_VERSION }));
+      else toast.success(t("toastLatestIs", { version: r.latest }));
     } finally {
       setChecking(false);
     }
@@ -120,7 +120,7 @@ export function LicenseCard() {
                   try {
                     const next = await refreshLicense();
                     setRecord(next);
-                    if (next.valid) toast.success("Lease refreshed.");
+                    if (next.valid) toast.success(t("toastLeaseRefreshed"));
                     else toast.error(next.reason);
                   } catch (error) {
                     toast.error(error instanceof Error ? error.message : String(error));
@@ -141,7 +141,7 @@ export function LicenseCard() {
                   clearLicense();
                   setRecord(null);
                   setKey("");
-                  toast.success("Device deactivated.");
+                  toast.success(t("toastDeviceDeactivated"));
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : String(error));
                 }

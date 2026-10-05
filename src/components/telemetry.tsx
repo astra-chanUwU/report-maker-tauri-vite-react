@@ -21,15 +21,15 @@ export function TelemetryCard() {
     <Panel
       icon={<Activity />}
       title={t("telemetryTitle")}
-      description="Off by default. While off, the app makes no telemetry network calls."
+      description={t("telemetryDesc")}
       contentClassName="grid gap-3"
     >
       <CheckRow
         className="-mx-2"
         checked={settings.enabled}
         onChange={(v) => set({ enabled: v })}
-        label="Share anonymous usage & crash reports"
-        description="Events: app started, report generated/failed, license validated, crash type. No personal data, no spectra."
+        label={t("telemetryLabel")}
+        description={t("telemetryLabelDesc")}
       />
       <div>
         <Button
@@ -38,11 +38,11 @@ export function TelemetryCard() {
           disabled={!settings.enabled}
           onClick={() => {
             void track("app_started", { manual_test: true }).then(() =>
-              toast.success("Test event queued.")
+              toast.success(t("toastTestEventQueued"))
             );
           }}
         >
-          Send test event
+          {t("sendTestEvent")}
         </Button>
       </div>
     </Panel>

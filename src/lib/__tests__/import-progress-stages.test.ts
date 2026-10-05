@@ -23,7 +23,14 @@ describe("import progress stages are meaningful", () => {
   it("ImportProgress shows phase detail and step badge", async () => {
     const src = await import("fs").then((fs) => fs.readFileSync("src/components/import-progress.tsx", "utf8"));
     expect(src).toContain("phaseDetail");
-    expect(src).toContain("Step");
-    expect(src).toContain("Exporting Data");
+    // i18n: component uses t() keys, English fallback verified via i18n table
+    expect(src).toMatch(/Step|stepLabel/);
+    expect(src).toMatch(/Exporting Data|importExportingData/);
+  });
+  it("ImportProgress i18n keys exist", async () => {
+    const i18n = await import("fs").then((fs) => fs.readFileSync("src/lib/i18n.tsx", "utf8"));
+    expect(i18n).toContain("importExportingData");
+    expect(i18n).toContain("Exporting Data");
+    expect(i18n).toContain("stepLabel");
   });
 });

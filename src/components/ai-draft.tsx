@@ -33,12 +33,11 @@ export function AiSettingsCard() {
     <Panel
       icon={<Sparkles />}
       title={t("aiTitle")}
-      description="Hosted AI uses the active license entitlement. No provider key is stored in the app."
+      description={t("aiSettingsDesc")}
       contentClassName="grid gap-3"
     >
       <p className="text-sm text-muted-foreground">
-        The report data stays local unless you explicitly choose <strong>Draft with AI</strong>.
-        Hosted requests contain only the fields needed to produce the five editable sections.
+        {t("aiSettingsDetail")}
       </p>
     </Panel>
   );
@@ -65,12 +64,12 @@ export function AiDraftCard({
 
   const handleDraft = async (offline: boolean) => {
     if (!parsed) {
-      toast.error("Drop a .sp3 file first.");
+      toast.error(t("dropFirst"));
       return;
     }
     const wait = COOLDOWN_MS - (Date.now() - lastRun);
     if (!offline && wait > 0) {
-      toast.error(`Rate-limited — wait ${Math.ceil(wait / 1000)}s.`);
+      toast.error(t("toastRateLimited", { sec: Math.ceil(wait / 1000) }));
       return;
     }
     setBusy(true);
@@ -92,13 +91,13 @@ export function AiDraftCard({
       if (offline) {
         onChange({ ...fallbackDraft(input) });
         setFallbackUsed(true);
-        toast.success("Offline draft filled — edit before export.");
+        toast.success(t("toastOfflineDraftFilled"));
       } else {
         const res = await draftReport(input);
         onChange({ ...res.draft });
         setFallbackUsed(res.usedFallback);
-        if (res.usedFallback) toast.success(res.warning ?? "AI unavailable — offline draft used.");
-        else toast.success("AI draft ready — edit before export.");
+        if (res.usedFallback) toast.success(res.warning ?? t("toastAiFallback"));
+        else toast.success(t("toastAiDraftReady"));
       }
       setLastRun(Date.now());
     } finally {
@@ -111,15 +110,15 @@ export function AiDraftCard({
   return (
     <Panel
       icon={<Sparkles />}
-      title="Findings"
+      title={t("findings")}
       description={
         !parsed
-          ? "Load measurement data to draft automatically. You can still type your own text."
+          ? t("findingsDescNeedData")
           : fallbackUsed
-            ? "Offline draft in use. Edit freely before export."
+            ? t("findingsDescOffline")
             : filled === 0
-              ? "Empty fields are filled from the measurement data when you generate the report."
-              : `${filled} of 5 sections written.`
+              ? t("findingsDescEmpty")
+              : t("findingsDescFilled", { count: filled })
       }
       actions={
         <>
@@ -128,10 +127,10 @@ export function AiDraftCard({
             size="sm"
             disabled={!parsed || busy}
             onClick={() => void handleDraft(true)}
-            title="Build a draft from the measurement data without going online"
+            title={t("offlineDraftTitle")}
           >
             <FileText aria-hidden="true" />
-            Offline draft
+            {t("offlineDraft")}
           </Button>
           <Button size="sm" disabled={!parsed || busy} onClick={() => void handleDraft(false)}>
             {busy ? (
@@ -139,7 +138,7 @@ export function AiDraftCard({
             ) : (
               <Sparkles aria-hidden="true" />
             )}
-            {busy ? "Drafting…" : "Draft with AI"}
+            {busy ? t("drafting") : t("draftWithAi")}
           </Button>
         </>
       }
@@ -147,20 +146,20 @@ export function AiDraftCard({
     >
       {(
         [
-          ["summary", "Summary", "lg:col-span-2", 4],
-          ["methodology", "Methodology", "", 5],
-          ["observations", "Observations", "", 5],
-          ["recommendations", "Recommendations", "", 5],
-          ["conclusion", "Conclusion", "", 5],
+          ["summary", "lg:col-span-2", 4],
+          ["methodology", "", 5],
+          ["observations", "", 5],
+          ["recommendations", "", 5],
+          ["conclusion", "", 5],
         ] as const
-      ).map(([k, label, span, rows]) => (
-        <Field key={k} label={t(k) || label} htmlFor={`ai-${k}`} className={span}>
+      ).map(([k, span, rows]) => (
+        <Field key={k} label={t(k)} htmlFor={`ai-${k}`} className={span}>
           <Textarea
             id={`ai-${k}`}
             rows={rows}
             value={fields[k]}
             onChange={(e) => set({ [k]: e.target.value })}
-            placeholder={`${label}…`}
+            placeholder={`${t(k)}…`}
           />
         </Field>
       ))}

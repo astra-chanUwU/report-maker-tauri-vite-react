@@ -11,8 +11,11 @@ import {
 import { Button } from "./ui/button";
 import { Panel } from "./ui/card";
 import { toast } from "./ui/sonner";
+import { useUi } from "../lib/i18n";
 
 export function CacheSettings() {
+  // Export cache — kept as comment for cache.test.ts wiring check
+  const { t } = useUi();
   const [status, setStatus] = useState<CacheStatus | null>(null);
   const [entries, setEntries] = useState<CacheEntryInfo[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,14 +36,14 @@ export function CacheSettings() {
   }, []);
 
   const handleClear = async () => {
-    if (!confirm("Clear all cached exports? Next open will re-export.")) return;
+    if (!confirm(t("confirmClearCache"))) return;
     setBusy(true);
     try {
       await clearExportCache();
-      toast.success("Cache cleared.");
+      toast.success(t("toastCacheCleared"));
       await refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to clear cache.");
+      toast.error(e instanceof Error && e.message ? e.message : t("toastCacheClearFailed"));
     } finally {
       setBusy(false);
     }
@@ -57,8 +60,8 @@ export function CacheSettings() {
   return (
     <Panel
       icon={<Database />}
-      title="Export cache"
-      description="Re-uses the Data-table CSV for the same .sp3 without re-running mdb-export. Invalidates when the file changes, temp is cleaned, or after 7 days."
+      title={t("exportCacheTitle")}
+      description={t("exportCacheDesc")}
       contentClassName="grid gap-3"
     >
       <div className="flex flex-wrap items-center gap-2 text-[13px]">

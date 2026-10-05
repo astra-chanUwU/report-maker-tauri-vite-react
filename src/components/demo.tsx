@@ -37,7 +37,7 @@ export function DesignDemo() {
               <p className="text-sm text-muted-foreground">Focus ring + overlay verified.</p>
             </DialogContent>
           </Dialog>
-          <Button onClick={() => toast.success("Toast works")}>Toast</Button>
+          <Button onClick={() => toast.success(t("toastWorks"))}>Toast</Button>
         </CardContent>
       </Card>
 

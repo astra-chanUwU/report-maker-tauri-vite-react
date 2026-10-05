@@ -45,16 +45,16 @@ export function ZoneLimitsCard({
     <Panel
       icon={<Siren />}
       title={t("zonesTitle")}
-      description="Readings at or above an edge move up a zone. Envelope stays off while all three are empty or zero."
+      description={t("zoneLimitsDesc")}
       actions={
         <Button
           variant="ghost"
           size="sm"
           onClick={() => onChange(structuredClone(DEFAULT_ZONE_LIMITS))}
-          title="Velocity 3.5 / 7 / 8.6 · Acceleration 14.71 / 29.4 / 36.2"
+          title={t("zoneDefaultsHint")}
         >
           <RotateCcw aria-hidden="true" />
-          Defaults
+          {t("zoneDefaults")}
         </Button>
       }
       contentClassName="grid gap-3"
@@ -74,10 +74,10 @@ export function ZoneLimitsCard({
         <table className="w-full text-[13px]">
           <thead className="bg-muted text-xs text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 text-start font-semibold">Metric</th>
+              <th className="px-3 py-2 text-start font-semibold">{t("zoneMetric")}</th>
               {EDGES.map((e) => (
                 <th key={e} className="w-24 px-2 py-2 text-start font-semibold">
-                  {e === "bottom" ? "B from" : e === "mid" ? "U from" : "C from"}
+                  {e === "bottom" ? t("zoneBFrom") : e === "mid" ? t("zoneUFrom") : t("zoneCFrom")}
                 </th>
               ))}
             </tr>

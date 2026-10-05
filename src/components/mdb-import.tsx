@@ -7,6 +7,7 @@ import { Panel } from "./ui/card";
 import { Field } from "./ui/form";
 import { Input } from "./ui/input";
 import { toast } from "./ui/sonner";
+import { useUi } from "../lib/i18n";
 
 /** mdb-export location for raw .sp3 conversion. Renders nothing outside Tauri. */
 export function MdbToolSettings({
@@ -18,44 +19,41 @@ export function MdbToolSettings({
   status: MdbToolStatus | null;
   onRefresh: () => void;
 }) {
+  const { t } = useUi();
   const [toolPath, setToolPath] = useState(() => loadMdbToolPath());
   if (!isTauri) return null;
 
   const handleSave = () => {
     saveMdbToolPath(toolPath.trim());
     onRefresh();
-    toast.success("Tool path saved.");
+    toast.success(t("toastToolPathSaved"));
   };
 
   return (
     <Panel
       icon={<Wrench />}
-      title="Spectra .sp3 converter"
-      description="Uses mdb-export to read the Jet database inside .sp3 files."
+      title={t("mdbTitleLong")}
+      description={t("mdbDesc")}
       contentClassName="grid gap-3"
     >
       <div className="flex items-center gap-2 text-[13px]">
         {status == null ? (
-          <span className="text-muted-foreground">Checking…</span>
+          <span className="text-muted-foreground">{t("checking")}</span>
         ) : status.found ? (
           <>
             <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
             <span>
-              Found <span className="text-muted-foreground">({status.version})</span>
+              {t("mdbFound")} <span className="text-muted-foreground">({status.version})</span>
             </span>
           </>
         ) : (
           <>
             <XCircle className="h-4 w-4 text-destructive" aria-hidden="true" />
-            <span className="text-destructive">Not found. Set the path below.</span>
+            <span className="text-destructive">{t("mdbNotFound")}</span>
           </>
         )}
       </div>
-      <Field
-        label="mdb-export path"
-        htmlFor="mdb-tool"
-        hint="Leave blank to auto-detect (MDB_EXPORT_PATH or PATH)."
-      >
+      <Field label={t("mdbPathLabel")} htmlFor="mdb-tool" hint={t("mdbPathHint")}>
         <div className="flex gap-2">
           <Input
             id="mdb-tool"
@@ -65,7 +63,7 @@ export function MdbToolSettings({
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
           />
           <Button variant="outline" onClick={handleSave}>
-            Save
+            {t("save")}
           </Button>
         </div>
       </Field>

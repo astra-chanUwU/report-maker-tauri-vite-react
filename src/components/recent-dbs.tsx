@@ -7,14 +7,14 @@ import { loadRecentDbs, removeRecentDb } from "../lib/recentDbs";
 import { useUi } from "../lib/i18n";
 import { cn } from "../lib/utils";
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: (k: string, p?: Record<string, string | number>) => string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const s = (Date.now() - d.getTime()) / 1000;
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d ago`;
+  if (s < 60) return t("justNow");
+  if (s < 3600) return t("minutesAgo", { count: Math.floor(s / 60) });
+  if (s < 86400) return t("hoursAgo", { count: Math.floor(s / 3600) });
+  if (s < 86400 * 7) return t("daysAgo", { count: Math.floor(s / 86400) });
   return d.toLocaleDateString();
 }
 
@@ -67,13 +67,13 @@ export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void
     <Card className="overflow-hidden p-0">
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <Clock3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        <h2 className="text-sm font-semibold">Recent databases</h2>
-        <span className="text-xs text-muted-foreground">— pick up where you left off</span>
+        <h2 className="text-sm font-semibold">{t("recentDbs")}</h2>
+        <span className="text-xs text-muted-foreground">{t("pickUpWhereLeft")}</span>
       </div>
       <ul className="divide-y">
         {recents.map((r) => {
           const size = formatSize(r.size);
-          const ago = timeAgo(r.lastOpenedAt);
+          const ago = timeAgo(r.lastOpenedAt, t);
           return (
             <li
               key={r.path}
@@ -91,12 +91,12 @@ export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void
                     {r.filename}
                   </span>
                   {cachedSet.has(r.path) ? (
-                    <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success" title="Cached — opens instantly">
-                      Cached
+                    <span className="rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success" title={t("cachedHint")}>
+                      {t("cached")}
                     </span>
                   ) : (
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" title="Not cached — will re-export">
-                      Not cached
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" title={t("notCachedHint")}>
+                      {t("notCached")}
                     </span>
                   )}
                 </span>
@@ -105,21 +105,16 @@ export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onOpen(r.path)}
-                  title="Reopen this database"
-                >
+                <Button size="sm" variant="outline" onClick={() => onOpen(r.path)} title={t("reopenDb")}>
                   <FolderOpen aria-hidden="true" />
-                  Open
+                  {t("open")}
                 </Button>
                 <Button
                   size="icon-sm"
                   variant="ghost"
                   onClick={() => void handleRemove(r.path)}
                   aria-label={`Remove ${r.filename} from recents`}
-                  title="Remove from list"
+                  title={t("removeFromList")}
                 >
                   <Trash2 aria-hidden="true" />
                 </Button>

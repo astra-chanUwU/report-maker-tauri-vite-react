@@ -30,6 +30,7 @@ import { Badge, EmptyState, Segmented } from "./ui/form";
 import { Input } from "./ui/input";
 import { toast } from "./ui/sonner";
 import { groupEquipmentsByDb, sp3Filename } from "../lib/equipment";
+import { useUi } from "../lib/i18n";
 
 const ZONE_RANK: Record<ZoneResult, number> = { "": 0, A: 1, B: 2, U: 3, C: 4 };
 
@@ -74,6 +75,7 @@ export function MachinePicker({
   onChange: (next: EquipmentItem[]) => void;
   rows: CsvRowSummary[] | null;
 }) {
+  const { t } = useUi();
   const [catalogs, setCatalogs] = useState<SpectraCatalog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +156,7 @@ export function MachinePicker({
       }
     } catch (e) {
       if (e instanceof Error && e.message === "cancelled") return;
-      toast.error(e instanceof Error ? e.message : "Could not open database.");
+      toast.error(e instanceof Error && e.message ? e.message : t("toastCouldNotOpenDb"));
     }
   };
 
@@ -253,14 +255,22 @@ export function MachinePicker({
         built.push(...part);
       }
       if (addMode === "replace") {
-        if (items.length > 0 && !confirm(`Replace ${items.length} machines with ${built.length} selected machines?`))
+        if (
+          items.length > 0 &&
+          !confirm(t("confirmReplaceMachines", { count: items.length, newCount: built.length }))
+        )
           return;
         onChange(built);
-        toast.success(`Replaced report with ${built.length} machines.`);
+        toast.success(t("toastReplacedMachines", { count: built.length }));
       } else {
         onChange([...items, ...built]);
         toast.success(
-          built.length === 1 ? `Added ${built[0].name}.` : `Added ${built.length} machines from ${toAdd.length > 1 ? "multiple DBs" : toAdd[0].dbName}.`
+          built.length === 1
+            ? t("toastAddedOne", { name: built[0].name })
+            : t("toastAddedMany", {
+                count: built.length,
+                source: toAdd.length > 1 ? t("pickerMultipleDbs") : toAdd[0].dbName,
+              })
         );
       }
       setSelected(new Set());
@@ -283,9 +293,8 @@ export function MachinePicker({
 
   if (!isTauri) {
     return (
-      <EmptyState icon={<ListChecks />} title="Machine selection needs the desktop app">
-        The machine tree is read straight from the Spectra .sp3 database, which only the installed
-        Report Maker can open. Machines can still be added by hand under Edit report → Machines.
+      <EmptyState icon={<ListChecks />} title={t("pickerNeedsDesktopTitle")}>
+        {t("pickerNeedsDesktopBody")}
       </EmptyState>
     );
   }
@@ -294,16 +303,15 @@ export function MachinePicker({
     return (
       <EmptyState
         icon={<DatabaseZap />}
-        title="Open a Spectra database first"
+        title={t("pickerOpenFirstTitle")}
         actions={
           <Button onClick={() => void openOther()}>
             <FolderOpen aria-hidden="true" />
-            Open .sp3…
+            {t("pickerOpenSp3")}
           </Button>
         }
       >
-        The plants and machines in that database are listed here so you can choose what the report
-        covers. You can select multiple .sp3 files at once (Shift/Cmd in the picker) or drag several onto the window.
+        {t("pickerOpenFirstBody")}
       </EmptyState>
     );
   }
@@ -319,21 +327,21 @@ export function MachinePicker({
             />
             <Input
               className="ps-8"
-              placeholder="Search machines, plants, notes…"
+              placeholder={t("pickerSearchPlaceholder")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search machines"
+              aria-label={t("pickerSearchAria")}
             />
           </div>
           <Button variant="outline" size="sm" onClick={() => void openOther()}>
             <FolderOpen aria-hidden="true" />
-            Other databases…
+            {t("pickerOtherDbs")}
           </Button>
         </div>
         {loading ? (
           <div className="flex items-center gap-2 px-4 py-10 text-[13px] text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            Reading the machine tree…
+            {t("pickerReadingTree")}
           </div>
         ) : error ? (
           <p className="px-4 py-6 text-[13px] text-destructive" role="alert">
@@ -345,15 +353,15 @@ export function MachinePicker({
               <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground">
                 <tr>
                   <th className="w-9 px-3 py-2" />
-                  <th className="px-2 py-2 text-start font-semibold">Machine</th>
-                  <th className="w-20 px-2 py-2 text-end font-semibold">Points</th>
-                  <th className="w-28 px-2 py-2 text-end font-semibold">Measurements</th>
-                  <th className="w-28 px-2 py-2 text-start font-semibold">Last measured</th>
+                  <th className="px-2 py-2 text-start font-semibold">{t("pickerTableMachine")}</th>
+                  <th className="w-20 px-2 py-2 text-end font-semibold">{t("pickerTablePoints")}</th>
+                  <th className="w-28 px-2 py-2 text-end font-semibold">{t("pickerTableMeasurements")}</th>
+                  <th className="w-28 px-2 py-2 text-start font-semibold">{t("pickerTableLastMeasured")}</th>
                   <th
                     className="w-16 px-2 py-2 text-center font-semibold"
-                    title="Worst current velocity zone"
+                    title={t("pickerTableZoneTitle")}
                   >
-                    Zone
+                    {t("pickerTableZone")}
                   </th>
                 </tr>
               </thead>
@@ -369,7 +377,7 @@ export function MachinePicker({
                         <input
                           type="checkbox"
                           className="h-4 w-4"
-                          aria-label={`Select all in ${plant}`}
+                          aria-label={t("pickerSelectAllIn", { plant })}
                           checked={all}
                           ref={(el) => {
                             if (el) el.indeterminate = some;
@@ -399,7 +407,7 @@ export function MachinePicker({
                             aria-hidden="true"
                           />
                           {plant}
-                          <span className="font-normal normal-case">· {list.length} machines</span>
+                          <span className="font-normal normal-case">{t("pickerMachinesCount", { count: list.length })}</span>
                         </button>
                       </td>
                     </tr>
@@ -424,7 +432,7 @@ export function MachinePicker({
                                 <input
                                   type="checkbox"
                                   className="h-4 w-4"
-                                  aria-label={`Select ${i.machine.name}`}
+                                  aria-label={t("pickerSelectMachine", { name: i.machine.name })}
                                   checked={on}
                                   onChange={() => toggle(key, false)}
                                 />
@@ -432,9 +440,9 @@ export function MachinePicker({
                               <td className="px-2 py-1.5">
                                 <span className="flex min-w-0 items-center gap-2">
                                   <span className="truncate font-medium">
-                                    {i.machine.name || `Machine ${id}`}
+                                    {i.machine.name || t("pickerMachineFallback", { id })}
                                   </span>
-                                  {added ? <Badge tone="success">In report</Badge> : null}
+                                  {added ? <Badge tone="success">{t("pickerInReportBadge")}</Badge> : null}
                                 </span>
                                 {i.machine.note ? (
                                   <span className="block truncate text-xs text-muted-foreground">
@@ -462,7 +470,7 @@ export function MachinePicker({
                 <tbody>
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
-                      {catalogs.length ? "No machines match." : "No machine tree loaded."}
+                      {catalogs.length ? t("pickerNoMatch") : t("pickerNoTree")}
                     </td>
                   </tr>
                 </tbody>
@@ -473,13 +481,13 @@ export function MachinePicker({
         <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2.5">
           <span className="flex-1 text-[13px] text-muted-foreground">
             {selected.size > 0
-              ? `${selected.size} selected · Shift-click selects a range`
-              : "Click machines to select them. Shift-click selects a range."}
+              ? t("pickerSelectedRange", { count: selected.size })
+              : t("pickerClickToSelect")}
           </span>
           {toRemove.length > 0 ? (
             <Button variant="outline" size="sm" onClick={removeSelected}>
               <Minus aria-hidden="true" />
-              Remove {toRemove.length}
+              {t("pickerRemoveCount", { count: toRemove.length })}
             </Button>
           ) : null}
           <Button
@@ -492,7 +500,7 @@ export function MachinePicker({
             ) : (
               <Plus aria-hidden="true" />
             )}
-            Add {toAdd.length > 0 ? toAdd.length : ""} to report
+            {toAdd.length > 0 ? t("pickerAddToReport", { count: toAdd.length }) : t("pickerAddToReportShort")}
           </Button>
         </div>
       </Card>
@@ -500,28 +508,28 @@ export function MachinePicker({
       <Card className="flex flex-col overflow-hidden lg:sticky lg:top-0">
         <div className="border-b px-3 py-2.5">
           <p className="text-[13px] font-semibold">
-            In this report{" "}
+            {t("pickerInReport")}{" "}
             <span className="font-normal text-muted-foreground">({items.length})</span>
           </p>
-          <p className="text-xs text-muted-foreground">Grouped by source database.</p>
+          <p className="text-xs text-muted-foreground">{t("pickerGroupedByDb")}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Segmented
               ariaLabel="Add mode"
               value={addMode}
               onChange={(v) => setAddMode(v as typeof addMode)}
               options={[
-                { value: "append", label: "Append" },
-                { value: "replace", label: "Replace" },
+                { value: "append", label: t("pickerAppend") },
+                { value: "replace", label: t("pickerReplace") },
               ]}
             />
-            <span className="text-xs text-muted-foreground" title="Replace removes all existing machines and adds only the selection">
-              {addMode === "replace" ? "Replaces all" : "Adds to existing"}
+            <span className="text-xs text-muted-foreground" title={t("pickerReplaceHint")}>
+              {addMode === "replace" ? t("pickerReplacesAll") : t("pickerAddsToExisting")}
             </span>
           </div>
         </div>
         {items.length === 0 ? (
           <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
-            Nothing yet. Select machines on the left and add them.
+            {t("pickerNothingYet")}
           </p>
         ) : (
           <div className="max-h-[calc(100vh-20rem)] overflow-auto py-1">
@@ -530,7 +538,7 @@ export function MachinePicker({
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  if (confirm(`Clear all ${items.length} machines from the report?`)) onChange([]);
+                  if (confirm(t("confirmClearMachines", { count: items.length }))) onChange([]);
                 }}
               >
                 <X aria-hidden="true" />
@@ -544,11 +552,11 @@ export function MachinePicker({
                     size="sm"
                     onClick={() => {
                       const n = items.filter((e) => e.sp3Path === cat.path).length;
-                      if (confirm(`Remove ${n} machines from ${sp3Filename(cat.path)}?`))
+                      if (confirm(t("confirmRemoveMachinesFromDb", { count: n, db: sp3Filename(cat.path) })))
                         onChange(items.filter((e) => e.sp3Path !== cat.path));
                     }}
                   >
-                    Remove from {sp3Filename(cat.path)}
+                    {t("pickerRemoveFrom", { db: sp3Filename(cat.path) })}
                   </Button>
                 ) : null
               )}
@@ -556,7 +564,7 @@ export function MachinePicker({
             {[...groupEquipmentsByDb(items).entries()].map(([db, list]) => (
               <div key={db} className="border-t first:border-t-0">
                 <p className="sticky top-0 bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-                  {db} <span className="font-normal">· {list.length}</span>
+                  {db} <span className="font-normal">{t("pickerDbCount", { count: list.length })}</span>
                 </p>
                 <ol>
                   {list.map((e) => (
@@ -564,14 +572,14 @@ export function MachinePicker({
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] font-medium">{e.name}</span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {[e.plant, e.pointIds?.length ? `${e.pointIds.length} points` : null].filter(Boolean).join(" · ")}
+                          {[e.plant, e.pointIds?.length ? t("pickerPointsCount", { count: e.pointIds.length }) : null].filter(Boolean).join(" · ")}
                         </span>
                       </span>
                       <button
                         type="button"
                         className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100"
-                        aria-label={`Remove ${e.name}`}
-                        title="Remove from report"
+                        aria-label={t("pickerRemoveMachine", { name: e.name })}
+                        title={t("pickerRemoveFromReport")}
                         onClick={() => onChange(items.filter((x) => x.id !== e.id))}
                       >
                         <X className="h-3.5 w-3.5" aria-hidden="true" />

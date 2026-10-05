@@ -17,6 +17,7 @@ import type { MissingItem, PageId } from "./shell";
 import { Button } from "./ui/button";
 import { Panel } from "./ui/card";
 import { toast } from "./ui/sonner";
+import { useUi } from "../lib/i18n";
 
 interface Check {
   label: string;
@@ -50,25 +51,26 @@ export function ExportPage({
   progress?: ExportProgress;
   lastSaved: string | null;
 }) {
+  const { t } = useUi();
   const field = (key: string) => missing.find((m) => m.key === key);
   const edited = equipments.filter(
     (e) => e.dbLimits && JSON.stringify(e.limits) !== JSON.stringify(e.dbLimits)
   ).length;
   const checks: Check[] = [
-    { label: "Database opened", state: hasData ? "ok" : "todo", page: "data" },
+    { label: t("databaseOpened"), state: hasData ? "ok" : "todo", page: "data" },
     {
-      label: "Machines selected",
+      label: t("machinesSelected"),
       detail:
         equipments.length > 0
           ? `${equipments.length} machine${equipments.length === 1 ? "" : "s"}`
-          : "Without machines the report covers the single open measurement.",
+          : t("withoutMachinesDetail"),
       state: equipments.length > 0 ? "ok" : "optional",
       page: "machines",
     },
     ...(["project", "engineer", "date"] as const).map((k) => {
       const m = field(k);
       return {
-        label: { project: "Project name", engineer: "Engineer", date: "Report date" }[k],
+        label: { project: t("projectName").replace(" *", ""), engineer: t("engineer").replace(" *", ""), date: t("reportDate") }[k],
         detail: k === "project" && !m ? options.projectName : undefined,
         state: m ? ("todo" as const) : ("ok" as const),
         page: "details" as const,
@@ -76,19 +78,19 @@ export function ExportPage({
       };
     }),
     {
-      label: "Findings",
-      detail: findingsFilled ? "Written" : "A short automatic summary is used when left empty.",
+      label: t("findings"),
+      detail: findingsFilled ? t("findingsWritten") : t("findingsAutoSummary"),
       state: findingsFilled ? "ok" : "optional",
       page: "findings",
     },
     {
-      label: "Alarm limits",
+      label: t("alarmLimitsLabel"),
       detail:
         equipments.length === 0
-          ? "Default limits from Settings."
+          ? t("alarmLimitsDefault")
           : edited > 0
-            ? `${edited} machine${edited === 1 ? "" : "s"} edited, the rest from the database.`
-            : "From the database for every machine.",
+            ? t("alarmLimitsEdited", { count: edited, plural: edited === 1 ? "" : "s" })
+            : t("alarmLimitsFromDb"),
       state: "ok",
       page: "alarms",
     },
@@ -97,21 +99,18 @@ export function ExportPage({
   const sec = secondaryLabels(options.secondaryMetric ?? "acceleration", options.language ?? "en");
   const iso =
     options.includeIsoTable === false || options.isoPosition === "off"
-      ? "Off"
+      ? t("isoOff")
       : options.isoPosition === "afterToc"
-        ? "After the contents"
-        : "At the end";
+        ? t("isoAfterToc")
+        : t("isoEnd");
   const sections: [string, string][] = [
-    ["Language", options.language === "fa" ? "Persian (RTL)" : "English"],
-    [
-      "Measuring results",
-      options.showSecondary === false ? "Velocity only" : `Velocity + ${sec.short.toLowerCase()}`,
-    ],
-    ["Trend sparklines", options.trendZoneBands === false ? "Plain" : "With alarm bands"],
-    ["Full-size trend pages", options.trendPages ? "Yes" : "No"],
-    ["FFT spectra grid", options.fftAllPoints === false ? "No" : "Yes"],
-    ["ISO 10816-3 table", `${iso}${options.useCustomIso ? " (edited values)" : ""}`],
-    ["Table of contents", options.includeToc === false ? "No" : "Yes"],
+    [t("languageLabel"), options.language === "fa" ? "Persian (RTL)" : "English"],
+    [t("measuringResults"), options.showSecondary === false ? t("velocityOnly") : t("velocityPlus", { metric: sec.short.toLowerCase() })],
+    [t("trendSparklines"), options.trendZoneBands === false ? t("plain") : t("withBands")],
+    [t("fullTrendPages"), options.trendPages ? t("yes") : t("no")],
+    [t("fftSpectraGrid"), options.fftAllPoints === false ? t("no") : t("yes")],
+    [t("isoTable"), `${iso}${options.useCustomIso ? " (edited values)" : ""}`],
+    [t("toc"), options.includeToc === false ? t("no") : t("yes")],
   ];
 
   const ready = hasData && missing.length === 0;
@@ -123,14 +122,14 @@ export function ExportPage({
       const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
       await revealItemInDir(lastSaved);
     } catch {
-      toast.error("Could not open the folder.");
+      toast.error(t("toastCouldNotOpenFolder"));
     }
   };
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="grid gap-4">
-        <Panel title="Before you generate" contentClassName="grid gap-0.5">
+        <Panel title={t("beforeGenerate")} contentClassName="grid gap-0.5">
           {checks.map((c) => {
             const Icon = c.state === "ok" ? CircleCheck : c.state === "todo" ? CircleAlert : Circle;
             return (
@@ -158,9 +157,7 @@ export function ExportPage({
                 <span className="grid gap-0.5">
                   <span className="text-[13px] font-medium">
                     {c.label}
-                    {c.state === "todo" ? (
-                      <span className="ms-2 text-xs font-normal text-destructive">Required</span>
-                    ) : null}
+                    {c.state === "todo" ? <span className="ms-2 text-xs font-normal text-destructive">{t("required")}</span> : null}
                   </span>
                   {c.detail ? (
                     <span className="text-xs text-muted-foreground">{c.detail}</span>
@@ -171,10 +168,10 @@ export function ExportPage({
           })}
         </Panel>
         <Panel
-          title="What the report contains"
+          title={t("whatReportContains")}
           actions={
             <Button variant="ghost" size="sm" onClick={() => onNavigate("alarms")}>
-              Change
+              {t("change")}
             </Button>
           }
         >
@@ -205,8 +202,8 @@ export function ExportPage({
       <Panel
         className="lg:sticky lg:top-0 lg:shadow-sm"
         icon={<FileText />}
-        title="Word report"
-        description="Editable .docx — keep browsing while it generates."
+        title={t("wordReport")}
+        description={t("wordReportDesc")}
         contentClassName="grid gap-3"
       >
         <p
@@ -228,11 +225,11 @@ export function ExportPage({
           )}
           {busy
             ? typeof progress?.percent === "number"
-              ? `Generating ${progress.percent}%`
-              : "Generating…"
+              ? t("generatingWithPercent", { percent: progress.percent })
+              : t("generatingEllipsis")
             : ready
-              ? "Generate report"
-              : "Check and generate"}
+              ? t("generateReport")
+              : t("checkAndGenerate")}
         </Button>
         {busy || (progress && progress.stage !== "idle" && progress.stage !== "done") ? (
           <div className="grid gap-1.5">
@@ -249,21 +246,16 @@ export function ExportPage({
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              {progress?.detail || (progress ? stageLabel(progress.stage) : "Working…")} · keep
-              browsing while this runs
+              {progress?.detail || (progress ? stageLabel(progress.stage) : "Working…")} · {t("keepBrowsing")}
             </p>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            {ready
-              ? "You choose where to save it. Ctrl+E works from any page."
-              : "Missing required items are highlighted when you press the button."}
-          </p>
+          <p className="text-xs text-muted-foreground">{ready ? t("readySaveHint") : t("missingHint")}</p>
         )}
         {lastSaved ? (
           <Button variant="outline" size="sm" onClick={() => void reveal()} title={lastSaved}>
             <FolderOpen aria-hidden="true" />
-            Show last report in folder
+            {t("showLastInFolder")}
           </Button>
         ) : null}
       </Panel>

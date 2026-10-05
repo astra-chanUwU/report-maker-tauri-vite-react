@@ -77,12 +77,13 @@ export function TemplateCard({
   options: ReportOptions;
   onOptions: (next: ReportOptions) => void;
 }) {
+  const { t } = useUi();
   const selected = options.templateId ?? "classic";
   return (
     <Panel
       icon={<LayoutTemplate />}
-      title="Template"
-      description="Cover and heading style of the Word document."
+      title={t("template")}
+      description={t("templateDesc")}
     >
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" role="radiogroup" aria-label="Template">
         {TEMPLATES.map((tpl) => {
@@ -143,7 +144,7 @@ export function BrandingCard({
       return;
     }
     if (file.size > maxBytes) {
-      toast.error(`Image must be under ${Math.round(maxBytes / 1024)} KB.`);
+      toast.error(t("toastImageTooLarge", { size: Math.round(maxBytes / 1024) }));
       return;
     }
     const b64 = bytesToBase64(new Uint8Array(await file.arrayBuffer()));
@@ -156,13 +157,13 @@ export function BrandingCard({
     <Panel
       icon={<PenLine />}
       title={t("brandingTitle")}
-      description="Stored on this computer and applied to every report."
+      description={t("brandingStorageHint")}
       contentClassName="grid gap-4"
     >
       <div className="grid gap-3 sm:grid-cols-3">
         <AssetTile
-          title="Logo"
-          hint="Header of every page · PNG/JPEG under 500 KB"
+          title={t("assetLogo")}
+          hint={t("assetLogoHint")}
           preview={dataUrl(branding.logoBase64, "image/png")}
           accept="image/png,image/jpeg"
           onPick={(f) => void handleFile("logoBase64", f, MAX_LOGO_BYTES)}
@@ -171,8 +172,8 @@ export function BrandingCard({
           }
         />
         <AssetTile
-          title="Cover page"
-          hint="Full first page · under 1 MB"
+          title={t("assetCover")}
+          hint={t("assetCoverHint")}
           preview={dataUrl(branding.coverBase64, "image/jpeg")}
           accept="image/jpeg,image/png"
           tall
@@ -182,8 +183,8 @@ export function BrandingCard({
           }
         />
         <AssetTile
-          title="Signature / stamp"
-          hint="Closing block with engineer and date"
+          title={t("assetSignature")}
+          hint={t("assetSignatureHint")}
           preview={dataUrl(branding.signatureBase64, "image/png")}
           accept="image/png,image/jpeg"
           onPick={(f) => void handleFile("signatureBase64", f, MAX_LOGO_BYTES)}
@@ -195,9 +196,9 @@ export function BrandingCard({
         />
       </div>
       <div className="grid gap-3 rounded-md border bg-muted/40 p-3 md:grid-cols-[auto_1fr] md:items-start">
-        <Field label="Signature style">
+        <Field label={t("signatureStyle")}>
           <Segmented
-            ariaLabel="Signature style"
+            ariaLabel={t("signatureStyle")}
             value={sigLayout}
             onChange={(v) => onOptions({ ...options, signatureLayout: v })}
             options={[
@@ -226,9 +227,7 @@ export function BrandingCard({
             </Field>
           </div>
         ) : (
-          <p className="self-center text-xs text-muted-foreground">
-            Prints an “Approval” block with the engineer name and report date.
-          </p>
+          <p className="self-center text-xs text-muted-foreground">{t("signatureStyleHintEn")}</p>
         )}
       </div>
     </Panel>
@@ -252,6 +251,7 @@ function AssetTile({
   onPick: (f: File) => void;
   onRemove: (() => void) | null;
 }) {
+  const { t } = useUi();
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const isImageDrag = (e: React.DragEvent) =>
@@ -307,7 +307,7 @@ function AssetTile({
         ) : (
           <span className="flex flex-col items-center gap-1 text-xs text-muted-foreground pointer-events-none">
             <ImagePlus className="h-5 w-5" aria-hidden="true" />
-            {dragActive ? "Drop image here" : "Click or drop image"}
+            {dragActive ? t("dropImageHere") : t("clickOrDropImage")}
           </span>
         )}
       </button>
@@ -318,7 +318,7 @@ function AssetTile({
         </div>
         {onRemove ? (
           <Button variant="ghost" size="sm" onClick={onRemove}>
-            Remove
+            {t("remove")}
           </Button>
         ) : null}
       </div>

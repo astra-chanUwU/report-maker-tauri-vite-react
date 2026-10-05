@@ -141,7 +141,10 @@ function App() {
   jobsRef.current = importJobs;
 
   const uiLang: UiLang = options.language === "fa" ? "fa" : "en";
-  const t = useCallback((key: string) => translate(uiLang, key), [uiLang]);
+  const t = useCallback(
+    (key: string, params?: Record<string, string | number>) => translate(uiLang, key, params),
+    [uiLang]
+  );
 
   useEffect(() => {
     initCrashHooks();
@@ -705,7 +708,7 @@ function App() {
                           variant="ghost"
                           disabled={selectedDbPaths.length === 0}
                           onClick={() => {
-                            if (confirm(`Clear all ${sp3Paths.length} uploaded databases from this session?`)) {
+                            if (confirm(t("confirmClearDbs", { count: sp3Paths.length }))) {
                               setSp3Paths([]);
                               setSelectedDbPaths([]);
                               setSp3Path(null);

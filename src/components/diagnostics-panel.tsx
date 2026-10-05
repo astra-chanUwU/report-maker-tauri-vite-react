@@ -5,6 +5,7 @@ import type { CsvRowSummary } from "../lib/mdb";
 import { latestPerPoint } from "../lib/report-slices";
 import { classifyZone, type ZoneLimitSet, type ZoneResult } from "../lib/zones";
 import { filenameOf } from "../lib/import-jobs";
+import { useUi } from "../lib/i18n";
 import { Panel } from "./ui/card";
 import { Badge } from "./ui/form";
 import { ZoneBadge } from "./measuring-table";
@@ -28,6 +29,7 @@ export function DiagnosticsPanel({
   equipments: EquipmentItem[];
   limits: ZoneLimitSet;
 }) {
+  const { t } = useUi();
   const facts = useMemo(() => {
     if (!rows || rows.length === 0) return null;
     const latest = latestPerPoint(rows);
@@ -37,7 +39,6 @@ export function DiagnosticsPanel({
       if (arr) arr.push(r);
       else byPointId.set(r.pointId, [r]);
     }
-    // sort each point's rows by date to find prev
     for (const arr of byPointId.values()) arr.sort((a, b) => Number(a.measDate) - Number(b.measDate));
 
     let worst: ZoneResult = "";
@@ -67,49 +68,49 @@ export function DiagnosticsPanel({
 
   if (!facts) {
     return (
-      <Panel icon={<Activity />} title="Diagnostics" description="Open a database to see health checks." />
+      <Panel icon={<Activity />} title={t("diagnosticsTitle")} description={t("diagnosticsNeedDb")} />
     );
   }
   return (
     <Panel
       icon={<Activity />}
-      title="Diagnostics"
-      description={`${facts.latestCount} points · worst zone ${facts.worst || "A"} · ${facts.breachCount} above A`}
+      title={t("diagnosticsTitle")}
+      description={t("diagnosticsDesc", { count: facts.latestCount, worst: facts.worst || "A", breach: facts.breachCount })}
       contentClassName="grid gap-3"
     >
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
           <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Needs attention</p>
+            <p className="text-xs text-muted-foreground">{t("needsAttention")}</p>
             <p className="flex items-center gap-1.5 text-sm font-semibold">
               {facts.breachCount > 0 ? <ZoneBadge zone={facts.worst} /> : null}
-              {facts.breachCount} of {facts.latestCount} points
+              {facts.breachCount} {t("ofPoints", { total: facts.latestCount })}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
           <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Jumped a zone since prev</p>
-            <p className="text-sm font-semibold">{facts.jumpCount} points</p>
+            <p className="text-xs text-muted-foreground">{t("jumpedZone")}</p>
+            <p className="text-sm font-semibold">{facts.jumpCount} {t("points")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
           <Clock3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Stale (&gt;{STALE_DAYS}d)</p>
-            <p className="text-sm font-semibold">{facts.staleCount} points</p>
+            <p className="text-xs text-muted-foreground">{t("staleLabel", { days: STALE_DAYS })}</p>
+            <p className="text-sm font-semibold">{facts.staleCount} {t("points")}</p>
           </div>
         </div>
       </div>
       {facts.distinctDbs > 1 ? (
         <p className="text-xs text-muted-foreground">
-          <Badge tone="neutral">{facts.distinctDbs} databases</Badge> in report — grouped by file in the machine list.
+          <Badge tone="neutral">{facts.distinctDbs} databases</Badge> {t("databasesInReport", { count: facts.distinctDbs })}
         </p>
       ) : null}
       <p className="text-xs text-muted-foreground">
-        {facts.totalRows.toLocaleString()} measurements in the open database. Use Readings → Only B/U/C to isolate.
+        {t("measurementsInDb", { count: facts.totalRows.toLocaleString() })}
       </p>
     </Panel>
   );

@@ -35,26 +35,30 @@ const STAGE_WEIGHT: Record<ExportStage, number> = {
   failed: 0,
 };
 
-export function stageLabel(stage: ExportStage): string {
+export function stageLabel(
+  stage: ExportStage,
+  t?: (key: string) => string,
+): string {
+  const tr = (key: string, fallback: string) => (t ? t(key) : fallback);
   switch (stage) {
     case "preparing":
-      return "Preparing…";
+      return tr("stagePreparing", "Preparing…");
     case "envelope":
-      return "Loading envelope data…";
+      return tr("stageEnvelope", "Loading envelope data…");
     case "trends":
-      return "Building trend charts…";
+      return tr("stageTrends", "Building trend charts…");
     case "fft":
-      return "Rendering spectra…";
+      return tr("stageFft", "Rendering spectra…");
     case "building":
-      return "Assembling document…";
+      return tr("stageBuilding", "Assembling document…");
     case "packing":
-      return "Packing Word file…";
+      return tr("stagePacking", "Packing Word file…");
     case "saving":
-      return "Saving…";
+      return tr("stageSaving", "Saving…");
     case "done":
-      return "Report ready";
+      return tr("reportReady", "Report ready");
     case "failed":
-      return "Export failed";
+      return tr("exportFailedLabel", "Export failed");
     default:
       return "";
   }

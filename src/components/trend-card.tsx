@@ -3,6 +3,7 @@ import { TrendingUp } from "lucide-react";
 import type { CsvRowSummary } from "../lib/mdb";
 import { groupHistories, renderTrendPng, takeLastHistory } from "../lib/trends";
 import { limitsShort, type ZoneLimitSet } from "../lib/zones";
+import { useUi } from "../lib/i18n";
 import { Panel } from "./ui/card";
 import { Segmented, Select } from "./ui/form";
 import { Label } from "./ui/label";
@@ -61,6 +62,7 @@ export function TrendCard({
   limits: ZoneLimitSet;
   onSnapshot?: (snap: TrendSnapshot | null) => void;
 }) {
+  const { t } = useUi();
   const histories = useMemo(() => groupHistories(rows), [rows]);
   const [label, setLabel] = useState<string>("");
   const [window, setWindow] = useState<Window>(10);
@@ -103,12 +105,12 @@ export function TrendCard({
   return (
     <Panel
       icon={<TrendingUp />}
-      title="Vibration trends"
-      description={`${history?.label} · ${samples.length} samples · ${first} → ${last}. The selected point and window go into the report.`}
+      title={t("vibrationTrends")}
+      description={t("trendDesc", { label: history?.label ?? "", count: samples.length, first, last })}
       actions={
         <>
           <Label htmlFor="trend-point" className="sr-only">
-            Measuring point
+            {t("measuringPoint")}
           </Label>
           <Select
             id="trend-point"
@@ -123,12 +125,12 @@ export function TrendCard({
             ))}
           </Select>
           <Segmented
-            ariaLabel="Trend window"
+            ariaLabel={t("trendWindow")}
             value={String(window)}
             onChange={(v) => setWindow(v === "all" ? "all" : (Number(v) as Window))}
             options={WINDOWS.map((w) => ({
               value: String(w),
-              label: w === "all" ? "All" : `Last ${w}`,
+              label: w === "all" ? t("segmentAll") : t("lastN", { n: w }),
             }))}
           />
         </>
@@ -137,9 +139,9 @@ export function TrendCard({
     >
       <figure className="grid content-start gap-1.5">
         <figcaption className="text-[13px] font-medium">
-          Velocity RMS (mm/s){" "}
+          {t("velocityRms")}{" "}
           <span className="font-normal text-muted-foreground">
-            · zones {limitsShort(limits.velocity)}
+            · {t("zonesLabel", { zones: limitsShort(limits.velocity) })}
           </span>
         </figcaption>
         {velUrl ? (
@@ -152,9 +154,9 @@ export function TrendCard({
       </figure>
       <figure className="grid content-start gap-1.5">
         <figcaption className="text-[13px] font-medium">
-          Acceleration RMS{" "}
+          {t("accelerationRms")}{" "}
           <span className="font-normal text-muted-foreground">
-            · zones {limitsShort(limits.acceleration)}
+            · {t("zonesLabel", { zones: limitsShort(limits.acceleration) })}
           </span>
         </figcaption>
         {accUrl ? (

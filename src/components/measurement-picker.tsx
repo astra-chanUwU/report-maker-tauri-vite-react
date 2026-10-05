@@ -13,6 +13,7 @@ import { cn } from "../lib/utils";
 import { Panel } from "./ui/card";
 import { Input } from "./ui/input";
 import { toast } from "./ui/sonner";
+import { translate } from "../lib/i18n";
 
 const DISPLAY_CAP = 200;
 
@@ -52,9 +53,13 @@ export function MeasurementPicker({
     const load = tauriPath ? listTauriRows(tauriPath) : listFileRows(file!);
     load
       .then((l) => alive && setList(l))
-      .catch(
-        (e) => alive && toast.error(e instanceof Error ? e.message : "Could not list measurements.")
-      )
+      .catch((e) => {
+        if (!alive) return;
+        const lang = document.documentElement.lang === "fa" ? "fa" : "en";
+        toast.error(
+          e instanceof Error && e.message ? e.message : translate(lang as "fa" | "en", "toastCouldNotListMeasurements")
+        );
+      })
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
@@ -93,21 +98,25 @@ export function MeasurementPicker({
         : await loadFileRow(file!, filename, index, total);
       onSelect(result);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not load measurement.");
+      const lang = document.documentElement.lang === "fa" ? "fa" : "en";
+      toast.error(
+        e instanceof Error && e.message ? e.message : translate(lang as "fa" | "en", "toastCouldNotLoadMeasurement")
+      );
     } finally {
       setBusyIdx(null);
     }
   };
 
+  const langUi = (typeof document !== "undefined" && document.documentElement.lang === "fa" ? "fa" : "en") as "fa" | "en";
   return (
     <Panel
       icon={<ListOrdered />}
-      title="Featured measurement"
+      title={translate(langUi, "featuredMeasurement")}
       description={
         loading
-          ? "Reading…"
+          ? translate(langUi, "featuredMeasurementLoading")
           : list
-            ? `${list.rows.length.toLocaleString()} in this file. The one you pick is charted in the report.`
+            ? translate(langUi, "featuredMeasurementDesc", { count: list.rows.length.toLocaleString() })
             : ""
       }
       className={cn("flex min-h-0 flex-col", className)}

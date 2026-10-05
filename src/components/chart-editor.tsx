@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { ReportOptions, SpectraPoint } from "../lib/parseSp3";
 import { LineChart } from "lucide-react";
+import { useUi } from "../lib/i18n";
 import { Button } from "./ui/button";
 import { Panel } from "./ui/card";
 import { Select } from "./ui/form";
@@ -62,6 +63,7 @@ export function ChartEditor({
   options: ReportOptions;
   onOptions: (next: ReportOptions) => void;
 }) {
+  const { t } = useUi();
   const [showPeak, setShowPeak] = useState(true);
   const [smooth, setSmooth] = useState(1);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -87,7 +89,7 @@ export function ChartEditor({
   }, [spectra]);
 
   if (spectra.length === 0 || !model) {
-    return <Panel title="Spectrum editor" description="Load measurement data to enable editing." />;
+    return <Panel title={t("chartEditorTitle")} description={t("chartEditorNeedData")} />;
   }
 
   const path = editPts
@@ -116,12 +118,12 @@ export function ChartEditor({
   return (
     <Panel
       icon={<LineChart />}
-      title="Spectrum editor"
-      description="Drag points vertically or edit values in the table. Preview and report update together."
+      title={t("chartEditorTitle")}
+      description={t("chartEditorDesc")}
       actions={
         <>
           <Label htmlFor="smooth" className="text-muted-foreground">
-            Smoothing
+            {t("smoothing")}
           </Label>
           <Select
             id="smooth"
@@ -131,7 +133,7 @@ export function ChartEditor({
           >
             {[1, 3, 5, 7].map((w) => (
               <option key={w} value={w}>
-                {w === 1 ? "Off" : `±${Math.floor(w / 2)} (w=${w})`}
+                {w === 1 ? t("chartOff") : `±${Math.floor(w / 2)} (w=${w})`}
               </option>
             ))}
           </Select>
@@ -141,11 +143,11 @@ export function ChartEditor({
             disabled={smooth <= 1}
             onClick={() => onChange(movingAverage(spectra, smooth))}
           >
-            Apply
+            {t("chartApply")}
           </Button>
           <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
           <Label htmlFor="point-limit" className="text-muted-foreground">
-            Table rows in report
+            {t("tableRowsInReport")}
           </Label>
           <Select
             id="point-limit"
@@ -166,7 +168,7 @@ export function ChartEditor({
               checked={showPeak}
               onChange={(e) => setShowPeak(e.target.checked)}
             />
-            Peak
+            {t("peakLabel")}
           </label>
         </>
       }
@@ -182,20 +184,19 @@ export function ChartEditor({
           onMouseUp={() => setDragIdx(null)}
           onMouseLeave={() => setDragIdx(null)}
           role="img"
-          aria-label={`Editable spectra chart — ${spectra.length} points, peak ${peak?.amp} at ${peak?.freq}`}
+          aria-label={t("editableSpectraChart", { count: spectra.length, peak: peak?.amp ?? 0, freq: peak?.freq ?? 0 })}
         >
-          <title>Editable spectra chart</title>
+          <title>{t("chartEditorTitle")}</title>
           <desc>
-            {spectra.length} points, peak {peak?.amp} at {peak?.freq}. Drag points vertically or use
-            arrow keys on selected points.
+            {t("pointsPeakDesc", { count: spectra.length, peak: peak?.amp ?? 0, freq: peak?.freq ?? 0 })}
           </desc>
-          {[0.25, 0.5, 0.75].map((t) => (
+          {[0.25, 0.5, 0.75].map((t2) => (
             <line
-              key={t}
+              key={t2}
               x1={40}
               x2={W - 10}
-              y1={H * t}
-              y2={H * t}
+              y1={H * t2}
+              y2={H * t2}
               stroke="currentColor"
               strokeOpacity={0.12}
             />
@@ -216,7 +217,7 @@ export function ChartEditor({
               style={{ cursor: "ns-resize" }}
               tabIndex={0}
               role="slider"
-              aria-label={`Point ${k + 1} freq ${p.freq} amp ${p.amp}`}
+              aria-label={t("pointFreqAmp", { index: k + 1, freq: p.freq, amp: p.amp })}
               aria-valuemin={Math.floor(model.aMin)}
               aria-valuemax={Math.ceil(model.aMax)}
               aria-valuenow={p.amp}
@@ -247,8 +248,8 @@ export function ChartEditor({
           ))}
         </svg>
         <p className="text-xs text-muted-foreground">
-          {spectra.length.toLocaleString()} points · {editIdx.length} drag handles
-          {peak ? ` · peak ${peak.amp} @ ${peak.freq}` : ""}. Arrow keys nudge the focused handle.
+          {t("pointsDragHandles", { total: spectra.length.toLocaleString(), handles: editIdx.length })}
+          {peak ? ` · ${t("peakAt", { peak: peak.amp, freq: peak.freq })}` : ""}. {t("arrowKeysHint")}
         </p>
       </div>
 
@@ -258,8 +259,8 @@ export function ChartEditor({
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10">#</TableHead>
-                <TableHead>Freq</TableHead>
-                <TableHead>Amp</TableHead>
+                <TableHead>{t("freqHeader")}</TableHead>
+                <TableHead>{t("ampHeader")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -291,7 +292,7 @@ export function ChartEditor({
           </Table>
         </div>
         <p className="text-xs text-muted-foreground">
-          Table edits the first {Math.min(60, editIdx.length)} handles.
+          {t("tableEditsFirst", { count: Math.min(60, editIdx.length) })}
         </p>
       </div>
     </Panel>

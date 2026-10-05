@@ -77,7 +77,7 @@ export function EquipmentWorkspace({
     <>
       <Button variant="outline" size="sm" onClick={onPickMachines}>
         <ListChecks aria-hidden="true" />
-        Select from database
+        {t("selectFromDb")}
       </Button>
       <Button variant="ghost" size="sm" onClick={add}>
         <Plus aria-hidden="true" />
@@ -94,7 +94,7 @@ export function EquipmentWorkspace({
             <Cog className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold">Reporting on several machines?</p>
+            <p className="text-[13px] font-semibold">{t("reportingOnSeveral")}</p>
             <p className="text-xs text-muted-foreground">{t("equipmentsHint")}</p>
           </div>
           <div className="flex flex-wrap gap-2">{toolbar}</div>
@@ -137,7 +137,7 @@ export function EquipmentWorkspace({
                     <span className="block truncate text-xs text-muted-foreground">
                       {e.pointIds && e.pointIds.length > 0
                         ? `${e.pointIds.length} ${t("points")}`
-                        : "Manual entry"}
+                        : t("manualEntry")}
                     </span>
                   </span>
                   {e.status ? <Badge tone={statusTone(e.status)}>{e.status}</Badge> : null}
@@ -162,7 +162,7 @@ export function EquipmentWorkspace({
               name: options.equipmentName || selected.name || t("untitled"),
               specs: options.equipmentSpecs ?? selected.specs,
             });
-            toast.success("Filled from single-equipment fields.");
+            toast.success(t("toastFilledFromForm"));
           }}
           onEditLimits={onEditLimits}
         />
@@ -210,37 +210,21 @@ function EquipmentEditor({
       }
       description={
         e.sp3Path
-          ? `Linked to ${e.pointIds?.length ?? 0} measuring points in ${e.sp3Path.split(/[/\\]/).pop()}`
-          : "Entered manually"
+          ? t("linkedTo", {
+              count: e.pointIds?.length ?? 0,
+              file: e.sp3Path.split(/[/\\]/).pop() ?? "",
+            })
+          : t("enteredManually")
       }
       actions={
         <>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => onMove(-1)}
-            disabled={index === 0}
-            aria-label="Move up"
-            title="Move up"
-          >
+          <Button variant="ghost" size="icon-sm" onClick={() => onMove(-1)} disabled={index === 0} aria-label={t("moveUp")} title={t("moveUp")}>
             <ArrowUp aria-hidden="true" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => onMove(1)}
-            disabled={index === count - 1}
-            aria-label="Move down"
-            title="Move down"
-          >
+          <Button variant="ghost" size="icon-sm" onClick={() => onMove(1)} disabled={index === count - 1} aria-label={t("moveDown")} title={t("moveDown")}>
             <ArrowDown aria-hidden="true" />
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onFillFromForm}
-            title="Copy name and specs from the single-equipment fields"
-          >
+          <Button variant="ghost" size="sm" onClick={onFillFromForm} title={t("copyFromSingle")}>
             <Copy aria-hidden="true" />
             {t("fillFromForm")}
           </Button>
@@ -258,7 +242,7 @@ function EquipmentEditor({
       contentClassName="grid gap-5"
     >
       <section className="grid gap-3">
-        <FieldGroupTitle>Identity</FieldGroupTitle>
+        <FieldGroupTitle>{t("identity")}</FieldGroupTitle>
         <div className="grid gap-3 lg:grid-cols-[2fr_1fr_2fr]">
           <Field label={t("name")} htmlFor={id("name")}>
             <Input
@@ -306,7 +290,7 @@ function EquipmentEditor({
           />
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-muted/60 px-3 py-2 text-xs">
-          <span className="font-medium">Alarm limits</span>
+          <span className="font-medium">{t("alarmLimits")}</span>
           {e.limits ? (
             <>
               <span className="tabular-nums">Velocity {formatLimits(e.limits.velocity)} mm/s</span>
@@ -315,59 +299,32 @@ function EquipmentEditor({
               </span>
             </>
           ) : (
-            <span className="text-muted-foreground">Report defaults</span>
+            <span className="text-muted-foreground">{t("reportDefaults")}</span>
           )}
-          <button
-            type="button"
-            className="ms-auto font-medium text-primary hover:underline"
-            onClick={onEditLimits}
-          >
-            Edit limits
+          <button type="button" className="ms-auto font-medium text-primary hover:underline" onClick={onEditLimits}>
+            {t("editLimits")}
           </button>
         </div>
       </section>
 
       <section className="grid gap-3">
-        <FieldGroupTitle>Condition</FieldGroupTitle>
+        <FieldGroupTitle>{t("condition")}</FieldGroupTitle>
         <div className="grid gap-3 lg:grid-cols-2">
-          <Field
-            label={t("problems")}
-            htmlFor={id("problems")}
-            hint="Left blank, Findings → Observations is used."
-          >
-            <Textarea
-              id={id("problems")}
-              value={e.problems}
-              onChange={(ev) => onPatch({ problems: ev.target.value })}
-              rows={4}
-            />
+          <Field label={t("problems")} htmlFor={id("problems")} hint={t("leftBlankFindings")}>
+            <Textarea id={id("problems")} value={e.problems} onChange={(ev) => onPatch({ problems: ev.target.value })} rows={4} />
           </Field>
-          <Field
-            label={t("actions")}
-            htmlFor={id("actions")}
-            hint="Left blank, Findings → Recommendations is used."
-          >
-            <Textarea
-              id={id("actions")}
-              value={e.corrective}
-              onChange={(ev) => onPatch({ corrective: ev.target.value })}
-              rows={4}
-            />
+          <Field label={t("actions")} htmlFor={id("actions")} hint={t("leftBlankRecommendations")}>
+            <Textarea id={id("actions")} value={e.corrective} onChange={(ev) => onPatch({ corrective: ev.target.value })} rows={4} />
           </Field>
         </div>
       </section>
 
       <details className="group rounded-md border" open={narrativeCount > 0 || undefined}>
         <summary className="flex cursor-default items-center gap-2 px-3 py-2 text-[13px] font-medium select-none hover:bg-muted/60 [&::-webkit-details-marker]:hidden">
-          <ChevronDown
-            className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180"
-            aria-hidden="true"
-          />
-          Machine narrative
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+          {t("machineNarrative")}
           <span className="text-xs font-normal text-muted-foreground">
-            {narrativeCount > 0
-              ? `${narrativeCount} of 5 filled`
-              : "optional — overrides the shared findings"}
+            {narrativeCount > 0 ? t("ofFiveFilled", { count: narrativeCount }) : t("machineNarrativeHint")}
           </span>
         </summary>
         <div className="grid gap-3 border-t p-3 lg:grid-cols-2">

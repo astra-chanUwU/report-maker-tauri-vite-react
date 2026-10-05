@@ -1,35 +1,36 @@
 import { Loader2, X, CheckCircle2, AlertCircle, Database } from "lucide-react";
 import { formatBytes, type ImportJob, type ImportStage } from "../lib/import-jobs";
+import { useUi } from "../lib/i18n";
 import { Badge } from "./ui/form";
 import { Button } from "./ui/button";
 
-function stageText(stage: ImportStage): string {
+function stageText(stage: ImportStage, t: (k: string) => string): string {
   switch (stage) {
     case "queued":
-      return "Queued";
+      return t("importQueued");
     case "exporting":
-      return "Exporting Data";
+      return t("importExportingData");
     case "catalog":
-      return "Building catalog";
+      return t("importBuildingCatalog");
     case "indexing":
-      return "Indexing rows";
+      return t("importIndexingRows");
     case "ready":
-      return "Ready";
+      return t("importReady");
     case "failed":
-      return "Failed";
+      return t("importFailed");
   }
 }
 
-function phaseDetail(job: ImportJob): string {
+function phaseDetail(job: ImportJob, t: (k: string, p?: Record<string, string | number>) => string): string {
   const elapsed = job.elapsedSec != null ? ` · ${job.elapsedSec}s` : "";
   const speed = job.speedMbs != null ? ` · ${job.speedMbs.toFixed(1)} MB/s` : "";
-  if (job.stage === "exporting") return `Dumping Data table${elapsed}${speed}`;
-  if (job.stage === "catalog") return `Reading Plant/Machine/Point/Direction${elapsed}`;
-  if (job.stage === "indexing") return `Parsing preview & indexing${elapsed}`;
-  return stageText(job.stage);
+  if (job.stage === "exporting") return `${t("dumpingDataTable")}${elapsed}${speed}`;
+  if (job.stage === "catalog") return `${t("readingPlantMachine")}${elapsed}`;
+  if (job.stage === "indexing") return `${t("parsingPreview")}${elapsed}`;
+  return stageText(job.stage, t);
 }
 
-function JobBar({ job }: { job: ImportJob }) {
+function JobBar({ job, t }: { job: ImportJob; t: (k: string) => string }) {
   const active = job.stage !== "ready" && job.stage !== "failed";
   const pct =
     job.stage === "ready"
@@ -45,7 +46,7 @@ function JobBar({ job }: { job: ImportJob }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={typeof pct === "number" ? pct : undefined}
-      aria-label={`${job.filename} ${stageText(job.stage)}`}
+      aria-label={`${job.filename} ${stageText(job.stage, t)}`}
     >
       <div
         className={
@@ -68,6 +69,7 @@ export function ImportProgress({
   onDismiss: (id: string) => void;
   onCancel: (id: string) => void;
 }) {
+  const { t } = useUi();
   if (jobs.length === 0) return null;
   const active = jobs.filter((j) => j.stage !== "ready" && j.stage !== "failed");
   const done = jobs.filter((j) => j.stage === "ready" || j.stage === "failed");
@@ -77,11 +79,11 @@ export function ImportProgress({
         <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <span className="text-[13px] font-semibold">
           {active.length > 0
-            ? `Importing ${active.length} database${active.length > 1 ? "s" : ""}…`
-            : `Import finished`}
+            ? t("importingDbs", { count: active.length, plural: active.length > 1 ? "s" : "" })
+            : t("importFinished")}
         </span>
         <span className="text-xs text-muted-foreground">
-          {jobs.length} job{jobs.length > 1 ? "s" : ""} · you can keep working
+          {t("jobsCount", { count: jobs.length, plural: jobs.length > 1 ? "s" : "" })}
         </span>
       </div>
       <ul className="grid gap-2">
@@ -102,46 +104,46 @@ export function ImportProgress({
                 <span className="text-xs tabular-nums text-muted-foreground">{j.percent}%</span>
               ) : null}
               <Badge tone={j.stage === "failed" ? "danger" : j.stage === "ready" ? "success" : "neutral"}>
-                {j.stage === "failed" ? j.error?.slice(0, 40) || "failed" : stageText(j.stage)}
+                {j.stage === "failed" ? j.error?.slice(0, 40) || t("failedShort") : stageText(j.stage, t)}
               </Badge>
               {j.stage !== "ready" && j.stage !== "failed" ? (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => onCancel(j.id)}
-                  aria-label={`Cancel ${j.filename}`}
+                  aria-label={`${t("cancel")} ${j.filename}`}
                 >
                   <X aria-hidden="true" />
-                  Cancel
+                  {t("cancel")}
                 </Button>
               ) : (
                 <Button variant="ghost" size="sm" onClick={() => onDismiss(j.id)}>
-                  Dismiss
+                  {t("dismissBtn")}
                 </Button>
               )}
             </div>
-            {j.stage !== "failed" ? <JobBar job={j} /> : null}
+            {j.stage !== "failed" ? <JobBar job={j} t={t} /> : null}
             <p className="text-xs text-muted-foreground">
-              {j.stage === "failed" && j.error ? j.error : j.progress || phaseDetail(j)}
+              {j.stage === "failed" && j.error ? j.error : j.progress || phaseDetail(j, t)}
             </p>
             {(typeof j.bytes === "number" || typeof j.rows === "number") && j.stage !== "failed" ? (
               <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs tabular-nums text-muted-foreground">
                 <span>{j.filename}</span>
                 {typeof j.bytes === "number" ? <span>{formatBytes(j.bytes)}</span> : null}
-                {typeof j.rows === "number" ? <span>{j.rows.toLocaleString()} rows</span> : null}
-                {typeof j.elapsedSec === "number" ? <span>{j.elapsedSec}s elapsed</span> : null}
+                {typeof j.rows === "number" ? <span>{j.rows.toLocaleString()} {t("rowsLabel")}</span> : null}
+                {typeof j.elapsedSec === "number" ? <span>{t("elapsedSec", { sec: j.elapsedSec })}</span> : null}
                 {typeof j.speedMbs === "number" ? <span>{j.speedMbs.toFixed(1)} MB/s</span> : null}
               </p>
             ) : null}
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
-              Step {j.stage === "catalog" ? "2/3" : j.stage === "indexing" ? "3/3" : j.stage === "exporting" ? "1/3" : "—"} · {phaseDetail(j)}
+              {t("stepLabel", { step: j.stage === "catalog" ? "2/3" : j.stage === "indexing" ? "3/3" : j.stage === "exporting" ? "1/3" : "—" })} · {phaseDetail(j, t)}
             </p>
           </li>
         ))}
       </ul>
       {done.length > 0 && active.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Done — you can open another database or continue editing.
+          {t("doneOpenAnother")}
         </p>
       ) : null}
     </div>
@@ -149,15 +151,16 @@ export function ImportProgress({
 }
 
 export function ImportPill({ jobs }: { jobs: ImportJob[] }) {
+  const { t } = useUi();
   const active = jobs.filter((j) => j.stage !== "ready" && j.stage !== "failed");
   if (active.length === 0) return null;
   const pct = active.length === 1 ? active[0].percent : undefined;
-  const phase = active.length === 1 ? stageText(active[0].stage) : `${active.length} DBs`;
+  const phase = active.length === 1 ? stageText(active[0].stage, t) : t("dbsLabel", { count: active.length });
   return (
     <span
       className="hidden items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary lg:flex"
       aria-live="polite"
-      title={active.map((j) => `${j.filename}: ${stageText(j.stage)} ${j.percent ?? ""}%`).join(" · ")}
+      title={active.map((j) => `${j.filename}: ${stageText(j.stage, t)} ${j.percent ?? ""}%`).join(" · ")}
     >
       <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
       {phase}

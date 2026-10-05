@@ -28,29 +28,15 @@ function downloadSampleCsv() {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-const STEPS = [
-  {
-    title: "Import measurements",
-    body: "Open the Spectra .sp3 database, or drop a Data-table CSV. Pick which measurement to feature.",
-  },
-  {
-    title: "Fill in the report",
-    body: "Project and engineer are required. Add machines, findings and branding as needed.",
-  },
-  {
-    title: "Generate",
-    body: "Press Generate report (Ctrl+E) for an editable Word file. Past reports are kept in History.",
-  },
-];
-
 export function Onboarding() {
   const { t } = useUi();
+  const STEPS = [
+    { title: t("onboardingStep1Title"), body: t("onboardingStep1Body") },
+    { title: t("onboardingStep2Title"), body: t("onboardingStep2Body") },
+    { title: t("onboardingStep3Title"), body: t("onboardingStep3Body") },
+  ];
   return (
-    <Panel
-      title={t("onboardingTitle")}
-      description="From database to Word in three short steps."
-      contentClassName="grid gap-4"
-    >
+    <Panel title={t("onboardingTitle")} description={t("onboardingStepsDesc")} contentClassName="grid gap-4">
       <ol className="grid gap-3">
         {STEPS.map((s, i) => (
           <li key={s.title} className="flex gap-3 rounded-md border bg-muted/30 px-3 py-2.5">
@@ -66,14 +52,9 @@ export function Onboarding() {
       </ol>
       <div className="flex items-start gap-2 rounded-md border border-success/25 bg-success/5 px-3 py-2 text-xs text-muted-foreground">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
-        Works fully offline. Measurement data never leaves this computer.
+        {t("worksOffline")}
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="justify-self-start"
-        onClick={downloadSampleCsv}
-      >
+      <Button variant="outline" size="sm" className="justify-self-start" onClick={downloadSampleCsv}>
         <Download aria-hidden="true" />
         {t("downloadSample")}
       </Button>

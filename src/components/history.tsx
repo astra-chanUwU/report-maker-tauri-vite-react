@@ -33,22 +33,21 @@ export function HistoryTab({ onReopen }: { onReopen: (options: ReportOptions) =>
 
   const handleReveal = async (path: string | null) => {
     if (!path) {
-      toast.error("No saved path (web download).");
+      toast.error(t("toastNoSavedPath"));
       return;
     }
     try {
       const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
       await revealItemInDir(path);
     } catch {
-      toast.error("Could not reveal file.");
+      toast.error(t("toastCouldNotReveal"));
     }
   };
 
   if (loaded && entries.length === 0) {
     return (
-      <EmptyState icon={<HistoryIcon />} title="No reports yet">
-        Reports you generate are listed here so you can reopen their settings or find the file
-        again.
+      <EmptyState icon={<HistoryIcon />} title={t("noReportsYet")}>
+        {t("noReportsYetDesc")}
       </EmptyState>
     );
   }
@@ -60,42 +59,42 @@ export function HistoryTab({ onReopen }: { onReopen: (options: ReportOptions) =>
           <Search className="pointer-events-none absolute start-2.5 top-2 h-4 w-4 text-muted-foreground" />
           <Input
             className="ps-8"
-            placeholder="Search project, engineer, file…"
+            placeholder={t("searchHistoryPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Search history"
           />
         </div>
         <span className="text-xs text-muted-foreground">
-          {loaded ? `${filtered.length} of ${entries.length} (keeps last 100)` : t("reading")}
+          {loaded ? t("keepsLast100", { filtered: filtered.length, total: entries.length }) : t("reading")}
         </span>
         <Button
           variant="ghost"
           size="sm"
           className="text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={() => {
-            if (window.confirm("Delete all report history? The .docx files are not touched.")) {
+            if (window.confirm(t("confirmClearHistory"))) {
               void clearHistory().then(() => setEntries([]));
             }
           }}
         >
           <Trash2 aria-hidden="true" />
-          Clear all
+          {t("clearAll")}
         </Button>
       </div>
       {filtered.length === 0 ? (
-        <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">No matches.</p>
+        <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">{t("noMatches")}</p>
       ) : (
         <Table containerClassName="max-h-[calc(100vh-15rem)]">
           <TableHeader>
             <TableRow>
-              <TableHead>Project</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Engineer</TableHead>
-              <TableHead>Source</TableHead>
-              <TableHead>Peak</TableHead>
+              <TableHead>{t("projectCol")}</TableHead>
+              <TableHead>{t("dateCol")}</TableHead>
+              <TableHead>{t("engineerCol")}</TableHead>
+              <TableHead>{t("sourceCol")}</TableHead>
+              <TableHead>{t("peakCol")}</TableHead>
               <TableHead className="w-0 text-end">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{t("actionsCol")}</span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -103,11 +102,8 @@ export function HistoryTab({ onReopen }: { onReopen: (options: ReportOptions) =>
             {filtered.map((e) => (
               <TableRow key={e.id}>
                 <TableCell className="max-w-72">
-                  <p className="truncate font-medium">{e.projectName || "Untitled"}</p>
-                  <p
-                    className="truncate text-xs text-muted-foreground"
-                    title={e.savedPath ?? e.filename}
-                  >
+                  <p className="truncate font-medium">{e.projectName || t("untitledProject")}</p>
+                  <p className="truncate text-xs text-muted-foreground" title={e.savedPath ?? e.filename}>
                     {e.filename}
                   </p>
                 </TableCell>
@@ -115,28 +111,25 @@ export function HistoryTab({ onReopen }: { onReopen: (options: ReportOptions) =>
                 <TableCell className="max-w-40 truncate">{e.engineer}</TableCell>
                 <TableCell className="max-w-48">
                   <p className="truncate">{e.sourceFile}</p>
-                  <p className="text-xs text-muted-foreground">{e.spectraPoints} pts</p>
+                  <p className="text-xs text-muted-foreground">
+                    {e.spectraPoints} {t("pts")}
+                  </p>
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
                   {e.peak.amp} <span className="text-muted-foreground">@ {e.peak.freq}</span>
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onReopen(e.options)}
-                      title="Load this report's settings into the form"
-                    >
+                    <Button size="sm" variant="outline" onClick={() => onReopen(e.options)} title={t("reopenHint")}>
                       <RotateCcw aria-hidden="true" />
-                      Reopen
+                      {t("reopen")}
                     </Button>
                     <Button
                       size="icon-sm"
                       variant="ghost"
                       onClick={() => void handleReveal(e.savedPath)}
-                      title="Show in folder"
-                      aria-label="Show in folder"
+                      title={t("showInFolder")}
+                      aria-label={t("showInFolder")}
                       disabled={!e.savedPath}
                     >
                       <FolderOpen aria-hidden="true" />
@@ -145,8 +138,8 @@ export function HistoryTab({ onReopen }: { onReopen: (options: ReportOptions) =>
                       size="icon-sm"
                       variant="ghost"
                       onClick={() => void deleteHistoryEntry(e.id).then(setEntries)}
-                      title="Remove from history"
-                      aria-label="Remove from history"
+                      title={t("removeFromHistory")}
+                      aria-label={t("removeFromHistory")}
                     >
                       <Trash2 aria-hidden="true" />
                     </Button>

@@ -23,6 +23,7 @@ import { Button } from "./ui/button";
 import { Panel } from "./ui/card";
 import { Badge, CheckRow, Field, Segmented, Select } from "./ui/form";
 import { Input } from "./ui/input";
+import { useUi } from "../lib/i18n";
 
 const METRIC_LABEL: Record<SecondaryMetric, string> = {
   acceleration: "Acceleration",
@@ -38,17 +39,18 @@ export function ChartsMetricsCard({
   options: ReportOptions;
   onOptions: (o: ReportOptions) => void;
 }) {
+  const { t } = useUi();
   const metric = options.secondaryMetric ?? "acceleration";
   const set = (p: Partial<ReportOptions>) => onOptions({ ...options, ...p });
   return (
     <Panel
       icon={<LineChart />}
-      title="Charts & metrics"
-      description="The measuring-results table always shows velocity. Pick what goes beside it."
+      title={t("chartsMetricsTitle")}
+      description={t("chartsMetricsDesc")}
       contentClassName="grid gap-4"
     >
       <fieldset className="grid gap-1.5">
-        <legend className="mb-1 text-xs font-medium text-foreground/85">Secondary metric</legend>
+        <legend className="mb-1 text-xs font-medium text-foreground/85">{t("secondaryMetric")}</legend>
         <div className="grid gap-2 sm:grid-cols-3">
           {SECONDARY_METRICS.map((m) => (
             <label
@@ -79,26 +81,26 @@ export function ChartsMetricsCard({
         <CheckRow
           checked={options.showSecondary !== false}
           onChange={(v) => set({ showSecondary: v })}
-          label={`Show ${METRIC_LABEL[metric].toLowerCase()} columns`}
-          description="Trend and zone columns beside velocity in the measuring table."
+          label={t("showSecondaryLabel", { metric: METRIC_LABEL[metric].toLowerCase() })}
+          description={t("showSecondaryDesc")}
         />
         <CheckRow
           checked={options.trendZoneBands !== false}
           onChange={(v) => set({ trendZoneBands: v })}
-          label="Alarm zone backgrounds on trends"
-          description="Green / yellow / orange / red bands behind each trend line."
+          label={t("alarmBandsLabel")}
+          description={t("alarmBandsDesc")}
         />
         <CheckRow
           checked={options.trendPages === true}
           onChange={(v) => set({ trendPages: v })}
-          label="Full-size trend pages"
-          description="Adds a large chart per point after the table. Off keeps reports compact."
+          label={t("fullTrendPagesLabel")}
+          description={t("fullTrendPagesDesc")}
         />
         <CheckRow
           checked={options.fftAllPoints !== false}
           onChange={(v) => set({ fftAllPoints: v })}
-          label="FFT spectra grid"
-          description="Latest spectrum of every point, two per row."
+          label={t("fftGridLabel")}
+          description={t("fftGridDesc")}
         />
       </div>
     </Panel>
@@ -142,27 +144,25 @@ export function MachineLimitsCard({
     patch(e.id, base);
   };
 
+  const { t: t2 } = useUi();
   return (
     <Panel
       icon={<Siren />}
-      title="Alarm limits per machine"
-      description="Zones in the report use each machine's own limits. They come from the Spectra alarm settings and can be adjusted here."
+      title={t2("machineLimitsTitle")}
+      description={t2("machineLimitsDesc")}
       contentClassName="grid gap-2"
     >
       {items.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">
-          Add machines first. Until then the report uses the default limits from Settings (
-          {formatLimits(defaults.velocity)} mm/s).
-        </p>
+        <p className="text-[13px] text-muted-foreground">{t2("machineLimitsEmpty", { limits: formatLimits(defaults.velocity) })}</p>
       ) : (
         <div className="overflow-hidden rounded-md border">
           <table className="w-full text-[13px]">
             <thead className="bg-muted text-xs text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 text-start font-semibold">Machine</th>
-                <th className="px-2 py-2 text-start font-semibold">Velocity B / U / C</th>
-                <th className="px-2 py-2 text-start font-semibold">Accel / BC B / U / C</th>
-                <th className="px-2 py-2 text-start font-semibold">Envelope</th>
+                <th className="px-3 py-2 text-start font-semibold">{t2("machineCol")}</th>
+                <th className="px-2 py-2 text-start font-semibold">{t2("velocityCol")}</th>
+                <th className="px-2 py-2 text-start font-semibold">{t2("accelCol")}</th>
+                <th className="px-2 py-2 text-start font-semibold">{t2("envelopeCol")}</th>
                 <th className="w-32 px-2 py-2" />
               </tr>
             </thead>
@@ -177,20 +177,20 @@ export function MachineLimitsCard({
                       <span className="flex items-center gap-2">
                         <span className="truncate font-medium">{e.name}</span>
                         {edited ? (
-                          <Badge tone="warning">Edited</Badge>
+                          <Badge tone="warning">{t2("edited")}</Badge>
                         ) : e.dbLimits ? (
                           <Badge tone="neutral" title="Read from the Spectra Direction alarms">
-                            From DB
+                            {t2("fromDb")}
                           </Badge>
                         ) : (
-                          <Badge tone="neutral">Defaults</Badge>
+                          <Badge tone="neutral">{t2("defaults")}</Badge>
                         )}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 tabular-nums">{formatLimits(l.velocity)}</td>
                     <td className="px-2 py-1.5 tabular-nums">{formatLimits(l.acceleration)}</td>
                     <td className="px-2 py-1.5 text-muted-foreground tabular-nums">
-                      {l.envelope.top ? formatLimits(l.envelope) : "off"}
+                      {l.envelope.top ? formatLimits(l.envelope) : t2("isoOff")}
                     </td>
                     <td className="px-2 py-1.5 text-end">
                       <Button
@@ -199,7 +199,7 @@ export function MachineLimitsCard({
                         aria-expanded={open}
                         onClick={() => setOpenId(open ? null : e.id)}
                       >
-                        {open ? "Done" : "Edit"}
+                        {open ? t2("done") : t2("edit")}
                       </Button>
                     </td>
                   </tr>
@@ -238,7 +238,7 @@ export function MachineLimitsCard({
                                 onClick={() => patch(e.id, structuredClone(e.dbLimits!))}
                               >
                                 <RotateCcw aria-hidden="true" />
-                                Reset to database
+                                {t2("resetToDb")}
                               </Button>
                             ) : null}
                             <Button
@@ -246,7 +246,7 @@ export function MachineLimitsCard({
                               size="sm"
                               onClick={() => patch(e.id, structuredClone(DEFAULT_ZONE_LIMITS))}
                             >
-                              Use ISO defaults
+                              {t2("useIsoDefaults")}
                             </Button>
                           </div>
                         </div>
@@ -304,27 +304,28 @@ export function IsoTableEditor({
     );
   };
 
+  const { t: t3 } = useUi();
   return (
     <Panel
       icon={<Table2 />}
-      title="ISO 10816-3 table"
-      description="Printed as the reference severity table. Click a colour to change it; edit labels and values in place."
+      title={t3("isoTitle")}
+      description={t3("isoDesc")}
       actions={
         <Button
           variant="ghost"
           size="sm"
           disabled={!edited}
           onClick={() => setRows(defaultIsoRows())}
-          title="Restore the standard ISO 10816-3 values and colours"
+          title={t3("standardValuesHint")}
         >
           <RotateCcw aria-hidden="true" />
-          Standard values
+          {t3("standardValues")}
         </Button>
       }
       contentClassName="grid gap-4"
     >
       <div className="flex flex-wrap items-end gap-4">
-        <Field label="Position in report">
+        <Field label={t3("isoPositionLabel")}>
           <Segmented
             ariaLabel="ISO table position"
             value={position}
@@ -336,32 +337,30 @@ export function IsoTableEditor({
               )
             }
             options={[
-              { value: "off", label: "Off" },
-              { value: "afterToc", label: "After contents" },
-              { value: "end", label: "End of report" },
+              { value: "off", label: t3("isoOff") },
+              { value: "afterToc", label: t3("isoAfterToc") },
+              { value: "end", label: t3("isoEnd") },
             ]}
           />
         </Field>
-        <Field label="Machinery groups" htmlFor="iso-groups">
+        <Field label={t3("machineryGroups")} htmlFor="iso-groups">
           <Select
             id="iso-groups"
             className="w-44"
             value={options.isoGroups ?? "all"}
             onChange={(e) => set({ isoGroups: e.target.value as ReportOptions["isoGroups"] })}
           >
-            <option value="all">Groups 1–4</option>
-            <option value="1+3">Groups 1 and 3</option>
-            <option value="2+4">Groups 2 and 4</option>
+            <option value="all">{t3("groupsAll")}</option>
+            <option value="1+3">{t3("groups13")}</option>
+            <option value="2+4">{t3("groups24")}</option>
           </Select>
         </Field>
         <CheckRow
           className="mb-0.5"
           checked={custom}
           onChange={(v) => set({ useCustomIso: v })}
-          label="Use my edited values in the report"
-          description={
-            edited ? "You changed the table." : "The table matches the standard right now."
-          }
+          label={t3("useEditedValues")}
+          description={edited ? t3("useEditedHint") : t3("useStandardHint")}
         />
       </div>
       <div className={cn("overflow-auto rounded-md border", position === "off" && "opacity-60")}>
@@ -416,10 +415,7 @@ export function IsoTableEditor({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Rows with the same band label and colour merge into one block in Word, as in the standard
-        table.
-      </p>
+      <p className="text-xs text-muted-foreground">{t3("isoTableNote")}</p>
     </Panel>
   );
 }

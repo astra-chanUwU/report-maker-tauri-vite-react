@@ -153,7 +153,9 @@ export function useIngest(onParsed: OnParsed): Ingest {
     try {
       const result = await job();
       onParsedRef.current(result, null);
-      toast.success(`Loaded ${result.meta.filename}`);
+      const lang = (typeof document !== "undefined" && document.documentElement.lang === "fa" ? "fa" : "en") as "fa" | "en";
+      const { translate } = await import("../lib/i18n");
+      toast.success(translate(lang, "toastLoadedFile", { file: result.meta.filename }));
     } catch (e) {
       if (e instanceof Error && e.message === "cancelled") return;
       setError(e instanceof Error ? e.message : String(e));
@@ -251,19 +253,14 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
       </div>
       <div className="relative grid max-w-md gap-1.5">
         <p className="text-lg font-semibold tracking-tight" aria-live="polite">
-          {ingest.loading ? t("reading") : "Drop a measurement file here"}
+          {ingest.loading ? t("reading") : t("dropMeasurementFile")}
         </p>
-        <p className="text-[13px] leading-relaxed text-muted-foreground">
-          Spectra <code className="rounded bg-muted px-1 py-0.5 text-[12px]">.sp3</code> database,
-          Data-table <code className="rounded bg-muted px-1 py-0.5 text-[12px]">.csv</code> export,
-          or a plain <code className="rounded bg-muted px-1 py-0.5 text-[12px]">.txt</code> with{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-[12px]">freq,amp</code> per line.
-        </p>
+        <p className="text-[13px] leading-relaxed text-muted-foreground">{t("dropMeasurementHint")}</p>
       </div>
       {ingest.loading ? (
         <Button variant="outline" className="relative" onClick={ingest.cancel}>
           <X aria-hidden="true" />
-          Cancel
+          {t("cancel")}
         </Button>
       ) : (
         <div className="relative flex flex-wrap justify-center gap-2">
@@ -283,11 +280,7 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
           </Button>
         </div>
       )}
-      {toolMissing ? (
-        <p className="relative text-xs text-destructive">
-          mdb-export was not found, so .sp3 files can't be converted. Set its path in Settings.
-        </p>
-      ) : null}
+      {toolMissing ? <p className="relative text-xs text-destructive">{t("mdbNotFoundHint")}</p> : null}
       {ingest.error ? (
         <div className="relative">
           <IngestError message={ingest.error} />
@@ -349,7 +342,7 @@ export function FileBar({ result, ingest }: { result: ParseResult; ingest: Inges
         {ingest.loading ? (
           <Button variant="ghost" size="sm" onClick={ingest.cancel}>
             <Loader2 className="animate-spin" aria-hidden="true" />
-            Cancel
+            {t("cancel")}
           </Button>
         ) : null}
         {ingest.isTauri ? (
@@ -400,18 +393,12 @@ export function DataOverview({ result, limits }: { result: ParseResult; limits?:
               "—"
             )
           }
-          sub={
-            zone
-              ? ZONE_LABELS[zone as keyof typeof ZONE_LABELS]
-              : overall
-                ? unit || "RMS"
-                : "No overall values"
-          }
+          sub={zone ? ZONE_LABELS[zone as keyof typeof ZONE_LABELS] : overall ? unit || "RMS" : t("noOverallValues")}
         />
         <Stat
           label={t("peak")}
           value={`${Number(result.stats.peak.amp).toFixed(2)}${unit ? ` ${unit}` : ""}`}
-          sub={`at ${Math.round(Number(result.stats.peak.freq) * 60)} RPM (${result.stats.peak.freq} Hz)`}
+          sub={t("atRpm", { rpm: Math.round(Number(result.stats.peak.freq) * 60), freq: result.stats.peak.freq })}
         />
       </div>
       <Card className="p-3">

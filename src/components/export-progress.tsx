@@ -4,6 +4,7 @@ import {
   type ExportProgress as Progress,
   type ExportStage,
 } from "../lib/export-progress";
+import { useUi } from "../lib/i18n";
 import { Button } from "./ui/button";
 
 function isActive(stage: ExportStage): boolean {
@@ -17,10 +18,11 @@ export function ExportProgressPanel({
   progress: Progress;
   onDismiss?: () => void;
 }) {
+  const { t } = useUi();
   if (progress.stage === "idle") return null;
   const active = isActive(progress.stage);
   const pct = progress.percent ?? (active ? undefined : progress.stage === "done" ? 100 : 0);
-  const label = progress.detail || stageLabel(progress.stage);
+  const label = progress.detail || stageLabel(progress.stage, t);
 
   return (
     <div
@@ -40,18 +42,18 @@ export function ExportProgressPanel({
         <FileDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="min-w-0 flex-1 text-[13px] font-semibold">
           {progress.stage === "done"
-            ? "Report ready"
+            ? t("reportReady")
             : progress.stage === "failed"
-              ? "Export failed"
-              : "Generating report…"}
+              ? t("exportFailedLabel")
+              : t("generatingReport")}
         </span>
         {typeof pct === "number" ? (
           <span className="text-xs tabular-nums text-muted-foreground">{pct}%</span>
         ) : null}
         {!active && onDismiss ? (
-          <Button variant="ghost" size="sm" onClick={onDismiss} aria-label="Dismiss">
+          <Button variant="ghost" size="sm" onClick={onDismiss} aria-label={t("dismiss")}>
             <X aria-hidden="true" />
-            Dismiss
+            {t("dismiss")}
           </Button>
         ) : null}
       </div>
@@ -76,7 +78,7 @@ export function ExportProgressPanel({
         {progress.stage === "failed" && progress.error
           ? progress.error
           : active
-            ? `${label} · you can keep browsing`
+            ? `${label} · ${t("keepBrowsingSuffix")}`
             : label}
       </p>
     </div>
@@ -84,6 +86,7 @@ export function ExportProgressPanel({
 }
 
 export function ExportPill({ progress }: { progress: Progress }) {
+  const { t } = useUi();
   if (!isActive(progress.stage)) return null;
   const pct = progress.percent;
   return (
@@ -92,7 +95,7 @@ export function ExportPill({ progress }: { progress: Progress }) {
       aria-live="polite"
     >
       <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-      Exporting{typeof pct === "number" ? ` ${pct}%` : "…"}
+      {typeof pct === "number" ? t("exportingWithPercent", { percent: pct }) : t("exportingEllipsis")}
     </span>
   );
 }

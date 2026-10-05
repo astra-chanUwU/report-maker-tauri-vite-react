@@ -36,11 +36,11 @@ export function ClientProfiles({
       isoGroups: options.isoGroups,
     });
     if (!c.clientName && !c.clientUnit) {
-      toast.error("Enter a client name or unit first.");
+      toast.error(t("toastEnterClientFirst"));
       return;
     }
     save([c, ...clients]);
-    toast.success(`Saved ${c.clientName || c.clientUnit}.`);
+    toast.success(t("toastClientSaved", { name: c.clientName || c.clientUnit }));
   };
 
   const apply = (c: ClientProfile) => {
@@ -52,7 +52,7 @@ export function ClientProfiles({
       isoGroups: c.isoGroups ?? options.isoGroups,
     });
     if (c.logoBase64) onLogo?.(c.logoBase64);
-    toast.success(`Applied ${c.clientName || "client"}.`);
+    toast.success(t("toastClientApplied", { name: c.clientName || "client" }));
   };
 
   const setLogo = async (id: string, file: File | null) => {

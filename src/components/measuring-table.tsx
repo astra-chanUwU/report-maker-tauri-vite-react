@@ -31,6 +31,7 @@ import { Panel } from "./ui/card";
 import { Badge, CheckRow, Stat } from "./ui/form";
 import { Input } from "./ui/input";
 import { toast } from "./ui/sonner";
+import { translate } from "../lib/i18n";
 
 export function formatRowDate(raw: string): string {
   return oleDateToISO(Number(raw)) || "—";
@@ -184,7 +185,14 @@ export function useMeasureRows(
         setRows(l.rows);
         onRows?.(l.rows);
       } catch (e) {
-        if (alive) toast.error(e instanceof Error ? e.message : "Could not load measurements.");
+        if (alive) {
+          const lang = document.documentElement.lang === "fa" ? "fa" : "en";
+          toast.error(
+            e instanceof Error && e.message
+              ? e.message
+              : translate(lang as "fa" | "en", "toastCouldNotLoadMeasurements")
+          );
+        }
       } finally {
         if (alive) setLoading(false);
       }
@@ -325,14 +333,18 @@ export function MeasuringTable({
 
   if (!rows && !loading) return null;
 
+  const langUi = document.documentElement.lang === "fa" ? "fa" : "en";
   return (
     <Panel
       icon={<Gauge />}
-      title="Latest readings"
+      title={translate(langUi as "fa" | "en", "latestReadings")}
       description={
         loading
-          ? "Reading measurements…"
-          : `Most recent value of every point, as printed in the measuring-results table. Velocity in mm/s; ${sec.short.toLowerCase()} in ${sec.unit}.`
+          ? translate(langUi as "fa" | "en", "featuredMeasurementLoading")
+          : translate(langUi as "fa" | "en", "latestReadingsDesc", {
+              metric: sec.short.toLowerCase(),
+              unit: sec.unit,
+            })
       }
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -343,7 +355,7 @@ export function MeasuringTable({
             />
             <Input
               className="ps-8"
-              placeholder="Filter points…"
+              placeholder={translate(langUi as "fa" | "en", "filterPointsPlaceholder")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               aria-label="Filter points"
@@ -353,7 +365,7 @@ export function MeasuringTable({
             className="py-1"
             checked={alarmsOnly}
             onChange={setAlarmsOnly}
-            label="Only B / U / C"
+            label={translate(langUi as "fa" | "en", "onlyAlarms")}
           />
         </div>
       }
@@ -372,7 +384,7 @@ export function MeasuringTable({
             </header>
             {lines.length === 0 ? (
               <p className="px-3 py-4 text-[13px] text-muted-foreground">
-                No readings for this machine's points in the open database.
+                {translate(langUi as "fa" | "en", "noReadingsForMachine")}
               </p>
             ) : lines.length > VIRTUAL_THRESHOLD ? (
               <VirtualizedRows lines={lines} sec={sec} />
@@ -402,7 +414,9 @@ export function MeasuringTable({
         )
       )}
       {total === 0 && (q || alarmsOnly) ? (
-        <p className="text-center text-[13px] text-muted-foreground">No points match.</p>
+        <p className="text-center text-[13px] text-muted-foreground">
+          {translate(langUi as "fa" | "en", "noPointsMatch")}
+        </p>
       ) : null}
     </Panel>
   );

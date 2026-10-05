@@ -15,6 +15,6 @@ describe("ux cleanup", () => {
   it("machine picker middle select is removed", async () => {
     const src = await import("fs").then((fs) => fs.readFileSync("src/components/machine-picker.tsx", "utf8"));
     expect(src).not.toContain("Select all with data");
-    expect(src).toContain("Other databases");
+    expect(src).toMatch(/Other databases|pickerOtherDbs/);
   });
 });

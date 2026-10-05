@@ -250,7 +250,7 @@ export function ClientDetailsCard({ options, onChange }: FormProps) {
         />
       </Field>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground">Insert default address:</span>
+        <span className="text-xs text-muted-foreground">{t("insertDefaultAddress")}</span>
         <Button
           variant="outline"
           size="sm"
@@ -264,7 +264,7 @@ export function ClientDetailsCard({ options, onChange }: FormProps) {
           onClick={() =>
             set({ addressBlock: DEFAULT_ADDRESS_BLOCK_FA, ...languagePatch(options, "fa") })
           }
-          title="Also switches the report to Farsi"
+          title={t("alsoSwitchesToFarsi")}
         >
           فارسی
         </Button>
@@ -281,22 +281,22 @@ export function ReportContentsCard({ options, onChange }: FormProps) {
     <Panel
       icon={<ListChecks />}
       title={t("reportContents")}
-      description="Choose which optional sections are generated."
+      description={t("reportContentsDesc")}
       contentClassName="grid gap-4 md:grid-cols-2"
     >
       <div className="grid content-start gap-1">
-        <FieldGroupTitle className="px-2 pb-1">Sections</FieldGroupTitle>
+        <FieldGroupTitle className="px-2 pb-1">{t("sections")}</FieldGroupTitle>
         <CheckRow
           checked={options.includeToc !== false}
           onChange={(v) => set({ includeToc: v })}
-          label="Table of contents"
-          description="Added when the report covers several machines."
+          label={t("tocLabel")}
+          description={t("tocDesc")}
         />
         <CheckRow
           checked={options.fftAllPoints !== false}
           onChange={(v) => set({ fftAllPoints: v })}
-          label="FFT gallery for all points"
-          description="Latest spectrum of every point, up to 24 per machine."
+          label={t("fftGalleryLabel")}
+          description={t("fftGalleryDesc")}
         />
         <CheckRow
           checked={options.trendAllPoints !== false}
@@ -306,8 +306,8 @@ export function ReportContentsCard({ options, onChange }: FormProps) {
         <CheckRow
           checked={options.includeIsoTable !== false}
           onChange={(v) => set({ includeIsoTable: v })}
-          label="ISO 10816-3 severity table"
-          description="Appended as a reference at the end."
+          label={t("isoSeverityLabel")}
+          description={t("isoSeverityDesc")}
         />
         <div className="pe-2 ps-8 pt-1">
           <Field label={t("isoGroups")} htmlFor="opt-iso-groups">
@@ -326,7 +326,7 @@ export function ReportContentsCard({ options, onChange }: FormProps) {
         </div>
       </div>
       <div className="grid content-start gap-1">
-        <FieldGroupTitle className="px-2 pb-1">Trend metrics</FieldGroupTitle>
+        <FieldGroupTitle className="px-2 pb-1">{t("trendMetrics")}</FieldGroupTitle>
         {(["rmsV", "rmsA", "envelope"] as const).map((m) => (
           <CheckRow
             key={m}
@@ -338,7 +338,7 @@ export function ReportContentsCard({ options, onChange }: FormProps) {
               set({ trendMetrics: [...cur] });
             }}
             label={m === "rmsV" ? t("velocity") : m === "rmsA" ? t("acceleration") : t("envelope")}
-            description={m === "envelope" ? "Only when the file has envelope data." : undefined}
+            description={m === "envelope" ? t("envelopeOnlyWhen") : undefined}
           />
         ))}
       </div>
@@ -368,7 +368,7 @@ export function SchematicField({
       return;
     }
     if (file.size > MAX_SCHEMATIC_BYTES) {
-      toast.error(`Schematic must be under ${Math.round(MAX_SCHEMATIC_BYTES / 1024)} KB.`);
+      toast.error(t("toastSchematicTooLarge", { size: Math.round(MAX_SCHEMATIC_BYTES / 1024) }));
       return;
     }
     const b64 = bytesToBase64(new Uint8Array(await file.arrayBuffer()));
@@ -429,7 +429,7 @@ export function SchematicField({
               className="h-full w-full object-contain pointer-events-none"
             />
           ) : dragActive ? (
-            <span className="text-xs text-primary">Drop image here</span>
+            <span className="text-xs text-primary">{t("dropImageHere")}</span>
           ) : (
             <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" aria-hidden="true" />
           )}
@@ -437,7 +437,7 @@ export function SchematicField({
         <div className="grid gap-1.5">
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => ref.current?.click()}>
-              {url ? "Replace" : "Upload"}
+              {url ? t("replaceFile").split(" ")[0] : t("save")}
             </Button>
             {url ? (
               <Button variant="ghost" size="sm" onClick={() => onChange(null)}>
