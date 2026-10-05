@@ -405,7 +405,7 @@ export function ReadinessChip({
         {missing.length} {t("toFix")}
       </button>
       {open ? (
-        <div className="absolute end-0 top-full z-40 mt-1 w-64 rounded-md border bg-popover p-1 shadow-lg">
+        <div className="absolute end-0 top-full z-50 mt-1 w-64 rounded-md border bg-popover p-1 shadow-lg">
           {missing.map((m) => (
             <button
               key={m.key}
@@ -436,7 +436,7 @@ export function Toolbar({
   children?: ReactNode;
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-card/95 px-5 backdrop-blur-sm">
+    <header className="relative z-30 flex h-14 shrink-0 items-center gap-4 border-b bg-card/95 px-5 backdrop-blur-sm">
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-base leading-tight font-semibold tracking-tight">{title}</h1>
         {description ? (
