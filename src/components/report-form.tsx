@@ -94,7 +94,7 @@ export function ProjectDetailsCard({
           </Button>
         </>
       }
-      contentClassName="grid gap-4"
+      contentClassName="grid gap-3"
     >
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Field
@@ -471,7 +471,7 @@ export function SingleEquipmentCard({ options, onChange }: FormProps) {
       icon={<Wrench />}
       title={t("singleEquipment")}
       description={t("singleEquipmentHint")}
-      contentClassName="grid gap-4"
+      contentClassName="grid gap-3"
     >
       <div className="grid gap-3 md:grid-cols-[2fr_1fr]">
         <Field label={t("equipment")} htmlFor="opt-equipment">

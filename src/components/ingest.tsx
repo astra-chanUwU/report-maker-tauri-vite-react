@@ -235,29 +235,29 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
 
   return (
     <div
-      className="relative flex min-h-[18.5rem] flex-col items-center justify-center gap-3.5 overflow-hidden rounded-xl border border-dashed border-input bg-card px-6 py-8 text-center shadow-xs lg:min-h-[20rem] lg:py-10"
+      className="relative flex min-h-[16rem] flex-col items-center justify-center gap-3 overflow-hidden rounded-md border border-dashed border-input bg-card px-5 py-6 text-center lg:min-h-[17rem] lg:py-7"
       aria-busy={ingest.loading}
     >
       <div
-        className="pointer-events-none absolute inset-0 opacity-80"
+        className="pointer-events-none absolute inset-0 opacity-60"
         style={{
           background:
-            "radial-gradient(ellipse 68% 52% at 50% 0%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 72%)",
+            "radial-gradient(ellipse 62% 44% at 50% 0%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 70%)",
         }}
         aria-hidden="true"
       />
-      <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/15">
+      <div className="relative flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
         {ingest.loading ? (
-          <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
         ) : (
-          <FileUp className="h-6 w-6" aria-hidden="true" />
+          <FileUp className="h-5 w-5" aria-hidden="true" />
         )}
       </div>
-      <div className="relative grid max-w-[30rem] gap-1">
-        <p className="text-[17px] font-semibold tracking-tight" aria-live="polite">
+      <div className="relative grid max-w-[28rem] gap-1">
+        <p className="text-[15px] font-semibold tracking-tight" aria-live="polite">
           {ingest.loading ? t("reading") : t("dropMeasurementFile")}
         </p>
-        <p className="text-[13px] leading-relaxed text-muted-foreground">{t("dropMeasurementHint")}</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{t("dropMeasurementHint")}</p>
       </div>
       {ingest.loading ? (
         <Button variant="outline" className="relative" onClick={ingest.cancel}>
@@ -267,16 +267,16 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
       ) : (
         <div className="relative flex flex-wrap justify-center gap-2">
           {ingest.isTauri ? (
-            <Button size="lg" onClick={() => void ingest.openSp3()} disabled={toolMissing}>
+            <Button onClick={() => void ingest.openSp3()} disabled={toolMissing}>
               <DatabaseZap aria-hidden="true" />
               {t("openSp3")}
             </Button>
           ) : null}
-          <Button size="lg" variant={ingest.isTauri ? "outline" : "default"} onClick={picker.open}>
+          <Button variant={ingest.isTauri ? "outline" : "default"} onClick={picker.open}>
             <FileUp aria-hidden="true" />
             {t("browseFiles")}
           </Button>
-          <Button size="lg" variant="ghost" onClick={ingest.loadDemo}>
+          <Button variant="ghost" onClick={ingest.loadDemo}>
             <FlaskConical aria-hidden="true" />
             {t("loadDemo")}
           </Button>
@@ -326,12 +326,12 @@ export function FileBar({ result, ingest }: { result: ParseResult; ingest: Inges
   const picker = useFilePicker((f) => void ingest.handleFile(f));
   const total = (result.meta.extraRows ?? 0) + 1;
   return (
-    <Card className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-        <DatabaseZap className="h-5 w-5" aria-hidden="true" />
+    <Card className="flex flex-wrap items-center gap-2.5 px-3 py-2.5">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
+        <DatabaseZap className="h-4 w-4" aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold" title={result.meta.filename}>
+        <p className="truncate text-[13px] font-semibold" title={result.meta.filename}>
           {result.meta.filename}
         </p>
         <p className="truncate text-xs text-muted-foreground">
@@ -375,9 +375,9 @@ export function DataOverview({ result, limits }: { result: ParseResult; limits?:
   const zone = overall && limits ? classifyZone(overall.rmsV, limits.velocity) : "";
   const unit = overall?.unit || "";
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
       {result.warning ? (
-        <div className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-[13px]">
+        <div className="flex items-start gap-2 rounded border border-warning/50 bg-warning/10 px-3 py-2 text-xs">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
           <p>{result.warning}</p>
         </div>

@@ -374,7 +374,7 @@ export function MeasuringTable({
           />
         </div>
       }
-      contentClassName="grid gap-4"
+      contentClassName="grid gap-3"
     >
       {displayBuilt.map(({ g, lines }) =>
         lines.length === 0 && (q || alarmsOnly) ? null : (

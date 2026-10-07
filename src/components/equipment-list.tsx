@@ -88,13 +88,13 @@ export function EquipmentWorkspace({
 
   if (items.length === 0) {
     return (
-      <div className="grid gap-4">
-        <Card className="flex flex-wrap items-center gap-4 px-4 py-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <Cog className="h-5 w-5" aria-hidden="true" />
+      <div className="grid gap-3">
+        <Card className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
+            <Cog className="h-4 w-4" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold">{t("reportingOnSeveral")}</p>
+            <p className="text-[12.5px] font-semibold">{t("reportingOnSeveral")}</p>
             <p className="text-xs text-muted-foreground">{t("equipmentsHint")}</p>
           </div>
           <div className="flex flex-wrap gap-2">{toolbar}</div>
@@ -105,7 +105,7 @@ export function EquipmentWorkspace({
   }
 
   return (
-    <div className="grid items-start gap-4 md:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)]">
+    <div className="grid items-start gap-3 md:grid-cols-[14rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)]">
       <Card className="flex flex-col overflow-hidden md:sticky md:top-0">
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
           <p className="text-[13px] font-semibold">

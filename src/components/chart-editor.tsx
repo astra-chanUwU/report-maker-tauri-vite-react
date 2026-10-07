@@ -172,7 +172,7 @@ export function ChartEditor({
           </label>
         </>
       }
-      contentClassName="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]"
+      contentClassName="grid gap-3 xl:grid-cols-[minmax(0,1fr)_17rem]"
     >
       <div ref={wrapRef} className="grid min-w-0 content-start gap-2">
         <svg

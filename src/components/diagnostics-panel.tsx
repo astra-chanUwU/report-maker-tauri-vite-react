@@ -79,28 +79,28 @@ export function DiagnosticsPanel({
       contentClassName="grid gap-3"
     >
       <div className="grid gap-2 sm:grid-cols-3">
-        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
-          <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" />
+        <div className="flex items-center gap-2 rounded border bg-muted/40 px-2.5 py-2">
+          <AlertTriangle className="h-3.5 w-3.5 text-warning" aria-hidden="true" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{t("needsAttention")}</p>
-            <p className="flex items-center gap-1.5 text-sm font-semibold">
+            <p className="flex items-center gap-1.5 text-xs font-semibold">
               {facts.breachCount > 0 ? <ZoneBadge zone={facts.worst} /> : null}
               {facts.breachCount} {t("ofPoints", { total: facts.latestCount })}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
-          <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />
+        <div className="flex items-center gap-2 rounded border bg-muted/40 px-2.5 py-2">
+          <TrendingUp className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{t("jumpedZone")}</p>
-            <p className="text-sm font-semibold">{facts.jumpCount} {t("points")}</p>
+            <p className="text-xs font-semibold">{facts.jumpCount} {t("points")}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
-          <Clock3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <div className="flex items-center gap-2 rounded border bg-muted/40 px-2.5 py-2">
+          <Clock3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{t("staleLabel", { days: STALE_DAYS })}</p>
-            <p className="text-sm font-semibold">{facts.staleCount} {t("points")}</p>
+            <p className="text-xs font-semibold">{facts.staleCount} {t("points")}</p>
           </div>
         </div>
       </div>

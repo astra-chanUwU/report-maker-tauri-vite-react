@@ -5,7 +5,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("rounded-lg border bg-card text-card-foreground shadow-xs", className)}
+      className={cn("rounded-md border bg-card text-card-foreground shadow-[0_1px_2px_oklch(0.2_0.02_255/0.05)]", className)}
       {...props}
     />
   )
@@ -14,7 +14,7 @@ Card.displayName = "Card";
 
 const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("flex flex-col gap-1 px-4 pt-4 pb-3", className)} {...props} />
+    <div ref={ref} className={cn("flex flex-col gap-1 px-3 pt-3 pb-2", className)} {...props} />
   )
 );
 CardHeader.displayName = "CardHeader";
@@ -23,7 +23,7 @@ const CardTitle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivE
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("text-[15px] leading-tight font-semibold tracking-tight", className)}
+      className={cn("text-[13px] leading-tight font-semibold tracking-tight", className)}
       {...props}
     />
   )
@@ -32,14 +32,14 @@ CardTitle.displayName = "CardTitle";
 
 const CardDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("text-[13px] text-muted-foreground", className)} {...props} />
+    <div ref={ref} className={cn("text-xs leading-snug text-muted-foreground", className)} {...props} />
   )
 );
 CardDescription.displayName = "CardDescription";
 
 const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("px-4 pb-4", className)} {...props} />
+    <div ref={ref} className={cn("px-3 pb-3", className)} {...props} />
   )
 );
 CardContent.displayName = "CardContent";
@@ -48,7 +48,7 @@ const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("flex items-center gap-2 border-t px-4 py-3", className)}
+      className={cn("flex items-center gap-2 border-t px-3 py-2.5", className)}
       {...props}
     />
   )
@@ -77,11 +77,11 @@ function Panel({
 }) {
   return (
     <Card className={className} id={id}>
-      <div className="flex items-start gap-3 px-4 pt-4 pb-3">
-        <div className="grid min-w-0 flex-1 gap-1">
-          <CardTitle className="flex items-center gap-2">
+      <div className="flex items-start gap-2.5 px-3 pt-3 pb-2.5">
+        <div className="grid min-w-0 flex-1 gap-0.5">
+          <CardTitle className="flex items-center gap-1.5">
             {icon ? (
-              <span className="text-muted-foreground [&_svg]:size-4" aria-hidden="true">
+              <span className="text-muted-foreground [&_svg]:size-3.5" aria-hidden="true">
                 {icon}
               </span>
             ) : null}
@@ -90,7 +90,7 @@ function Panel({
           {description ? <CardDescription>{description}</CardDescription> : null}
         </div>
         {actions ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">{actions}</div>
         ) : null}
       </div>
       {children !== undefined && children !== null ? (

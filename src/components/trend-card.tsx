@@ -163,7 +163,7 @@ export function TrendCard({
           />
         </>
       }
-      contentClassName="grid gap-4 xl:grid-cols-2"
+      contentClassName="grid gap-3 xl:grid-cols-2"
     >
       <figure className="grid content-start gap-1.5">
         <figcaption className="text-[13px] font-medium">
@@ -176,12 +176,12 @@ export function TrendCard({
           <img
             src={velUrl}
             alt={`Velocity trend for ${history?.label}`}
-            className="w-full rounded-md border bg-white"
+            className="w-full rounded border bg-white"
           />
         ) : null}
       </figure>
       <figure className="grid content-start gap-1.5">
-        <figcaption className="text-[13px] font-medium">
+        <figcaption className="text-xs font-medium">
           {t("accelerationRms")}{" "}
           <span className="font-normal text-muted-foreground">
             · {t("zonesLabel", { zones: limitsShort(limits.acceleration) })}
@@ -191,7 +191,7 @@ export function TrendCard({
           <img
             src={accUrl}
             alt={`Acceleration trend for ${history?.label}`}
-            className="w-full rounded-md border bg-white"
+            className="w-full rounded border bg-white"
           />
         ) : null}
       </figure>

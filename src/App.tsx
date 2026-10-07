@@ -656,12 +656,12 @@ function App() {
             </Button>
           </Toolbar>
 
-          <main id="main" className="relative min-h-0 flex-1">
+          <main id="main" className="relative min-h-0 flex-1 bg-background">
             <Page active={page === "data"}>
               {sp3Paths.length > 0 ? (
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                   <Card className="overflow-hidden p-0">
-                    <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5">
                       <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       <h2 className="text-sm font-semibold">Uploaded databases</h2>
                       <span className="text-xs text-muted-foreground">
@@ -702,7 +702,7 @@ function App() {
                         const checked = selectedDbPaths.includes(p);
                         const isActive = sp3Path === p;
                         return (
-                          <li key={p} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50">
+                          <li key={p} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/50">
                             <input
                               type="checkbox"
                               className="h-4 w-4"
@@ -773,9 +773,9 @@ function App() {
                   ) : effective ? (
                     <DataOverview result={effective} limits={zoneLimits} />
                   ) : null}
-                  <Card className="flex flex-wrap items-center gap-4 px-4 py-3">
+                  <Card className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-semibold">
+                      <p className="text-[12.5px] font-semibold">
                         {selectedDbPaths.length > 0
                           ? `${selectedDbPaths.length} database${selectedDbPaths.length > 1 ? "s" : ""} selected`
                           : "Select databases to continue"}
@@ -796,8 +796,8 @@ function App() {
                   <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
                 </div>
               ) : !effective ? (
-                <div className="grid gap-3.5">
-                  <div className="grid items-stretch gap-3.5 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)] xl:gap-4">
+                <div className="grid gap-3">
+                  <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)]">
                     <DropZone ingest={ingestWithPath} />
                     <Onboarding />
                   </div>
@@ -805,7 +805,7 @@ function App() {
                   <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
                 </div>
               ) : (
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                   <FileBar result={effective} ingest={ingestWithPath} />
                   {ingest.error ? <IngestError message={ingest.error} /> : null}
                   {hasRowSource ? (
@@ -816,7 +816,7 @@ function App() {
                         <DatabaseSummary rows={measureRows} limits={zoneLimits} />
                       )}
                       <DiagnosticsPanel rows={measureRows} equipments={equipments} limits={zoneLimits} />
-                      <Card className="flex flex-wrap items-center gap-4 px-4 py-3">
+                      <Card className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                         <div className="min-w-0 flex-1">
                           <p className="text-[13px] font-semibold">{t("stepMachines")}</p>
                           <p className="text-xs text-muted-foreground">{t("pageMachinesDesc")}</p>
@@ -850,7 +850,7 @@ function App() {
 
             <Page active={page === "measurements"}>
               {hasRowSource ? (
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                   <MeasuringTable
                     rows={measureRows}
                     loading={rowsLoading}
@@ -882,13 +882,13 @@ function App() {
             </Page>
 
             <Page active={page === "details"}>
-              <div className="grid gap-4">
+              <div className="grid gap-3">
                 <ProjectDetailsCard
                   options={options}
                   onChange={setOptions}
                   showErrors={showErrors}
                 />
-                <div className="grid items-start gap-4 xl:grid-cols-2">
+                <div className="grid items-start gap-3 lg:grid-cols-2">
                   <ClientDetailsCard options={options} onChange={setOptions} />
                   <ClientProfiles
                     options={options}
@@ -911,9 +911,9 @@ function App() {
             </Page>
 
             <Page active={page === "findings"}>
-              <div className="grid gap-4">
+              <div className="grid gap-3">
                 {equipments.length > 0 ? (
-                  <p className="rounded-md border bg-card px-3 py-2 text-[13px] text-muted-foreground">
+                  <p className="rounded border bg-card px-3 py-2 text-xs leading-relaxed text-muted-foreground">
                     These findings are shared by the whole report. Each machine can override them
                     under{" "}
                     <button
@@ -936,7 +936,7 @@ function App() {
             </Page>
 
             <Page active={page === "alarms"}>
-              <div className="grid gap-4">
+              <div className="grid gap-3">
                 <ChartsMetricsCard options={options} onOptions={setOptions} />
                 <MachineLimitsCard
                   items={equipments}
@@ -952,13 +952,13 @@ function App() {
               {effective ? (
                 <div
                   className={cn(
-                    "grid items-start gap-4",
-                    hasRowSource && "xl:grid-cols-[minmax(0,1fr)_22rem]"
+                    "grid items-start gap-3",
+                    hasRowSource && "xl:grid-cols-[minmax(0,1fr)_20rem]"
                   )}
                 >
-                  <div className="grid min-w-0 gap-4">
+                  <div className="grid min-w-0 gap-3">
                     {equipments.length > 0 ? (
-                      <p className="rounded-md border bg-card px-3 py-2 text-[13px] text-muted-foreground">
+                      <p className="rounded border bg-card px-3 py-2 text-xs leading-relaxed text-muted-foreground">
                         Multi-machine reports use each point's own spectrum. This editor only
                         changes the single-measurement report.
                       </p>
@@ -972,7 +972,7 @@ function App() {
                   </div>
                   {hasRowSource ? (
                     <MeasurementPicker
-                      className="max-h-[28rem] xl:sticky xl:top-0 xl:max-h-[calc(100vh-12rem)]"
+                      className="max-h-[28rem] xl:sticky xl:top-0 xl:max-h-[calc(100vh-11rem)]"
                       tauriPath={rowPath}
                       file={rowFile}
                       rows={measureRows}
@@ -996,8 +996,8 @@ function App() {
             </Page>
 
             <Page active={page === "layout"}>
-              <div className="grid gap-4">
-                <div className="grid items-start gap-4">
+              <div className="grid gap-3">
+                <div className="grid items-start gap-3">
                   <TemplateCard options={options} onOptions={setOptions} />
                   <ReportContentsCard options={options} onChange={setOptions} />
                 </div>
@@ -1036,14 +1036,14 @@ function App() {
             </Page>
 
             <Page active={page === "settings"}>
-              <div className="grid gap-5">
-                <section className="grid gap-3">
-                  <div className="flex items-center gap-2">
-                    <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <h2 className="text-sm font-semibold">Data &amp; Performance</h2>
+              <div className="grid gap-4">
+                <section className="grid gap-2.5">
+                  <div className="flex items-center gap-2 border-b pb-2">
+                    <Database className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    <h2 className="text-[13px] font-semibold">Data &amp; Performance</h2>
                     <span className="text-xs text-muted-foreground">— converter, cache, and import speed</span>
                   </div>
-                  <div className="grid items-start gap-4 xl:grid-cols-2">
+                  <div className="grid items-start gap-3 lg:grid-cols-2">
                     <MdbToolSettings
                       isTauri={ingest.isTauri}
                       status={ingest.tool}
@@ -1053,40 +1053,40 @@ function App() {
                   </div>
                 </section>
 
-                <section className="grid gap-3">
-                  <div className="flex items-center gap-2">
-                    <Palette className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <h2 className="text-sm font-semibold">Appearance</h2>
+                <section className="grid gap-2.5">
+                  <div className="flex items-center gap-2 border-b pb-2">
+                    <Palette className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    <h2 className="text-[13px] font-semibold">Appearance</h2>
                   </div>
                   <AppearanceCard pref={themePref} onPref={setThemePref} />
                 </section>
 
-                <section className="grid gap-3">
-                  <div className="flex items-center gap-2">
-                    <KeyRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <h2 className="text-sm font-semibold">Integrations</h2>
+                <section className="grid gap-2.5">
+                  <div className="flex items-center gap-2 border-b pb-2">
+                    <KeyRound className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    <h2 className="text-[13px] font-semibold">Integrations</h2>
                     <span className="text-xs text-muted-foreground">— AI drafts and license</span>
                   </div>
-                  <div className="grid items-start gap-4 xl:grid-cols-2">
+                  <div className="grid items-start gap-3 lg:grid-cols-2">
                     <AiSettingsCard />
                     <LicenseCard />
                   </div>
                 </section>
 
-                <section className="grid gap-3">
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <h2 className="text-sm font-semibold">Privacy &amp; Diagnostics</h2>
+                <section className="grid gap-2.5">
+                  <div className="flex items-center gap-2 border-b pb-2">
+                    <Activity className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    <h2 className="text-[13px] font-semibold">Privacy &amp; Diagnostics</h2>
                     <span className="text-xs text-muted-foreground">— telemetry is off by default</span>
                   </div>
                   <TelemetryCard />
                 </section>
 
                 {import.meta.env.DEV ? (
-                  <section className="grid gap-3 border-t pt-5">
+                  <section className="grid gap-2.5 border-t pt-4">
                     <div className="flex items-center gap-2">
-                      <Gauge className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                      <h2 className="text-sm font-semibold">Design system</h2>
+                      <Gauge className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                      <h2 className="text-[13px] font-semibold">Design system</h2>
                       <span className="text-xs text-muted-foreground">— dev only</span>
                     </div>
                     <DesignDemo />
@@ -1177,7 +1177,7 @@ function Page({ active, children }: { active: boolean; children: ReactNode }) {
       )}
       aria-hidden={!active}
     >
-      <div className="mx-auto w-full max-w-[1360px] px-4 py-4 sm:px-5">{children}</div>
+      <div className="mx-auto w-full max-w-[1280px] px-3 py-3 sm:px-4">{children}</div>
     </div>
   );
 }
@@ -1190,7 +1190,7 @@ function AppearanceCard({ pref, onPref }: { pref: ThemePref; onPref: (p: ThemePr
     ["Drop a file", "Import it from any page"],
   ];
   return (
-    <Panel icon={<Palette />} title="Appearance" contentClassName="grid gap-4">
+    <Panel icon={<Palette />} title="Appearance" contentClassName="grid gap-3">
       <Field label="Theme">
         <Segmented
           ariaLabel="Theme"

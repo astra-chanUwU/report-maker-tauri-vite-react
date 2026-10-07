@@ -54,9 +54,9 @@ export function HistoryTab({ onReopen }: { onReopen: (options: ReportOptions) =>
 
   return (
     <Card className="flex min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-        <div className="relative min-w-56 flex-1">
-          <Search className="pointer-events-none absolute start-2.5 top-2 h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5">
+        <div className="relative min-w-52 flex-1">
+          <Search className="pointer-events-none absolute start-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             className="ps-8"
             placeholder={t("searchHistoryPlaceholder")}

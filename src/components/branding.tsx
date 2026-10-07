@@ -85,7 +85,7 @@ export function TemplateCard({
       title={t("template")}
       description={t("templateDesc")}
     >
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" role="radiogroup" aria-label="Template">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4" role="radiogroup" aria-label="Template">
         {TEMPLATES.map((tpl) => {
           const active = selected === tpl.id;
           return (
@@ -96,21 +96,21 @@ export function TemplateCard({
               aria-checked={active}
               onClick={() => onOptions({ ...options, templateId: tpl.id })}
               className={cn(
-                "relative grid cursor-default gap-2 rounded-lg border p-2 text-start transition-colors",
+                "relative grid cursor-default gap-1.5 rounded border p-1.5 text-start transition-colors",
                 active
-                  ? "border-primary ring-2 ring-primary/25"
-                  : "hover:border-muted-foreground/50"
+                  ? "border-primary ring-2 ring-primary/20"
+                  : "hover:border-muted-foreground/40"
               )}
             >
               {active ? (
-                <span className="absolute end-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <Check className="h-3 w-3" aria-hidden="true" />
+                <span className="absolute end-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  <Check className="h-2.5 w-2.5" aria-hidden="true" />
                 </span>
               ) : null}
               <TemplateThumb tpl={tpl} />
-              <span className="grid gap-0.5 px-1 pb-1">
-                <span className="text-[13px] font-semibold">{tpl.name}</span>
-                <span className="text-xs text-muted-foreground">{tpl.description}</span>
+              <span className="grid gap-0 px-1 pb-0.5">
+                <span className="text-xs font-semibold">{tpl.name}</span>
+                <span className="text-[11px] leading-snug text-muted-foreground">{tpl.description}</span>
               </span>
             </button>
           );
@@ -158,9 +158,9 @@ export function BrandingCard({
       icon={<PenLine />}
       title={t("brandingTitle")}
       description={t("brandingStorageHint")}
-      contentClassName="grid gap-4"
+      contentClassName="grid gap-3"
     >
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-2.5 sm:grid-cols-3">
         <AssetTile
           title={t("assetLogo")}
           hint={t("assetLogoHint")}
@@ -195,7 +195,7 @@ export function BrandingCard({
           }
         />
       </div>
-      <div className="grid gap-3 rounded-md border bg-muted/40 p-3 md:grid-cols-[auto_1fr] md:items-start">
+      <div className="grid gap-2.5 rounded border bg-muted/40 p-2.5 md:grid-cols-[auto_1fr] md:items-start">
         <Field label={t("signatureStyle")}>
           <Segmented
             ariaLabel={t("signatureStyle")}
@@ -285,7 +285,7 @@ function AssetTile({
   return (
     <div
       data-branding-drop
-      className="grid content-start gap-2 rounded-lg border p-2"
+      className="grid content-start gap-1.5 rounded border p-1.5"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -295,10 +295,10 @@ function AssetTile({
         type="button"
         onClick={() => fileRef.current?.click()}
         className={cn(
-          "flex cursor-default items-center justify-center overflow-hidden rounded-md border border-dashed hover:border-primary",
+          "flex cursor-default items-center justify-center overflow-hidden rounded border border-dashed hover:border-primary",
           dragActive ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-input",
           preview && !dragActive ? "bg-white" : dragActive ? "bg-primary/5" : "bg-muted/50",
-          tall ? "h-32" : "h-24"
+          tall ? "h-28" : "h-20"
         )}
         aria-label={`${preview ? "Replace" : "Upload"} ${title.toLowerCase()}`}
       >

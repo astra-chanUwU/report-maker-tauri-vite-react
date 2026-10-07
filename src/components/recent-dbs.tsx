@@ -50,7 +50,7 @@ export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void
 
   if (recents === null) {
     return (
-      <Card className="px-4 py-3">
+      <Card className="px-3 py-2.5">
         <p className="text-xs text-muted-foreground">{t("reading")}</p>
       </Card>
     );
@@ -65,9 +65,9 @@ export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <Clock3 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-        <h2 className="text-sm font-semibold">{t("recentDbs")}</h2>
+      <div className="flex items-center gap-2 border-b px-3 py-2.5">
+        <Clock3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-[13px] font-semibold">{t("recentDbs")}</h2>
         <span className="text-xs text-muted-foreground">{t("pickUpWhereLeft")}</span>
       </div>
       <ul className="divide-y">
@@ -78,11 +78,11 @@ export function RecentDbsCard({ onOpen, tick }: { onOpen: (path: string) => void
             <li
               key={r.path}
               className={cn(
-                "flex items-center gap-3 px-4 py-3",
+                "flex items-center gap-2.5 px-3 py-2.5",
                 "hover:bg-muted/50 transition-colors"
               )}
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
                 <DatabaseZap className="h-4 w-4" aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">

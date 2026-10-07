@@ -127,8 +127,8 @@ export function ExportPage({
   };
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-      <div className="grid gap-4">
+    <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_20rem] max-lg:gap-3">
+      <div className="grid gap-3">
         <Panel title={t("beforeGenerate")} contentClassName="grid gap-0.5">
           {checks.map((c) => {
             const Icon = c.state === "ok" ? CircleCheck : c.state === "todo" ? CircleAlert : Circle;
@@ -141,11 +141,11 @@ export function ExportPage({
                     ? onFix({ key: c.label, label: c.label, page: c.page, focusId: c.focusId })
                     : c.page && onNavigate(c.page)
                 }
-                className="flex cursor-default items-start gap-2.5 rounded-md px-2 py-2 text-start hover:bg-muted/70"
+                className="flex cursor-default items-start gap-2 rounded px-2 py-1.5 text-start hover:bg-muted/70"
               >
                 <Icon
                   className={cn(
-                    "mt-0.5 h-4 w-4 shrink-0",
+                    "mt-0.5 h-3.5 w-3.5 shrink-0",
                     c.state === "ok"
                       ? "text-success"
                       : c.state === "todo"
@@ -155,12 +155,12 @@ export function ExportPage({
                   aria-hidden="true"
                 />
                 <span className="grid gap-0.5">
-                  <span className="text-[13px] font-medium">
+                  <span className="text-xs font-medium">
                     {c.label}
-                    {c.state === "todo" ? <span className="ms-2 text-xs font-normal text-destructive">{t("required")}</span> : null}
+                    {c.state === "todo" ? <span className="ms-1.5 text-[11px] font-normal text-destructive">{t("required")}</span> : null}
                   </span>
                   {c.detail ? (
-                    <span className="text-xs text-muted-foreground">{c.detail}</span>
+                    <span className="text-xs leading-none text-muted-foreground">{c.detail}</span>
                   ) : null}
                 </span>
               </button>
@@ -175,7 +175,7 @@ export function ExportPage({
             </Button>
           }
         >
-          <dl className="grid grid-cols-[minmax(0,12rem)_1fr] gap-x-4 gap-y-1.5 text-[13px]">
+          <dl className="grid grid-cols-[minmax(0,11rem)_1fr] gap-x-3 gap-y-1 text-xs">
             {sections.map(([k, v]) => (
               <div key={k} className="contents">
                 <dt className="text-muted-foreground">{k}</dt>
@@ -184,10 +184,10 @@ export function ExportPage({
             ))}
           </dl>
           {equipments.length > 0 ? (
-            <ol className="mt-4 grid gap-1 border-t pt-3 text-[13px]">
+            <ol className="mt-3 grid gap-0.5 border-t pt-2.5 text-xs">
               {equipments.map((e, i) => (
                 <li key={e.id} className="flex gap-2">
-                  <span className="w-5 text-muted-foreground tabular-nums">{i + 1}.</span>
+                  <span className="w-4 text-muted-foreground tabular-nums">{i + 1}.</span>
                   <span className="truncate">{e.name}</span>
                   {e.plant ? (
                     <span className="truncate text-muted-foreground">· {e.plant}</span>
@@ -200,14 +200,14 @@ export function ExportPage({
       </div>
 
       <Panel
-        className="lg:sticky lg:top-0 lg:shadow-sm"
+        className="lg:sticky lg:top-3"
         icon={<FileText />}
         title={t("wordReport")}
         description={t("wordReportDesc")}
-        contentClassName="grid gap-3"
+        contentClassName="grid gap-2.5"
       >
         <p
-          className="truncate rounded-md bg-muted/70 px-2.5 py-2 font-mono text-[12px] text-muted-foreground"
+          className="truncate rounded bg-muted/70 px-2.5 py-2 font-mono text-[11px] text-muted-foreground"
           title={filename}
         >
           {filename}

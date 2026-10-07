@@ -317,7 +317,7 @@ export function MachinePicker({
   }
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_17rem]">
       <Card className="flex min-h-0 flex-col overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5">
           <div className="relative min-w-48 flex-1">

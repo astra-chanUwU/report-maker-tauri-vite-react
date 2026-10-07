@@ -47,7 +47,7 @@ export function ChartsMetricsCard({
       icon={<LineChart />}
       title={t("chartsMetricsTitle")}
       description={t("chartsMetricsDesc")}
-      contentClassName="grid gap-4"
+      contentClassName="grid gap-3"
     >
       <fieldset className="grid gap-1.5">
         <legend className="mb-1 text-xs font-medium text-foreground/85">{t("secondaryMetric")}</legend>
@@ -322,9 +322,9 @@ export function IsoTableEditor({
           {t3("standardValues")}
         </Button>
       }
-      contentClassName="grid gap-4"
+      contentClassName="grid gap-3"
     >
-      <div className="flex flex-wrap items-end gap-4">
+      <div className="flex flex-wrap items-end gap-3">
         <Field label={t3("isoPositionLabel")}>
           <Segmented
             ariaLabel="ISO table position"
