@@ -11,7 +11,7 @@ import { toast } from "./ui/sonner";
 export function DesignDemo() {
   const { t } = useUi();
   return (
-    <div className="grid gap-3.5 xl:grid-cols-2 items-start">
+    <div className="grid items-start gap-3 xl:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>{t("designTitle")}</CardTitle>

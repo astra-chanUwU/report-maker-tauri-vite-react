@@ -207,7 +207,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-2.5 rounded-md border border-dashed bg-card/60 px-5 py-10 text-center",
+        "flex flex-col items-center justify-center gap-2.5 rounded-md border border-dashed bg-card/60 px-5 py-8 text-center",
         className
       )}
     >
@@ -221,7 +221,9 @@ export function EmptyState({
       ) : null}
       <div className="grid max-w-md gap-1">
         <p className="text-[13px] font-semibold">{title}</p>
-        {children ? <div className="text-xs leading-relaxed text-muted-foreground">{children}</div> : null}
+        {children ? (
+          <div className="text-xs leading-relaxed text-muted-foreground">{children}</div>
+        ) : null}
       </div>
       {actions ? <div className="flex flex-wrap justify-center gap-2 pt-1">{actions}</div> : null}
     </div>

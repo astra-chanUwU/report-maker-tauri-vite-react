@@ -70,7 +70,11 @@ export function ExportPage({
     ...(["project", "engineer", "date"] as const).map((k) => {
       const m = field(k);
       return {
-        label: { project: t("projectName").replace(" *", ""), engineer: t("engineer").replace(" *", ""), date: t("reportDate") }[k],
+        label: {
+          project: t("projectName").replace(" *", ""),
+          engineer: t("engineer").replace(" *", ""),
+          date: t("reportDate"),
+        }[k],
         detail: k === "project" && !m ? options.projectName : undefined,
         state: m ? ("todo" as const) : ("ok" as const),
         page: "details" as const,
@@ -105,7 +109,12 @@ export function ExportPage({
         : t("isoEnd");
   const sections: [string, string][] = [
     [t("languageLabel"), options.language === "fa" ? "Persian (RTL)" : "English"],
-    [t("measuringResults"), options.showSecondary === false ? t("velocityOnly") : t("velocityPlus", { metric: sec.short.toLowerCase() })],
+    [
+      t("measuringResults"),
+      options.showSecondary === false
+        ? t("velocityOnly")
+        : t("velocityPlus", { metric: sec.short.toLowerCase() }),
+    ],
     [t("trendSparklines"), options.trendZoneBands === false ? t("plain") : t("withBands")],
     [t("fullTrendPages"), options.trendPages ? t("yes") : t("no")],
     [t("fftSpectraGrid"), options.fftAllPoints === false ? t("no") : t("yes")],
@@ -127,8 +136,8 @@ export function ExportPage({
   };
 
   return (
-    <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_20rem] max-lg:gap-3">
-      <div className="grid gap-3">
+    <div className="grid items-start gap-2.5 lg:grid-cols-[minmax(0,1fr)_18rem] max-lg:gap-2.5">
+      <div className="grid gap-2.5">
         <Panel title={t("beforeGenerate")} contentClassName="grid gap-0.5">
           {checks.map((c) => {
             const Icon = c.state === "ok" ? CircleCheck : c.state === "todo" ? CircleAlert : Circle;
@@ -157,7 +166,11 @@ export function ExportPage({
                 <span className="grid gap-0.5">
                   <span className="text-xs font-medium">
                     {c.label}
-                    {c.state === "todo" ? <span className="ms-1.5 text-[11px] font-normal text-destructive">{t("required")}</span> : null}
+                    {c.state === "todo" ? (
+                      <span className="ms-1.5 text-[11px] font-normal text-destructive">
+                        {t("required")}
+                      </span>
+                    ) : null}
                   </span>
                   {c.detail ? (
                     <span className="text-xs leading-none text-muted-foreground">{c.detail}</span>
@@ -204,7 +217,7 @@ export function ExportPage({
         icon={<FileText />}
         title={t("wordReport")}
         description={t("wordReportDesc")}
-        contentClassName="grid gap-2.5"
+        contentClassName="grid gap-2"
       >
         <p
           className="truncate rounded bg-muted/70 px-2.5 py-2 font-mono text-[11px] text-muted-foreground"
@@ -246,11 +259,14 @@ export function ExportPage({
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              {progress?.detail || (progress ? stageLabel(progress.stage) : "Working…")} · {t("keepBrowsing")}
+              {progress?.detail || (progress ? stageLabel(progress.stage) : "Working…")} ·{" "}
+              {t("keepBrowsing")}
             </p>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">{ready ? t("readySaveHint") : t("missingHint")}</p>
+          <p className="text-xs text-muted-foreground">
+            {ready ? t("readySaveHint") : t("missingHint")}
+          </p>
         )}
         {lastSaved ? (
           <Button variant="outline" size="sm" onClick={() => void reveal()} title={lastSaved}>

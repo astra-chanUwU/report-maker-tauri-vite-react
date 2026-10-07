@@ -40,11 +40,11 @@ export function Onboarding() {
       title={t("onboardingTitle")}
       description={t("onboardingStepsDesc")}
       className="flex h-full flex-col"
-      contentClassName="grid flex-1 content-start gap-2.5"
+      contentClassName="grid flex-1 content-start gap-2"
     >
-      <ol className="grid gap-2">
+      <ol className="grid gap-2 lg:grid-cols-3">
         {STEPS.map((s, i) => (
-          <li key={s.title} className="flex gap-2.5 rounded border bg-muted/30 px-2.5 py-2">
+          <li key={s.title} className="flex gap-2 rounded border bg-muted/30 px-2 py-2">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
               {i + 1}
             </span>
@@ -59,7 +59,12 @@ export function Onboarding() {
         <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
         {t("worksOffline")}
       </div>
-      <Button variant="outline" size="sm" className="justify-self-start" onClick={downloadSampleCsv}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="justify-self-start"
+        onClick={downloadSampleCsv}
+      >
         <Download aria-hidden="true" />
         {t("downloadSample")}
       </Button>

@@ -192,3 +192,97 @@
     transform: translateY(0);
   }
 }
+
+/*
+ * Workspace polish
+ *
+ * Keep the component markup simple and let the shell own the layout rhythm.
+ * These selectors intentionally stay scoped to the main workspace so they do
+ * not change generated report content or the compact sidebar controls.
+ */
+#root > .app-shell {
+  min-width: 0;
+}
+
+#root > .app-shell > .workspace-main {
+  min-width: 0;
+}
+
+#root main#main {
+  min-width: 0;
+  overflow: hidden;
+}
+
+#root main#main > .absolute {
+  overflow-x: hidden;
+}
+
+#root main#main > .absolute > .mx-auto {
+  max-width: 1380px;
+}
+
+/* Panels share one quiet surface and a small, consistent shadow. */
+#root main#main .rounded-md.border.bg-card {
+  box-shadow: var(--workspace-shadow);
+}
+
+/* The reference has a compact workbench rhythm rather than loose card stacks. */
+#root main#main .gap-4 {
+  gap: 0.875rem;
+}
+
+#root main#main .gap-3\.5 {
+  gap: 0.75rem;
+}
+
+@media (max-width: 1023px) {
+  /* Keep the icon rail usable while giving the work area every remaining pixel. */
+  #root > .app-shell > aside {
+    width: 52px;
+  }
+
+  #root main#main > .absolute > .mx-auto {
+    padding-inline: 0.75rem;
+  }
+}
+
+@media (max-width: 639px) {
+  body {
+    font-size: 13px;
+  }
+
+  #root > .app-shell > .workspace-main > header {
+    height: 48px;
+    min-height: 48px;
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+
+  #root main#main > .absolute > .mx-auto {
+    padding: 0.75rem;
+  }
+
+  #root main#main .grid-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #root main#main [class*="grid-cols-[minmax"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #root main#main .rounded-md.border.bg-card {
+    border-radius: 0.375rem;
+  }
+
+  #root main#main table {
+    font-size: 12px;
+  }
+
+  #root > .app-shell > .workspace-main > footer[aria-label="Status"] {
+    padding-inline: 0.75rem;
+  }
+
+  #root > .app-shell > .workspace-main > footer[aria-label="Status"] > div:last-child {
+    gap: 0.5rem;
+  }
+}

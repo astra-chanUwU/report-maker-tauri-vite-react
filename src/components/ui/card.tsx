@@ -5,7 +5,10 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("rounded-md border bg-card text-card-foreground shadow-[0_1px_2px_oklch(0.2_0.02_255/0.05)]", className)}
+      className={cn(
+        "rounded-md border bg-card text-card-foreground shadow-[0_1px_2px_oklch(0.2_0.02_255/0.04)]",
+        className
+      )}
       {...props}
     />
   )
@@ -32,7 +35,11 @@ CardTitle.displayName = "CardTitle";
 
 const CardDescription = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("text-xs leading-snug text-muted-foreground", className)} {...props} />
+    <div
+      ref={ref}
+      className={cn("text-xs leading-snug text-muted-foreground", className)}
+      {...props}
+    />
   )
 );
 CardDescription.displayName = "CardDescription";
@@ -77,7 +84,7 @@ function Panel({
 }) {
   return (
     <Card className={className} id={id}>
-      <div className="flex items-start gap-2.5 px-3 pt-3 pb-2.5">
+      <div className="flex items-start gap-2 border-b border-border/70 bg-muted/15 px-3 py-2.5">
         <div className="grid min-w-0 flex-1 gap-0.5">
           <CardTitle className="flex items-center gap-1.5">
             {icon ? (
@@ -94,7 +101,7 @@ function Panel({
         ) : null}
       </div>
       {children !== undefined && children !== null ? (
-        <CardContent className={contentClassName}>{children}</CardContent>
+        <CardContent className={cn("bg-card", contentClassName)}>{children}</CardContent>
       ) : null}
     </Card>
   );

@@ -155,7 +155,9 @@ export function useIngest(onParsed: OnParsed): Ingest {
     try {
       const result = await job();
       onParsedRef.current(result, null);
-      const lang = (typeof document !== "undefined" && document.documentElement.lang === "fa" ? "fa" : "en") as "fa" | "en";
+      const lang = (
+        typeof document !== "undefined" && document.documentElement.lang === "fa" ? "fa" : "en"
+      ) as "fa" | "en";
       const { translate } = await import("../lib/i18n");
       toast.success(translate(lang, "toastLoadedFile", { file: result.meta.filename }));
     } catch (e) {
@@ -235,7 +237,7 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
 
   return (
     <div
-      className="relative flex min-h-[16rem] flex-col items-center justify-center gap-3 overflow-hidden rounded-md border border-dashed border-input bg-card px-5 py-6 text-center lg:min-h-[17rem] lg:py-7"
+      className="relative flex min-h-[13rem] flex-col items-center justify-center gap-2.5 overflow-hidden rounded border border-dashed border-input bg-card px-5 py-5 text-center lg:min-h-[14rem] lg:py-5"
       aria-busy={ingest.loading}
     >
       <div
@@ -246,14 +248,14 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
         }}
         aria-hidden="true"
       />
-      <div className="relative flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
+      <div className="relative flex h-9 w-9 items-center justify-center rounded bg-primary/10 text-primary ring-1 ring-primary/15">
         {ingest.loading ? (
           <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
         ) : (
           <FileUp className="h-5 w-5" aria-hidden="true" />
         )}
       </div>
-      <div className="relative grid max-w-[28rem] gap-1">
+      <div className="relative grid max-w-[30rem] gap-0.5">
         <p className="text-[15px] font-semibold tracking-tight" aria-live="polite">
           {ingest.loading ? t("reading") : t("dropMeasurementFile")}
         </p>
@@ -282,7 +284,9 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
           </Button>
         </div>
       )}
-      {toolMissing ? <p className="relative text-xs text-destructive">{t("mdbNotFoundHint")}</p> : null}
+      {toolMissing ? (
+        <p className="relative text-xs text-destructive">{t("mdbNotFoundHint")}</p>
+      ) : null}
       {ingest.error ? (
         <div className="relative">
           <IngestError message={ingest.error} />
@@ -395,12 +399,21 @@ export function DataOverview({ result, limits }: { result: ParseResult; limits?:
               "—"
             )
           }
-          sub={zone ? ZONE_LABELS[zone as keyof typeof ZONE_LABELS] : overall ? unit || "RMS" : t("noOverallValues")}
+          sub={
+            zone
+              ? ZONE_LABELS[zone as keyof typeof ZONE_LABELS]
+              : overall
+                ? unit || "RMS"
+                : t("noOverallValues")
+          }
         />
         <Stat
           label={t("peak")}
           value={`${Number(result.stats.peak.amp).toFixed(2)}${unit ? ` ${unit}` : ""}`}
-          sub={t("atRpm", { rpm: Math.round(Number(result.stats.peak.freq) * 60), freq: result.stats.peak.freq })}
+          sub={t("atRpm", {
+            rpm: Math.round(Number(result.stats.peak.freq) * 60),
+            freq: result.stats.peak.freq,
+          })}
         />
       </div>
       <Card className="p-3">

@@ -27,11 +27,14 @@ function TemplateThumb({ tpl }: { tpl: DocTemplate }) {
   const accent = `#${tpl.accentHex}`;
   const soft = `#${tpl.accentSoft}`;
   return (
-    <div className="flex h-32 items-center justify-center rounded-md bg-muted/70 p-2">
+    <div className="flex h-28 items-center justify-center rounded bg-muted/70 p-2 ring-1 ring-border/60">
       <div className="flex h-full w-[5rem] flex-col gap-1 overflow-hidden rounded-sm bg-white p-1.5 shadow-sm">
         {tpl.coverStyle === "modern" ? (
           <>
-            <div className="-mx-1.5 -mt-1.5 mb-1 space-y-1 px-1.5 py-1.5" style={{ backgroundColor: accent }}>
+            <div
+              className="-mx-1.5 -mt-1.5 mb-1 space-y-1 px-1.5 py-1.5"
+              style={{ backgroundColor: accent }}
+            >
               <div className="h-0.5 w-2/3 rounded-full bg-white/70" />
               <div className="h-1.5 w-full rounded-full bg-white" />
             </div>
@@ -41,7 +44,10 @@ function TemplateThumb({ tpl }: { tpl: DocTemplate }) {
         ) : tpl.coverStyle === "industrial" ? (
           <>
             <div className="-mx-1.5 -mt-1.5 h-2" style={{ backgroundColor: accent }} />
-            <div className="mx-auto mt-1 h-1.5 w-3/4 rounded-full" style={{ backgroundColor: accent }} />
+            <div
+              className="mx-auto mt-1 h-1.5 w-3/4 rounded-full"
+              style={{ backgroundColor: accent }}
+            />
             <div className="h-1 w-full rounded-full" style={{ backgroundColor: soft }} />
             <div className="h-0.5 w-full rounded-full bg-neutral-200" />
             <div className="h-0.5 w-2/3 rounded-full bg-neutral-200" />
@@ -57,7 +63,10 @@ function TemplateThumb({ tpl }: { tpl: DocTemplate }) {
           </>
         ) : (
           <>
-            <div className="mx-auto mt-2 h-1.5 w-3/4 rounded-full" style={{ backgroundColor: accent }} />
+            <div
+              className="mx-auto mt-2 h-1.5 w-3/4 rounded-full"
+              style={{ backgroundColor: accent }}
+            />
             <div className="mx-auto h-1 w-1/2 rounded-full bg-neutral-300" />
             <div className="my-1 h-1.5 w-full rounded-sm" style={{ backgroundColor: accent }} />
             <div className="h-0.5 w-full rounded-full bg-neutral-200" />
@@ -80,12 +89,12 @@ export function TemplateCard({
   const { t } = useUi();
   const selected = options.templateId ?? "classic";
   return (
-    <Panel
-      icon={<LayoutTemplate />}
-      title={t("template")}
-      description={t("templateDesc")}
-    >
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4" role="radiogroup" aria-label="Template">
+    <Panel icon={<LayoutTemplate />} title={t("template")} description={t("templateDesc")}>
+      <div
+        className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+        role="radiogroup"
+        aria-label="Template"
+      >
         {TEMPLATES.map((tpl) => {
           const active = selected === tpl.id;
           return (
@@ -96,10 +105,10 @@ export function TemplateCard({
               aria-checked={active}
               onClick={() => onOptions({ ...options, templateId: tpl.id })}
               className={cn(
-                "relative grid cursor-default gap-1.5 rounded border p-1.5 text-start transition-colors",
+                "relative grid cursor-default gap-1.5 rounded border bg-card p-1.5 text-start transition-colors",
                 active
-                  ? "border-primary ring-2 ring-primary/20"
-                  : "hover:border-muted-foreground/40"
+                  ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+                  : "hover:border-muted-foreground/40 hover:bg-muted/30"
               )}
             >
               {active ? (
@@ -110,7 +119,9 @@ export function TemplateCard({
               <TemplateThumb tpl={tpl} />
               <span className="grid gap-0 px-1 pb-0.5">
                 <span className="text-xs font-semibold">{tpl.name}</span>
-                <span className="text-[11px] leading-snug text-muted-foreground">{tpl.description}</span>
+                <span className="text-[11px] leading-snug text-muted-foreground">
+                  {tpl.description}
+                </span>
               </span>
             </button>
           );
@@ -158,9 +169,9 @@ export function BrandingCard({
       icon={<PenLine />}
       title={t("brandingTitle")}
       description={t("brandingStorageHint")}
-      contentClassName="grid gap-3"
+      contentClassName="grid gap-2.5"
     >
-      <div className="grid gap-2.5 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-3">
         <AssetTile
           title={t("assetLogo")}
           hint={t("assetLogoHint")}
@@ -195,7 +206,7 @@ export function BrandingCard({
           }
         />
       </div>
-      <div className="grid gap-2.5 rounded border bg-muted/40 p-2.5 md:grid-cols-[auto_1fr] md:items-start">
+      <div className="grid gap-2 rounded border bg-muted/40 p-2 md:grid-cols-[auto_1fr] md:items-start">
         <Field label={t("signatureStyle")}>
           <Segmented
             ariaLabel={t("signatureStyle")}
@@ -285,7 +296,7 @@ function AssetTile({
   return (
     <div
       data-branding-drop
-      className="grid content-start gap-1.5 rounded border p-1.5"
+      className="grid content-start gap-1.5 rounded border bg-muted/15 p-1.5"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -303,7 +314,11 @@ function AssetTile({
         aria-label={`${preview ? "Replace" : "Upload"} ${title.toLowerCase()}`}
       >
         {preview ? (
-          <img src={preview} alt={`${title} preview`} className="h-full w-full object-contain pointer-events-none" />
+          <img
+            src={preview}
+            alt={`${title} preview`}
+            className="h-full w-full object-contain pointer-events-none"
+          />
         ) : (
           <span className="flex flex-col items-center gap-1 text-xs text-muted-foreground pointer-events-none">
             <ImagePlus className="h-5 w-5" aria-hidden="true" />

@@ -94,9 +94,9 @@ export function ProjectDetailsCard({
           </Button>
         </>
       }
-      contentClassName="grid gap-3"
+      contentClassName="grid gap-2.5"
     >
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         <Field
           label={t("projectName").replace(" *", "")}
           htmlFor="opt-project"
@@ -159,7 +159,7 @@ export function ProjectDetailsCard({
           />
         </Field>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         <Field label={t("letterNo")} htmlFor="opt-letter">
           <Input
             id="opt-letter"
@@ -202,7 +202,7 @@ export function ProjectDetailsCard({
       <Field label={t("notes")} htmlFor="opt-notes">
         <Textarea
           id="opt-notes"
-          rows={3}
+          rows={2}
           value={options.notes}
           placeholder={t("notesPlaceholder")}
           onChange={(e) => set({ notes: e.target.value })}
@@ -220,9 +220,9 @@ export function ClientDetailsCard({ options, onChange }: FormProps) {
       icon={<Building2 />}
       title={t("clientLetterhead")}
       description={t("letterheadDesc")}
-      contentClassName="grid gap-3"
+      contentClassName="grid gap-2.5"
     >
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-2 md:grid-cols-2">
         <Field label={t("client")} htmlFor="opt-client">
           <Input
             id="opt-client"
@@ -282,7 +282,7 @@ export function ReportContentsCard({ options, onChange }: FormProps) {
       icon={<ListChecks />}
       title={t("reportContents")}
       description={t("reportContentsDesc")}
-      contentClassName="grid gap-3 md:grid-cols-2"
+      contentClassName="grid gap-2 md:grid-cols-2"
     >
       <div className="grid content-start gap-1">
         <FieldGroupTitle className="px-2 pb-1">{t("sections")}</FieldGroupTitle>
@@ -415,9 +415,7 @@ export function SchematicField({
           onClick={() => ref.current?.click()}
           className={cn(
             "flex h-24 w-40 shrink-0 cursor-default items-center justify-center overflow-hidden rounded-md border border-dashed hover:border-primary",
-            dragActive
-              ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-              : "border-input",
+            dragActive ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-input",
             !dragActive && url ? "bg-white" : !dragActive ? "bg-muted/50" : "bg-primary/5"
           )}
           aria-label={url ? "Replace schematic" : "Upload schematic"}
@@ -431,7 +429,10 @@ export function SchematicField({
           ) : dragActive ? (
             <span className="text-xs text-primary">{t("dropImageHere")}</span>
           ) : (
-            <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" aria-hidden="true" />
+            <ImagePlus
+              className="h-6 w-6 text-muted-foreground pointer-events-none"
+              aria-hidden="true"
+            />
           )}
         </button>
         <div className="grid gap-1.5">
@@ -471,9 +472,9 @@ export function SingleEquipmentCard({ options, onChange }: FormProps) {
       icon={<Wrench />}
       title={t("singleEquipment")}
       description={t("singleEquipmentHint")}
-      contentClassName="grid gap-3"
+      contentClassName="grid gap-2.5"
     >
-      <div className="grid gap-3 md:grid-cols-[2fr_1fr]">
+      <div className="grid gap-2 md:grid-cols-[2fr_1fr]">
         <Field label={t("equipment")} htmlFor="opt-equipment">
           <Input
             id="opt-equipment"
@@ -497,11 +498,11 @@ export function SingleEquipmentCard({ options, onChange }: FormProps) {
           </Select>
         </Field>
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-2 lg:grid-cols-2">
         <Field label={t("specs")} htmlFor="opt-specs">
           <Textarea
             id="opt-specs"
-            rows={4}
+            rows={3}
             value={options.equipmentSpecs ?? ""}
             placeholder="Drive power, RPM, bearing types, coupling…"
             onChange={(e) => set({ equipmentSpecs: e.target.value })}
@@ -513,7 +514,7 @@ export function SingleEquipmentCard({ options, onChange }: FormProps) {
           onChange={(b64) => set({ schematicBase64: b64 })}
         />
       </div>
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-2 lg:grid-cols-3">
         <Field
           label={t("lastReport")}
           htmlFor="opt-lastreport"
@@ -521,7 +522,7 @@ export function SingleEquipmentCard({ options, onChange }: FormProps) {
         >
           <Textarea
             id="opt-lastreport"
-            rows={3}
+            rows={2}
             value={options.equipmentLastReport ?? ""}
             placeholder="Previous status + actions taken…"
             onChange={(e) => set({ equipmentLastReport: e.target.value })}
@@ -534,7 +535,7 @@ export function SingleEquipmentCard({ options, onChange }: FormProps) {
         >
           <Textarea
             id="opt-problems"
-            rows={3}
+            rows={2}
             value={options.equipmentProblems ?? ""}
             placeholder="Diagnosis…"
             onChange={(e) => set({ equipmentProblems: e.target.value })}
@@ -547,7 +548,7 @@ export function SingleEquipmentCard({ options, onChange }: FormProps) {
         >
           <Textarea
             id="opt-corrective"
-            rows={3}
+            rows={2}
             value={options.equipmentCorrective ?? ""}
             placeholder="What to do next…"
             onChange={(e) => set({ equipmentCorrective: e.target.value })}

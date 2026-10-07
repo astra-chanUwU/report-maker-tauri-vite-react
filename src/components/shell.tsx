@@ -166,10 +166,10 @@ export function Sidebar({
           aria-current={active ? "page" : here ? "step" : undefined}
           title={collapsed ? `${step.n}. ${label} (Ctrl+${step.n})` : `Ctrl+${step.n}`}
           className={cn(
-            "group relative flex h-8 w-full cursor-default items-center gap-2.5 rounded text-[12.5px] font-semibold transition-colors",
+            "group relative flex h-8 w-full cursor-default items-center gap-2.5 rounded-md border border-transparent text-[12.5px] font-semibold transition-colors",
             collapsed ? "justify-center px-0" : "px-1.5",
             active
-              ? "bg-sidebar-active text-white"
+              ? "border-sidebar-active bg-sidebar-active text-white shadow-sm"
               : here
                 ? "text-white hover:bg-sidebar-accent"
                 : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
@@ -247,10 +247,10 @@ export function Sidebar({
                 : undefined
           }
           className={cn(
-            "group relative flex h-7 w-full cursor-default items-center gap-2 rounded text-[12.5px] font-medium transition-colors",
+            "group relative flex h-8 w-full cursor-default items-center gap-2 rounded-md border border-transparent text-[12.5px] font-medium transition-colors",
             collapsed ? "justify-center px-0" : "px-1.5",
             active
-              ? "bg-sidebar-active text-white"
+              ? "border-sidebar-active bg-sidebar-active text-white shadow-sm"
               : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
           )}
         >
@@ -286,31 +286,31 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-150",
-        collapsed ? "w-[52px]" : "w-[220px]"
+        "flex shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[2px_0_8px_oklch(0.15_0.02_255/0.08)] transition-[width] duration-150",
+        collapsed ? "w-[54px]" : "w-[236px]"
       )}
       aria-label="Main navigation"
     >
       <div
         className={cn(
-          "flex h-[52px] items-center gap-2.5 border-b border-sidebar-border",
-          collapsed ? "justify-center" : "px-3"
+          "flex h-[58px] items-center gap-2.5 border-b border-sidebar-border bg-sidebar",
+          collapsed ? "justify-center px-0" : "px-3"
         )}
       >
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
           <FileBarChart2 className="h-4 w-4" aria-hidden="true" />
         </div>
         {!collapsed ? (
           <div className="min-w-0 leading-none">
             <p className="truncate text-[13px] font-semibold leading-tight text-white">{t("appTitle")}</p>
-            <p className="text-[10px] tracking-wide text-sidebar-muted">v{version}</p>
+            <p className="mt-1 text-[10px] tracking-wide text-sidebar-muted">REPORT WORKSPACE · v{version}</p>
           </div>
         ) : null}
       </div>
-      <nav className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-1.5 py-2.5">
+      <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
         <div className="grid gap-0.5">
           {!collapsed ? (
-            <p className="px-2 pb-1 text-[10px] font-semibold tracking-wider text-sidebar-muted uppercase">
+            <p className="px-2 pb-1.5 text-[10px] font-semibold tracking-[0.12em] text-sidebar-muted uppercase">
               {t("navGroupReport")}
             </p>
           ) : null}
@@ -318,7 +318,7 @@ export function Sidebar({
         </div>
         <div className="mt-auto grid gap-0.5">
           {!collapsed ? (
-            <p className="px-2 pb-1 text-[10px] font-semibold tracking-wider text-sidebar-muted uppercase">
+            <p className="px-2 pb-1.5 text-[10px] font-semibold tracking-[0.12em] text-sidebar-muted uppercase">
               {t("navGroupApp")}
             </p>
           ) : null}
@@ -326,7 +326,7 @@ export function Sidebar({
         </div>
       </nav>
       {!narrow ? (
-        <div className="border-t border-sidebar-border p-1.5">
+        <div className="border-t border-sidebar-border bg-sidebar/80 p-2">
           <button
             type="button"
             onClick={toggle}
@@ -429,19 +429,31 @@ export function ReadinessChip({
 export function Toolbar({
   title,
   description,
+  icon,
+  eyebrow,
   children,
 }: {
   title: string;
   description?: string;
+  icon?: ReactNode;
+  eyebrow?: string;
   children?: ReactNode;
 }) {
   return (
-    <header className="relative z-30 flex h-[52px] shrink-0 items-center gap-3 border-b bg-card px-4">
+    <header className="relative z-30 flex min-h-[58px] shrink-0 items-center gap-3 border-b bg-card/95 px-4 shadow-[0_1px_2px_oklch(0.2_0.02_255/0.05)] lg:px-5">
+      {icon ? (
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-muted text-primary [&_svg]:size-4" aria-hidden="true">
+          {icon}
+        </span>
+      ) : null}
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-[14px] leading-tight font-semibold tracking-tight">{title}</h1>
-        {description ? (
-          <p className="hidden truncate text-[11px] leading-none text-muted-foreground md:block">{description}</p>
+        {eyebrow ? (
+          <p className="mb-0.5 truncate text-[9px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+            {eyebrow}
+          </p>
         ) : null}
+        <h1 className="truncate text-[14px] leading-tight font-semibold tracking-tight">{title}</h1>
+        {description ? <p className="hidden truncate text-[11px] leading-none text-muted-foreground md:block">{description}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">{children}</div>
     </header>

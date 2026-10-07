@@ -614,7 +614,7 @@ function App() {
 
   return (
     <UiProvider lang={uiLang}>
-      <div className="flex h-full" {...dropHandlers}>
+      <div className="app-shell" {...dropHandlers}>
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
@@ -629,8 +629,13 @@ function App() {
           version={APP_VERSION}
         />
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Toolbar title={t(current.label)} description={t(current.desc)}>
+        <div className="workspace-main">
+          <Toolbar
+            title={t(current.label)}
+            description={t(current.desc)}
+            eyebrow={t("appTitle")}
+            icon={<current.icon aria-hidden="true" />}
+          >
             <ImportPill jobs={importJobs} />
             <ExportPill progress={exportProgress} />
             <ReadinessChip missing={missing} onFix={fix} />
@@ -656,7 +661,7 @@ function App() {
             </Button>
           </Toolbar>
 
-          <main id="main" className="relative min-h-0 flex-1 bg-background">
+          <main id="main" className="relative min-h-0 flex-1 overflow-hidden bg-background">
             <Page active={page === "data"}>
               {sp3Paths.length > 0 ? (
                 <div className="grid gap-3">
@@ -1172,12 +1177,12 @@ function Page({ active, children }: { active: boolean; children: ReactNode }) {
   return (
     <div
       className={cn(
-        "absolute inset-0 overflow-y-auto transition-opacity duration-150",
+        "absolute inset-0 overflow-y-auto bg-background transition-opacity duration-150",
         active ? "opacity-100" : "pointer-events-none hidden opacity-0"
       )}
       aria-hidden={!active}
     >
-      <div className="mx-auto w-full max-w-[1280px] px-3 py-3 sm:px-4">{children}</div>
+      <div className="mx-auto min-h-full w-full max-w-[1440px] px-4 py-3 lg:px-5 lg:py-4">{children}</div>
     </div>
   );
 }
