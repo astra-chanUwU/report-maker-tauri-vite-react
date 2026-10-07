@@ -8,17 +8,6 @@ type MeasurePeak = import("../lib/generateDocx").MeasurePeak;
 type MeasureRow = import("../lib/generateDocx").MeasureRow;
 type BuildDocxInput = import("../lib/generateDocx").BuildDocxInput;
 
-// Lazily loaded chart renderer (dynamic import ensures docx chunk is not in the main bundle).
-let cachedRenderChartPng: ((spectra: import("../lib/parseSp3").SpectraPoint[]) => Uint8Array) | null = null;
-async function getRenderChartPng(): Promise<
-  (spectra: import("../lib/parseSp3").SpectraPoint[]) => Uint8Array
-> {
-  if (cachedRenderChartPng) return cachedRenderChartPng;
-  const mod = await import("../lib/generateDocx");
-  cachedRenderChartPng = mod.renderChartPng;
-  return cachedRenderChartPng;
-}
-
 async function buildDocxViaWorker(
   input: BuildDocxInput,
   onProgress: (p: ExportProgress) => Promise<void>
@@ -254,7 +243,7 @@ export function ExportControls({
         }
       }
       const includeEnvelope = envelopeHits > 0 && secondary !== "envelope";
-      // Full-size trend pages (opt-in; the measuring table already carries sparklines)
+      // Full-size trend pages (opt-in; the measuring table already carries native charts)
       let allTrends: ReturnType<typeof buildAllTrendSnapshots> | undefined;
       if (trendPages && limits && measureRows && measureRows.length > 1) {
         await report({
@@ -311,7 +300,7 @@ export function ExportControls({
         return null;
       };
       const loadFft = async (rows: CsvRowSummary[], labels?: Record<string, string>) => {
-        const items: { label: string; png: Uint8Array; peak?: string; spectra?: import("../lib/parseSp3").SpectraPoint[] }[] = [];
+        const items: { label: string; peak?: string; spectra?: import("../lib/parseSp3").SpectraPoint[] }[] = [];
         const points = latestPerPoint(rows).slice(0, 40);
         for (const row of points) {
           const pr = await loadSpectrum(row);
@@ -329,7 +318,6 @@ export function ExportControls({
           const fallback = `${row.pointId || "?"}${row.directionId ? ` / ${row.directionId}` : ""}`;
           items.push({
             label: `${named || fallback} · ${oleDateToISO(Number(row.measDate)) || ""}`,
-            png: (await getRenderChartPng())(pr.spectra),
             peak: formatSpectrumPeak(computeStats(pr.spectra).peak),
             spectra: pr.spectra,
           });
@@ -338,8 +326,8 @@ export function ExportControls({
         return items;
       };
       const eqList = (equipments ?? []).filter((e) => e.name.trim() || e.specs.trim());
-      const perMachineFft = new Map<string, { label: string; png: Uint8Array; peak?: string }[]>();
-      let fftGallery: { label: string; png: Uint8Array; peak?: string }[] | undefined;
+      const perMachineFft = new Map<string, { label: string; peak?: string; spectra?: import("../lib/parseSp3").SpectraPoint[] }[]>();
+      let fftGallery: { label: string; peak?: string; spectra?: import("../lib/parseSp3").SpectraPoint[] }[] | undefined;
       if (measureRows && measureRows.length > 0) {
         try {
           const bound = eqList.filter((e) => e.pointIds && e.pointIds.length > 0);

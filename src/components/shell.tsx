@@ -169,10 +169,10 @@ export function Sidebar({
             "group relative flex h-8 w-full cursor-default items-center gap-2.5 rounded-md border border-transparent text-[12.5px] font-semibold transition-colors",
             collapsed ? "justify-center px-0" : "px-1.5",
             active
-              ? "border-sidebar-active bg-sidebar-active text-white shadow-sm"
+              ? "border-sidebar-active bg-sidebar-active text-sidebar-active-foreground shadow-sm"
               : here
-                ? "text-white hover:bg-sidebar-accent"
-                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
+                ? "text-sidebar-foreground hover:bg-sidebar-accent"
+                : "text-sidebar-foreground hover:bg-sidebar-accent"
           )}
         >
           {active ? (
@@ -250,8 +250,8 @@ export function Sidebar({
             "group relative flex h-8 w-full cursor-default items-center gap-2 rounded-md border border-transparent text-[12.5px] font-medium transition-colors",
             collapsed ? "justify-center px-0" : "px-1.5",
             active
-              ? "border-sidebar-active bg-sidebar-active text-white shadow-sm"
-              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
+              ? "border-sidebar-active bg-sidebar-active text-sidebar-active-foreground shadow-sm"
+              : "text-sidebar-foreground hover:bg-sidebar-accent"
           )}
         >
           {active ? (
@@ -286,14 +286,14 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[2px_0_8px_oklch(0.15_0.02_255/0.08)] transition-[width] duration-150",
-        collapsed ? "w-[54px]" : "w-[236px]"
+        "flex shrink-0 flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[2px_0_8px_oklch(0.15_0.02_255/0.05)] transition-[width] duration-150",
+        collapsed ? "w-[54px]" : "w-[216px]"
       )}
       aria-label="Main navigation"
     >
       <div
         className={cn(
-          "flex h-[58px] items-center gap-2.5 border-b border-sidebar-border bg-sidebar",
+          "flex h-[64px] items-center gap-2.5 border-b border-sidebar-border bg-sidebar",
           collapsed ? "justify-center px-0" : "px-3"
         )}
       >
@@ -302,11 +302,22 @@ export function Sidebar({
         </div>
         {!collapsed ? (
           <div className="min-w-0 leading-none">
-            <p className="truncate text-[13px] font-semibold leading-tight text-white">{t("appTitle")}</p>
+            <p className="truncate text-[13px] font-semibold leading-tight text-sidebar-foreground">{t("appTitle")}</p>
             <p className="mt-1 text-[10px] tracking-wide text-sidebar-muted">REPORT WORKSPACE · v{version}</p>
           </div>
         ) : null}
       </div>
+      {!collapsed ? (
+        <div className="px-2 pt-2">
+          <div className="flex h-8 items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/45 px-2 text-[11px] font-medium text-sidebar-foreground">
+            <span className="flex h-5 w-5 items-center justify-center rounded bg-primary/12 text-primary">
+              <Monitor className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1 truncate">Local workspace</span>
+            <span className="text-[10px] text-sidebar-muted" aria-hidden="true">⌄</span>
+          </div>
+        </div>
+      ) : null}
       <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
         <div className="grid gap-0.5">
           {!collapsed ? (
@@ -331,7 +342,7 @@ export function Sidebar({
             type="button"
             onClick={toggle}
             className={cn(
-              "flex h-7 w-full cursor-default items-center gap-2 rounded text-xs text-sidebar-muted hover:bg-sidebar-accent hover:text-white",
+              "flex h-7 w-full cursor-default items-center gap-2 rounded text-xs text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground",
               collapsed ? "justify-center" : "px-2"
             )}
             aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
@@ -440,7 +451,7 @@ export function Toolbar({
   children?: ReactNode;
 }) {
   return (
-    <header className="relative z-30 flex min-h-[58px] shrink-0 items-center gap-3 border-b bg-card/95 px-4 shadow-[0_1px_2px_oklch(0.2_0.02_255/0.05)] lg:px-5">
+    <header className="relative z-30 flex min-h-[64px] shrink-0 items-center gap-3 border-b bg-card/95 px-4 shadow-[0_1px_2px_oklch(0.2_0.02_255/0.035)] lg:px-5">
       {icon ? (
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-muted text-primary [&_svg]:size-4" aria-hidden="true">
           {icon}

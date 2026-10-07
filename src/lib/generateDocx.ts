@@ -158,8 +158,11 @@ export interface MeasureRow {
   currA?: string;
   /** Peak List column: strongest spectrum lines. */
   peaks?: MeasurePeak[];
-  sparkV?: Uint8Array;
-  sparkA?: Uint8Array;
+  /** Windowed velocity samples used to build the editable Word chart. */
+  trendCategories?: (string | number)[];
+  trendValuesV?: (number | null)[];
+  /** Windowed secondary-metric samples used to build the editable Word chart. */
+  trendValuesA?: (number | null)[];
 }
 
 export interface MeasuringCell {
@@ -167,8 +170,16 @@ export interface MeasuringCell {
   fill?: string;
   color?: string;
   bold?: boolean;
-  png?: Uint8Array;
-  /** Avg · Prev · Cur strip printed above a trend sparkline. */
+  /** Native Word chart data. PNGs are deliberately not used for report charts. */
+  chart?: {
+    categories: (string | number)[];
+    values: (number | null)[];
+    seriesName: string;
+    unit?: string;
+    color: string;
+    limits?: ZoneLimits;
+  };
+  /** Avg · Prev · Cur strip printed above a trend chart. */
   stats?: [string, string, string];
   /** Stacked values (peak list RPM / Amp). */
   lines?: string[];
@@ -242,9 +253,9 @@ export function buildMeasuringTableData(
     const z = classifyZone(value, l);
     return { text: z || "—", fill: ZONE_FILL[z], color: ZONE_TEXT[z], size: 32 };
   };
-  const trendCell = (png: Uint8Array | undefined, avg?: string, prev?: string, cur?: string) => ({
+  const trendCell = (chart: MeasuringCell["chart"], avg?: string, prev?: string, cur?: string) => ({
     text: "",
-    png,
+    chart,
     stats: [two(avg) || "—", two(prev) || "—", two(cur) || "—"] as [string, string, string],
   });
   const body = rows.map((r) => {
@@ -255,14 +266,42 @@ export function buildMeasuringTableData(
         : [];
     const cells: MeasuringCell[] = [
       { text: r.point || "?", bold: true, size: 28 },
-      trendCell(r.sparkV, r.avgV, r.prevV, r.currV || r.rms),
+      trendCell(
+        r.trendCategories && r.trendValuesV
+          ? {
+              categories: r.trendCategories,
+              values: r.trendValuesV,
+              seriesName: sectionTitle(lang, "velocity"),
+              unit: "mm/s",
+              color: CHART_COLOR_VEL,
+              limits: limits.velocity,
+            }
+          : undefined,
+        r.avgV,
+        r.prevV,
+        r.currV || r.rms
+      ),
       zoneCell(r.currV || r.rms, limits.velocity),
       { text: "", lines: peaks.length ? peaks.map((p) => p.rpm) : ["—"], bold: true },
       { text: "", lines: peaks.length ? peaks.map((p) => two(p.amp) ?? p.amp) : ["—"], bold: true },
     ];
     if (show) {
       cells.push(
-        trendCell(r.sparkA, r.avgA, r.prevA, r.currA || r.rmsA),
+        trendCell(
+          r.trendCategories && r.trendValuesA
+            ? {
+                categories: r.trendCategories,
+                values: r.trendValuesA,
+                seriesName: sec.short,
+                unit: sec.unit,
+                color: CHART_COLOR_ACC,
+                limits: secLimits,
+              }
+            : undefined,
+          r.avgA,
+          r.prevA,
+          r.currA || r.rmsA
+        ),
         zoneCell(r.currA || r.rmsA, secLimits)
       );
     }
@@ -368,7 +407,8 @@ export interface BuildDocxInput {
   /** FFT gallery for all points (brochure p.7). */
   fftGallery?: {
     label: string;
-    png: Uint8Array;
+    /** Kept optional for callers that still have a preview, but never embedded as the chart. */
+    png?: Uint8Array;
     peak?: string;
     /** Optional raw spectra for editable chart; if present, native chart is used. */
     spectra?: SpectraPoint[];
@@ -453,8 +493,8 @@ function downsample(spectra: SpectraPoint[], max: number): SpectraPoint[] {
 }
 
 // ── Native editable charts (docx ChartRun) ──────────────────────────────
-// Keep the existing PNG helpers for sparklines/small inline images.
-// Full-size charts become editable Word objects via these helpers.
+// Keep the PNG renderer for supplied artwork and legacy callers.
+// Report charts become editable Word objects via these helpers.
 
 const CHART_COLOR_SPECTRUM = "1B4F72"; // navy — spectrum line
 const CHART_COLOR_VEL = "1B5E20"; // dark green — velocity
@@ -1031,17 +1071,20 @@ function measuringTable(data: MeasuringTableData): Table {
           ],
         })
       );
-      const imgW = Math.round((widths[i] / 1440) * 96) - 10;
       paras.push(
-        c.png && c.png.length > 8
+        c.chart && c.chart.categories.length > 0 && c.chart.values.length > 0
           ? docParagraph({
               alignment: AlignmentType.CENTER,
               spacing: { before: 0, after: 0 },
               children: [
-                new ImageRun({
-                  data: c.png,
-                  transformation: { width: imgW, height: Math.round(imgW * 0.42) },
-                  type: "png",
+                trendChartRun(c.chart.categories, c.chart.values, {
+                  seriesName: c.chart.seriesName,
+                  color: c.chart.color,
+                  unit: c.chart.unit,
+                  limits: c.chart.limits,
+                  width: 220,
+                  height: 82,
+                  lang: paragraphRtl ? "fa" : "en",
                 }),
               ],
             })
@@ -1435,7 +1478,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
   const stats = computeStats(input.spectra);
   const limit = input.options.pointLimit ?? 120;
   const rows = input.spectra.slice(0, Math.max(1, Math.min(limit, input.spectra.length)));
-  void renderChartPng; // kept for sparklines; main spectrum now uses editable chart
+  void renderChartPng; // retained as a public raster helper; report charts use ChartRun
   const d = input.aiDraft;
   const templateId = input.templateId ?? input.options.templateId ?? "classic";
   const template = getTemplate(templateId);
@@ -1507,7 +1550,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         }),
         trendChartParagraph(t.velocityCategories, t.velocityValues, CHART_COLOR_VEL, sectionTitle(lang, "velocity"), lang, "mm/s", t.velocityLimits ?? input.zones?.limits.velocity)!,
         trendChartParagraph(t.accelCategories, t.accelValues, CHART_COLOR_ACC, secLabel.short, lang, secLabel.unit, t.accelLimits ?? secondaryLimits(input.zones?.limits ?? DEFAULT_ZONE_LIMITS, secMetric))!,
-        ...(t.envelopePng
+        ...(t.envelopeCategories && t.envelopeValues
           ? [
               docParagraph({
                 text: sectionTitle(lang, "envelope"),
@@ -1529,7 +1572,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
     // Brochure p.7: 2 spectra per row in a bordered grid
     const items = list.slice(0, 24);
     const half = TABLE_DXA / 2;
-    const fftCell = (g: { label: string; png: Uint8Array; peak?: string; spectra?: SpectraPoint[] }) =>
+    const fftCell = (g: { label: string; png?: Uint8Array; peak?: string; spectra?: SpectraPoint[] }) =>
       new TableCell({
         width: { size: half, type: WidthType.DXA },
         margins: tight,
@@ -1548,15 +1591,10 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
                 children: [spectrumChartRun(g.spectra, { width: 340, height: 170, lang, unit: input.meta.overall?.unit || input.options.units || "" })],
                 alignment: AlignmentType.CENTER,
               })
-            : g.png && g.png.length > 0
-              ? docParagraph({
-                  children: [new ImageRun({ data: g.png, transformation: { width: 340, height: 170 }, type: "png" })],
-                  alignment: AlignmentType.CENTER,
-                })
-              : docParagraph({
-                  children: [docRun({ text: lang === "fa" ? "داده طیف موجود نیست" : "No spectrum data", italics: true, color: "737373" })],
-                  alignment: AlignmentType.CENTER,
-                }),
+            : docParagraph({
+                children: [docRun({ text: lang === "fa" ? "داده طیف موجود نیست" : "No spectrum data", italics: true, color: "737373" })],
+                alignment: AlignmentType.CENTER,
+              }),
         ],
       });
     const rows: TableRow[] = [];
@@ -1758,7 +1796,7 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
         }),
         trendChartParagraph(t.velocityCategories, t.velocityValues, CHART_COLOR_VEL, sectionTitle(lang, "velocity"), lang, "mm/s", t.velocityLimits ?? input.zones?.limits.velocity)!,
         trendChartParagraph(t.accelCategories, t.accelValues, CHART_COLOR_ACC, secLabel.short, lang, secLabel.unit, t.accelLimits ?? secondaryLimits(input.zones?.limits ?? DEFAULT_ZONE_LIMITS, secMetric))!,
-        ...(t.envelopePng
+        ...(t.envelopeCategories && t.envelopeValues
           ? [
               docParagraph({
                 text: sectionTitle(lang, "envelope"),
@@ -1790,15 +1828,10 @@ export async function buildDocx(input: BuildDocxInput): Promise<Blob> {
               children: [spectrumChartRun(g.spectra, { width: 600, height: 300, lang, unit: input.meta.overall?.unit || input.options.units || "" })],
               alignment: AlignmentType.CENTER,
             })
-          : g.png && g.png.length > 0
-            ? docParagraph({
-                children: [new ImageRun({ data: g.png, transformation: { width: 600, height: 300 }, type: "png" })],
-                alignment: AlignmentType.CENTER,
-              })
-            : docParagraph({
-                children: [docRun({ text: lang === "fa" ? "داده طیف موجود نیست" : "No spectrum data", italics: true, color: "737373" })],
-                alignment: AlignmentType.CENTER,
-              })
+          : docParagraph({
+              children: [docRun({ text: lang === "fa" ? "داده طیف موجود نیست" : "No spectrum data", italics: true, color: "737373" })],
+              alignment: AlignmentType.CENTER,
+            })
       );
     }
   }

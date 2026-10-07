@@ -237,7 +237,7 @@ export function DropZone({ ingest }: { ingest: Ingest }) {
 
   return (
     <div
-      className="relative flex min-h-[13rem] flex-col items-center justify-center gap-2.5 overflow-hidden rounded border border-dashed border-input bg-card px-5 py-5 text-center lg:min-h-[14rem] lg:py-5"
+      className="relative flex min-h-[13rem] flex-col items-center justify-center gap-2.5 overflow-hidden rounded-none border border-dashed border-input bg-card px-5 py-5 text-center lg:min-h-[14rem] lg:py-5"
       aria-busy={ingest.loading}
     >
       <div

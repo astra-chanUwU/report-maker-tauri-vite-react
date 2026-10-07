@@ -664,7 +664,7 @@ function App() {
           <main id="main" className="relative min-h-0 flex-1 overflow-hidden bg-background">
             <Page active={page === "data"}>
               {sp3Paths.length > 0 ? (
-                <div className="grid gap-3">
+                <div className="grid gap-0">
                   <Card className="overflow-hidden p-0">
                     <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5">
                       <Database className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -801,8 +801,8 @@ function App() {
                   <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
                 </div>
               ) : !effective ? (
-                <div className="grid gap-3">
-                  <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)]">
+                <div className="grid gap-0">
+                  <div className="grid items-stretch gap-0 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)]">
                     <DropZone ingest={ingestWithPath} />
                     <Onboarding />
                   </div>
@@ -810,7 +810,7 @@ function App() {
                   <RecentDbsCard onOpen={(p) => void openRecentPath(p)} tick={recentTick} />
                 </div>
               ) : (
-                <div className="grid gap-3">
+                <div className="grid gap-0">
                   <FileBar result={effective} ingest={ingestWithPath} />
                   {ingest.error ? <IngestError message={ingest.error} /> : null}
                   {hasRowSource ? (

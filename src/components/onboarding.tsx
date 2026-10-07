@@ -42,9 +42,12 @@ export function Onboarding() {
       className="flex h-full flex-col"
       contentClassName="grid flex-1 content-start gap-2"
     >
-      <ol className="grid gap-2 lg:grid-cols-3">
+      <ol className="grid gap-0 lg:grid-cols-3">
         {STEPS.map((s, i) => (
-          <li key={s.title} className="flex gap-2 rounded border bg-muted/30 px-2 py-2">
+          <li
+            key={s.title}
+            className="flex gap-2 border-b border-border/70 bg-transparent px-2 py-2 first:border-t"
+          >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
               {i + 1}
             </span>

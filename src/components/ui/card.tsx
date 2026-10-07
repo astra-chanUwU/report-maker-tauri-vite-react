@@ -6,7 +6,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
     <div
       ref={ref}
       className={cn(
-        "rounded-md border bg-card text-card-foreground shadow-[0_1px_2px_oklch(0.2_0.02_255/0.04)]",
+        "rounded-none bg-card text-card-foreground",
         className
       )}
       {...props}
@@ -84,7 +84,7 @@ function Panel({
 }) {
   return (
     <Card className={className} id={id}>
-      <div className="flex items-start gap-2 border-b border-border/70 bg-muted/15 px-3 py-2.5">
+      <div className="flex items-start gap-2 border-b border-border/70 bg-transparent px-3 py-2.5">
         <div className="grid min-w-0 flex-1 gap-0.5">
           <CardTitle className="flex items-center gap-1.5">
             {icon ? (

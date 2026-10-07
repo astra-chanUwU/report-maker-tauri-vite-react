@@ -112,6 +112,41 @@ describe("docx native charts", () => {
     expect(ct).toContain("word/charts/chart");
   }, 30000);
 
+  it("measuring-result trend cells are native Word charts, not PNG sparklines", async () => {
+    const parsed = parseSp3(new TextEncoder().encode("100,0.4\n200,0.9\n300,1.2\n"), "a.sp3");
+    const blob = await buildDocx({
+      meta: parsed.meta,
+      spectra: parsed.spectra,
+      options: { projectName: "P", engineer: "E", reportDate: "2026-09-29", units: "SI", norm: "Default", notes: "", pointLimit: 80 },
+      zones: {
+        limits: DEFAULT_ZONE_LIMITS,
+        rows: [{
+          point: "7 / 1",
+          date: "2023-01-02",
+          rms: "2",
+          rmsA: "3",
+          peak: "1",
+          peakFreq: "100",
+          avgV: "1.5",
+          prevV: "1",
+          currV: "2",
+          avgA: "2.5",
+          prevA: "2",
+          currA: "3",
+          trendCategories: ["2023-01-01", "2023-01-02"],
+          trendValuesV: [1, 2],
+          trendValuesA: [2, 3],
+        }],
+      },
+    });
+    const texts = await chartTextsFromDocx(blob);
+    expect(texts.filter((t) => t.includes("lineChart"))).toHaveLength(2);
+    expect(texts.some((t) => t.includes("2023-01-01") && t.includes("2023-01-02"))).toBe(true);
+    const zip = await (await import("jszip")).default.loadAsync(await blob.arrayBuffer());
+    const media = Object.keys(zip.files).filter((name) => name.startsWith("word/media/"));
+    expect(media).toHaveLength(0);
+  }, 30000);
+
   it("regression: production builders produce editable trend charts with real dates, values, null gaps, units and limits", async () => {
     // Build real histories via app builder, including a null gap
     const rows: CsvRowSummary[] = [

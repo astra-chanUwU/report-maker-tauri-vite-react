@@ -1,13 +1,13 @@
 import type { MeasurePeak, MeasureRow } from "./generateDocx";
 import type { CsvRowSummary } from "./mdb";
-import { SECONDARY_SERIES, secondaryLimits, type SecondaryMetric } from "./metrics";
+import { SECONDARY_SERIES, type SecondaryMetric } from "./metrics";
 import { oleDateToISO } from "./specdata";
 import type { SpectraPoint } from "./parseSp3";
 import { findDominantPeaks } from "./spectra-peaks";
 import {
   groupHistories,
   historyStats,
-  renderTrendPng,
+  sampleValue,
   takeLastHistory,
   type PointHistory,
 } from "./trends";
@@ -67,7 +67,7 @@ function peakFromSummary(r: CsvRowSummary): MeasurePeak[] {
 export interface MeasureRowOpts {
   /** Second metric beside velocity (default acceleration). */
   secondary?: SecondaryMetric;
-  /** Alarm-zone backgrounds behind the sparkline (default on). */
+  /** Retained for compatibility with the preview/table callers (default on). */
   bands?: boolean;
 }
 
@@ -91,7 +91,6 @@ export function buildMeasureRows(
 ): MeasureRow[] {
   const secondary = opts.secondary ?? "acceleration";
   const series = SECONDARY_SERIES[secondary];
-  const secLimits = secondaryLimits(limits, secondary);
   const _cacheKey = bmCacheKey(rows, limits, window, withSparks, opts, labels);
   const _weakInner = _bmWeak.get(rows);
   if (_weakInner?.has(_cacheKey)) return _weakInner.get(_cacheKey)!;
@@ -113,18 +112,15 @@ export function buildMeasureRows(
     const samples = h ? takeLastHistory(h.samples, window) : [];
     const v = historyStats(samples, "rmsV");
     const a = historyStats(samples, series);
-    let sparkV: Uint8Array | undefined;
-    let sparkA: Uint8Array | undefined;
-    if (withSparks && samples.length > 1) {
-      const chart = { sparkline: true, bands: opts.bands !== false };
-      try {
-        sparkV = renderTrendPng(samples, "rmsV", limits.velocity, chart);
-        sparkA = renderTrendPng(samples, series, secLimits, chart);
-      } catch {
-        sparkV = undefined;
-        sparkA = undefined;
-      }
-    }
+    // Keep the source samples as data. The DOCX builder turns these into
+    // native Word charts; raster sparklines cannot be edited in Word.
+    const trendCategories = samples.length > 1 ? samples.map((s) => s.dateISO) : undefined;
+    const trendValuesV = trendCategories
+      ? samples.map((s) => sampleValue(s, "rmsV"))
+      : undefined;
+    const trendValuesA = trendCategories
+      ? samples.map((s) => sampleValue(s, series))
+      : undefined;
     const peaks = peakFromSummary(r);
     return {
       key: `${r.pointId} ${r.directionId}`,
@@ -143,8 +139,9 @@ export function buildMeasureRows(
       prevA: a.prev,
       currA: a.curr,
       peaks,
-      sparkV,
-      sparkA,
+      trendCategories,
+      trendValuesV,
+      trendValuesA,
     };
   });
   let _inner = _bmWeak.get(rows);

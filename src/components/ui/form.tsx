@@ -207,7 +207,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-2.5 rounded-md border border-dashed bg-card/60 px-5 py-8 text-center",
+        "flex flex-col items-center justify-center gap-2.5 rounded-none border border-dashed bg-card/60 px-5 py-8 text-center",
         className
       )}
     >
@@ -243,7 +243,7 @@ export function Stat({
   className?: string;
 }) {
   return (
-    <div className={cn("grid min-w-0 gap-0.5 rounded-md border bg-card px-3 py-2", className)}>
+    <div className={cn("grid min-w-0 gap-0.5 rounded-none border bg-card px-3 py-2", className)}>
       <span className="truncate text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
         {label}
       </span>
